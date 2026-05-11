@@ -29,7 +29,7 @@ public:
     void setIgnoredExtensions(const std::vector<std::string>& ignoredExts);
     void indexDirectory(const fs::path& directoryPath);
     int getEmbeddingsCount() const;
-    std::string findMostSimilar(const std::string& queryText);
+    std::pair<std::string, std::string> findMostSimilar(const std::string& queryText);
 
 private:
     std::string readFileContent(const fs::path& path);

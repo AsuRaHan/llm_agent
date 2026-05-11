@@ -1,4 +1,5 @@
 #include "ContextIndexer.h"
+#include "AssistantRole.h" // Include the new class
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -10,18 +11,11 @@
 #include <Windows.h>
 #endif
 
-/**
- * @brief Reads the last N lines from a file and displays them.
- * 
- * @param filePath The path to the file.
- * @param linesToShow The number of lines to display from the end of the file.
- */
 void show_last_log_entries(const std::string& filePath, int linesToShow = 15)
 {
     std::ifstream file(filePath);
     if (!file.is_open())
     {
-        // Don't print an error if the file doesn't exist on the first run
         return;
     }
 
@@ -48,23 +42,13 @@ void show_last_log_entries(const std::string& filePath, int linesToShow = 15)
 
 int main(int argc, char* argv[])
 {
-#ifdef _WIN32
-    SetConsoleOutputCP(CP_UTF8);
-    SetConsoleCP(CP_UTF8);
-#endif
-    std::locale::global(std::locale(""));
-    std::cout.imbue(std::locale());
+    setlocale(LC_ALL, ".UTF8");
 
     show_last_log_entries("ai_log.md");
 
     std::cout << "Starting Agent..." << std::endl;
 
     ContextIndexer indexer;
-
-    // Example of how to customize ignores (optional, defaults are set in constructor)
-    // indexer.setIgnoredDirectories({ "build", ".git", "docs" });
-    // indexer.setIgnoredExtensions({ ".log", ".tmp" });
-
     indexer.indexDirectory(".");
 
     if (indexer.getEmbeddingsCount() > 0)
@@ -72,12 +56,34 @@ int main(int argc, char* argv[])
         std::cout << "\nСвязь с Llama.cpp установлена, получено эмбеддингов: " << indexer.getEmbeddingsCount() << std::endl;
 
         std::string query;
-        std::cout << "\nEnter a search query to find the most similar file (or press Enter to skip): ";
-        std::getline(std::cin, query);
+        while (true) {
+            std::cout << "\nEnter a search query to find the most similar file (or press Enter to exit): ";
+            std::getline(std::cin, query);
 
-        if (!query.empty()) {
-            std::string result = indexer.findMostSimilar(query);
-            std::cout << result << std::endl;
+            if (query.empty()) {
+                break;
+            }
+
+            auto result = indexer.findMostSimilar(query);
+            std::string filePath = result.first;
+            std::string fileContent = result.second;
+
+            if (fileContent.empty()) {
+                std::cout << "Error or empty file: " << filePath << std::endl;
+                continue;
+            }
+
+            std::cout << "Хочешь, чтобы я проанализировал этот файл? (y/n): ";
+            std::string answer;
+            std::getline(std::cin, answer);
+
+            if (answer == "y" || answer == "Y") {
+                AssistantRole assistant;
+                std::string analysis = assistant.analyzeCode(filePath, fileContent, query);
+                std::cout << "\n--- AI Analysis ---" << std::endl;
+                std::cout << analysis << std::endl;
+                std::cout << "---------------------\n" << std::endl;
+            }
         }
     }
 

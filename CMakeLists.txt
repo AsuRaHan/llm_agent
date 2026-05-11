@@ -33,7 +33,7 @@ FetchContent_MakeAvailable(httplib)
 
 # --- Target ---
 
-add_executable(Agent src/main.cpp src/ContextIndexer.cpp src/EmbeddingClient.cpp)
+add_executable(Agent src/main.cpp src/ContextIndexer.cpp src/EmbeddingClient.cpp src/AssistantRole.cpp)
 
 target_include_directories(Agent PUBLIC
   $<BUILD_INTERFACE:${json_SOURCE_DIR}/include>

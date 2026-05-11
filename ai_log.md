@@ -25,3 +25,4 @@ This log tracks the development process of the Eternal Context Index.
 - **2026-05-11**:
   - **Done**:
     - ПРОЕКТ ЖИВ.
+    - Начало реализации режима Ассистента.

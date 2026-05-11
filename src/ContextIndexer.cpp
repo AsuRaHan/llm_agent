@@ -103,14 +103,14 @@ double ContextIndexer::cosineSimilarity(const std::vector<float>& a, const std::
 }
 
 
-std::string ContextIndexer::findMostSimilar(const std::string& queryText) {
+std::pair<std::string, std::string> ContextIndexer::findMostSimilar(const std::string& queryText) {
     if (fileIndex.empty()) {
-        return "Index is empty. No files to compare against.";
+        return { "Index is empty. No files to compare against.", "" };
     }
 
     std::vector<float> queryEmbedding = embeddingClient.getEmbedding(queryText, "query");
     if (queryEmbedding.empty()) {
-        return "Could not generate embedding for the query text.";
+        return { "Could not generate embedding for the query text.", "" };
     }
 
     std::string bestMatchPath = "";
@@ -129,10 +129,13 @@ std::string ContextIndexer::findMostSimilar(const std::string& queryText) {
     }
 
     if (bestMatchPath.empty()) {
-        return "Could not find any similar files.";
+        return { "Could not find any similar files.", "" };
     }
 
-    return "Best match: '" + bestMatchPath + "' with similarity score: " + std::to_string(maxSimilarity);
+    std::cout << "Best match: '" + bestMatchPath + "' with similarity score: " + std::to_string(maxSimilarity) << std::endl;
+
+    std::string content = readFileContent(bestMatchPath);
+    return { bestMatchPath, content };
 }
 
 void ContextIndexer::setIgnoredDirectories(const std::vector<std::string>& ignoredDirs)
