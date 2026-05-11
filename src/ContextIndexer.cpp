@@ -42,10 +42,18 @@ void ContextIndexer::loadIndex()
         dbFile >> j;
         for (auto& [path, value] : j.items()) {
             long long time_count = value["last_write_time"];
-            std::vector<float> embedding = value["embedding"];
-
             auto duration_since_epoch = fs::file_time_type::duration(time_count);
-            fileIndex[path] = { fs::file_time_type(duration_since_epoch), embedding };
+            
+            std::vector<Chunk> chunks;
+            if (value.contains("chunks")) {
+                for(const auto& chunk_json : value["chunks"]) {
+                    chunks.push_back({
+                        chunk_json["text"],
+                        chunk_json["embedding"]
+                    });
+                }
+            }
+            fileIndex[path] = { fs::file_time_type(duration_since_epoch), chunks };
         }
     }
     catch (json::parse_error& e) {
@@ -68,9 +76,17 @@ void ContextIndexer::saveIndex()
     json j;
     for (const auto& [path, record] : fileIndex)
     {
+        json chunks_json = json::array();
+        for(const auto& chunk : record.chunks) {
+            chunks_json.push_back({
+                {"text", chunk.text},
+                {"embedding", chunk.embedding}
+            });
+        }
+
         j[path] = {
             {"last_write_time", record.last_write_time.time_since_epoch().count()},
-            {"embedding", record.embedding}
+            {"chunks", chunks_json}
         };
     }
     dbFile << j.dump(4); // Pretty-print with 4 spaces
@@ -102,40 +118,45 @@ double ContextIndexer::cosineSimilarity(const std::vector<float>& a, const std::
     return dot_product / (norm_a_sqrt * norm_b_sqrt);
 }
 
+std::vector<std::string> ContextIndexer::chunkText(const std::string& text, size_t chunkSize, size_t overlap) {
+    std::vector<std::string> chunks;
+    if (text.empty()) return chunks;
 
-std::pair<std::string, std::string> ContextIndexer::findMostSimilar(const std::string& queryText) {
-    if (fileIndex.empty()) {
-        return { "Индекс пуст. Нет файлов для сравнения.", "" };
+    size_t start = 0;
+    while (start < text.length()) {
+        size_t end = std::min(start + chunkSize, text.length());
+        chunks.push_back(text.substr(start, end - start));
+        
+        if (end == text.length()) break;
+        start += (chunkSize - overlap); // Сдвигаемся с учетом нахлеста
     }
+    return chunks;
+}
 
+std::vector<SearchResult> ContextIndexer::findTopK(const std::string& queryText, int k) {
+    std::vector<SearchResult> allResults;
+    
     std::vector<float> queryEmbedding = embeddingClient.getEmbedding(queryText, "query");
-    if (queryEmbedding.empty()) {
-        return { "Не удалось сгенерировать embedding для запроса.", "" };
-    }
-
-    std::string bestMatchPath = "";
-    double maxSimilarity = -1.0;
+    if (queryEmbedding.empty()) return {};
 
     for (const auto& [path, record] : fileIndex) {
-        if (record.embedding.empty()) {
-            continue;
-        }
-
-        double similarity = cosineSimilarity(queryEmbedding, record.embedding);
-        if (similarity > maxSimilarity) {
-            maxSimilarity = similarity;
-            bestMatchPath = path;
+        for (const auto& chunk : record.chunks) {
+            double sim = cosineSimilarity(queryEmbedding, chunk.embedding);
+            allResults.push_back({path, chunk.text, sim});
         }
     }
 
-    if (bestMatchPath.empty()) {
-        return { "Не удалось найти похожие файлы.", "" };
+    // Сортируем по убыванию сходства
+    std::sort(allResults.begin(), allResults.end(), [](const SearchResult& a, const SearchResult& b) {
+        return a.score > b.score;
+    });
+
+    // Берем только первые K
+    if (allResults.size() > (size_t)k) {
+        allResults.resize(k);
     }
 
-    std::cout << "Лучшее совпадение: '" + bestMatchPath + "' с коэффициентом сходства: " + std::to_string(maxSimilarity) << std::endl;
-
-    std::string content = readFileContent(bestMatchPath);
-    return { bestMatchPath, content };
+    return allResults;
 }
 
 void ContextIndexer::setIgnoredDirectories(const std::vector<std::string>& ignoredDirs)
@@ -170,10 +191,13 @@ std::string ContextIndexer::readFileContent(const fs::path& path)
 }
 
 int ContextIndexer::getEmbeddingsCount() const {
-    // Return the total number of items in the index that have a non-empty embedding vector.
-    return std::count_if(fileIndex.begin(), fileIndex.end(), [](const auto& pair) {
-        return !pair.second.embedding.empty();
-    });
+    int count = 0;
+    for (const auto& pair : fileIndex) {
+        count += std::count_if(pair.second.chunks.begin(), pair.second.chunks.end(), [](const auto& chunk){
+            return !chunk.embedding.empty();
+        });
+    }
+    return count;
 }
 
 void ContextIndexer::indexDirectory(const fs::path& directoryPath)
@@ -221,14 +245,23 @@ void ContextIndexer::indexDirectory(const fs::path& directoryPath)
                     std::cout << "  Skipping empty file." << std::endl;
                     continue;
                 }
-
-                auto embedding = embeddingClient.getEmbedding(content, canonicalPath);
-                std::cout << "  Got embedding (size " << embedding.size() << ")" << std::endl;
                 
-                if (!embedding.empty()) {
-                     fileIndex[canonicalPath] = { lastWriteTime, embedding };
+                std::vector<std::string> textChunks = chunkText(content);
+                std::vector<Chunk> indexedChunks;
+
+                for (size_t i = 0; i < textChunks.size(); ++i) {
+                    std::string chunkName = canonicalPath + " [#chunk " + std::to_string(i) + "]";
+                    auto emb = embeddingClient.getEmbedding(textChunks[i], chunkName);
+                    
+                    if (!emb.empty()) {
+                        indexedChunks.push_back({ textChunks[i], emb });
+                    }
+                }
+
+                if (!indexedChunks.empty()) {
+                    fileIndex[canonicalPath] = { lastWriteTime, indexedChunks };
                 } else {
-                    // If we can't get an embedding, still record the file, but with an empty vector
+                    // If we can't get an embedding, still record the file, but with an empty vector of chunks
                     fileIndex[canonicalPath] = { lastWriteTime, {} };
                 }
             }
