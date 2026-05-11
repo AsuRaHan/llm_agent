@@ -46,14 +46,13 @@ public:
     void incrementEmbeddingsCount() { embeddings_count++; }
     void decrementEmbeddingsCount() { embeddings_count--; }
     void resetEmbeddingsCount() { embeddings_count = 0; }
-    std::pair<std::string, std::string> findMostSimilar(const std::string& queryText);
+    std::vector<SearchResult> findTopK(const std::string& queryText, int k);
 
 private:
     std::string readFileContent(const fs::path& path);
     void loadIndex();
     void saveIndex();
     double cosineSimilarity(const std::vector<float>& a, const std::vector<float>& b);
-    std::vector<SearchResult> findTopK(const std::string& queryText, int k); // Moved to private, as findMostSimilar is the public interface
     std::vector<std::string> chunkText(const std::string& text, size_t chunkSize = 1000, size_t overlap = 200);
 
     const Config& config;

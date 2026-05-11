@@ -105,32 +105,37 @@ int main(int argc, char* argv[]) // Modified main signature
 
             std::string query;
             while (true) { // Main loop
-                SPDLOG_INFO("\nВведите поисковый запрос для нахождения наиболее похожего файла (или нажмите Enter для выхода): ");
+                SPDLOG_INFO("\nВведите ваш вопрос о проекте (или нажмите Enter для выхода): ");
                 std::getline(std::cin, query);
 
                 if (query.empty()) {
                     break;
                 }
 
-                auto result = indexer.findMostSimilar(query);
-                std::string filePath = result.first;
-                std::string fileContent = result.second;
+                SPDLOG_INFO("Ищу релевантный контекст в проекте...");
+                auto topResults = indexer.findTopK(query, config.top_k_results);
 
-                if (fileContent.empty()) {
-                    SPDLOG_ERROR("Error or empty file: {}", filePath);
+                if (topResults.empty()) {
+                    SPDLOG_WARN("К сожалению, я не смог найти релевантной информации по вашему запросу.");
                     continue;
                 }
 
-                SPDLOG_INFO("Хочешь, чтобы я проанализировал этот файл? (y/n): ");
-                std::string answer;
-                std::getline(std::cin, answer);
-
-                if (answer == "y" || answer == "Y") {
-                    std::string analysis = assistant.analyzeCode(filePath, fileContent, query);
-                    SPDLOG_INFO("\n--- AI Analysis ---");
-                    SPDLOG_INFO("{}", analysis);
-                    SPDLOG_INFO("---------------------\n");
+                // Log the files being used for context
+                std::string sources_str;
+                std::unordered_set<std::string> unique_sources;
+                for(const auto& res : topResults) {
+                    unique_sources.insert(fs::path(res.filePath).filename().string());
                 }
+                for(const auto& src : unique_sources) {
+                    if (!sources_str.empty()) sources_str += ", ";
+                    sources_str += src;
+                }
+                SPDLOG_INFO("Использую контекст из файлов: {}", sources_str);
+
+                std::string analysis = assistant.answerWithContext(query, topResults);
+                SPDLOG_INFO("\n--- Ответ Агента ---");
+                SPDLOG_INFO("{}", analysis);
+                SPDLOG_INFO("---------------------\n");
             }
         }
         else {

@@ -21,6 +21,7 @@ struct Config {
     // Indexing settings
     size_t chunk_size = 1000;
     size_t chunk_overlap = 200;
+    int top_k_results = 3;
     std::vector<std::string> ignored_directories;
     std::vector<std::string> ignored_extensions;
     std::vector<std::string> ignored_files;

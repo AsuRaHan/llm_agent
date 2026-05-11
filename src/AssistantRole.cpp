@@ -1,7 +1,9 @@
 #include "AssistantRole.h"
 #include "Logger.h"
+#include "ContextIndexer.h" // For SearchResult definition
 #include <thread>
 #include <chrono>
+#include <sstream>
 
 #include "Config.h"
 
@@ -11,15 +13,24 @@ AssistantRole::AssistantRole(const Config& config) : config(config), cli(config.
     cli.set_connection_timeout(config.chat_completion_timeout_sec, 0);
 }
 
-std::string AssistantRole::analyzeCode(const std::string& filePath, const std::string& fileContent, const std::string& userQuery) {
-    SPDLOG_INFO("Analyzing '{}'...", filePath);
+std::string AssistantRole::answerWithContext(const std::string& userQuery, const std::vector<SearchResult>& searchResults) {
+    std::stringstream prompt_context;
+    prompt_context << "Ты — эксперт-программист. Ответь на вопрос пользователя, основываясь на следующих наиболее релевантных фрагментах кода из проекта. "
+                   << "Структурируй свой ответ, будь точным и, если уместно, ссылайся на файлы-источники.\n\n"
+                   << "Вопрос пользователя: " << userQuery << "\n\n"
+                   << "Контекст из проекта:\n";
 
-    // Form the prompt for the Llama model
-    std::string prompt_text = 
-        "Ты эксперт-программист. Вот контекст из файла '" + filePath + "':\n```\n" + 
-        fileContent + 
-        "\n```\n\nВопрос пользователя: " + userQuery + 
-        "\n\nДай краткий и точный ответ.";
+    for (const auto& result : searchResults) {
+        prompt_context << "--- ИЗ ФАЙЛА: " << result.filePath << " (схожесть: " << std::fixed << std::setprecision(2) << result.score << ") ---\n"
+                       << "```\n"
+                       << result.chunkText << "\n"
+                       << "```\n\n";
+    }
+    prompt_context << "Проанализируй предоставленный контекст и дай исчерпывающий ответ на вопрос пользователя.";
+
+    std::string prompt_text = prompt_context.str();
+
+    SPDLOG_INFO("Генерация ответа с использованием {} фрагментов контекста...", searchResults.size());
 
     json body = {
         {"messages", json::array({
@@ -31,13 +42,14 @@ std::string AssistantRole::analyzeCode(const std::string& filePath, const std::s
 
     httplib::Result res;
     for (int attempt = 1; attempt <= config.retry_count; ++attempt) {
-        res = cli.Post("/v1/chat/completions", body.dump(), "application/json");
+        std::string body_str = body.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
+        res = cli.Post("/v1/chat/completions", body_str, "application/json");
         if (res) { // If we got any response (even an error status), we can break.
             break;
         }
         // If res is false, it's a connection error.
-        SPDLOG_WARN("[AssistantRole] Попытка {}/{} для анализа '{}' не удалась. Ошибка соединения: {}. Повтор через {} мс...",
-                    attempt, config.retry_count, filePath, httplib::to_string(res.error()), config.retry_delay_ms);
+        SPDLOG_WARN("[AssistantRole] Попытка {}/{} для генерации ответа не удалась. Ошибка соединения: {}. Повтор через {} мс...",
+                    attempt, config.retry_count, httplib::to_string(res.error()), config.retry_delay_ms);
         std::this_thread::sleep_for(std::chrono::milliseconds(config.retry_delay_ms));
     }
 
@@ -91,7 +103,8 @@ std::string AssistantRole::generateProjectSummaryGreeting(int file_count, int em
     httplib::Result res;
     // Using a simplified retry logic for this non-critical call
     for (int attempt = 1; attempt <= config.retry_count; ++attempt) {
-        res = cli.Post("/v1/chat/completions", body.dump(), "application/json");
+        std::string body_str = body.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
+        res = cli.Post("/v1/chat/completions", body_str, "application/json");
         if (res) break;
         std::this_thread::sleep_for(std::chrono::milliseconds(config.retry_delay_ms));
     }

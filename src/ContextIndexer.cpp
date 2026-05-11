@@ -6,6 +6,7 @@
 #include <numeric>
 #include <cmath>
 #include <algorithm>
+#include <regex>
 #include "Logger.h" // Include the new logger header
 #include "Config.h"
 
@@ -146,55 +147,63 @@ std::vector<std::string> ContextIndexer::chunkText(const std::string& text, size
 std::vector<SearchResult> ContextIndexer::findTopK(const std::string& queryText, int k)
 {
     std::vector<float> queryEmbedding = embeddingClient.getEmbedding(queryText, "query");
-    if (queryEmbedding.empty()) return {};
+    if (queryEmbedding.empty()) {
+        SPDLOG_WARN("Не удалось сгенерировать эмбеддинг для запроса. Поиск невозможен.");
+        return {};
+    }
 
-    if (k == 1) {
-        double max_score = -1.0; // Cosine similarity is between -1 and 1
-        std::string best_filePath = "";
-        std::string best_chunkText = "";
+    std::vector<SearchResult> semanticResults;
+    for (const auto& [path, record] : fileIndex) {
+        for (const auto& chunk : record.chunks) {
+            if (chunk.embedding.empty()) continue;
+            double sim = cosineSimilarity(queryEmbedding, chunk.embedding);
+            semanticResults.push_back({path, chunk.text, sim});
+        }
+    }
+    std::sort(semanticResults.begin(), semanticResults.end(), [](const SearchResult& a, const SearchResult& b) { return a.score > b.score; });
+    if (semanticResults.size() > (size_t)k) {
+        semanticResults.resize(k);
+    }
+
+    // --- Intelligent Keyword Boost ---
+    // If the query mentions a filename like "config.json", this extracts the stem ("config")
+    // and finds source files with a matching stem (e.g., "Config.cpp"), forcing them into the context.
+    std::vector<SearchResult> finalResults = semanticResults;
+    std::unordered_set<std::string> seenChunks;
+    for(const auto& res : finalResults) {
+        seenChunks.insert(res.chunkText);
+    }
+
+    std::regex re(R"(([\w\.-]+)\.[\w]+)"); // e.g., "config.json"
+    auto words_begin = std::sregex_iterator(queryText.begin(), queryText.end(), re);
+    auto words_end = std::sregex_iterator();
+
+    for (std::sregex_iterator i = words_begin; i != words_end; ++i) {
+        std::smatch match = *i;
+        fs::path query_path(match.str(0));
+        std::string keyword_stem = query_path.stem().string();
+        std::transform(keyword_stem.begin(), keyword_stem.end(), keyword_stem.begin(),
+            [](unsigned char c){ return std::tolower(c); });
 
         for (const auto& [path, record] : fileIndex) {
-            for (const auto& chunk : record.chunks) {
-                double sim = cosineSimilarity(queryEmbedding, chunk.embedding);
-                if (sim > max_score) {
-                    max_score = sim;
-                    best_filePath = path;
-                    best_chunkText = chunk.text;
+            fs::path p(path);
+            std::string file_stem = p.stem().string();
+            std::transform(file_stem.begin(), file_stem.end(), file_stem.begin(),
+                [](unsigned char c){ return std::tolower(c); });
+
+            if (file_stem == keyword_stem) {
+                SPDLOG_DEBUG("Keyword boost: Found match for '{}', adding chunks from '{}'", keyword_stem, path);
+                for (const auto& chunk : record.chunks) {
+                    if (seenChunks.find(chunk.text) == seenChunks.end()) {
+                        finalResults.push_back({path, chunk.text, 1.1}); // Boost with score > 1.0
+                        seenChunks.insert(chunk.text);
+                    }
                 }
             }
         }
-        if (max_score > -1.0) { // If a valid result was found
-            return {{best_filePath, best_chunkText, max_score}};
-        }
-        return {};
-    } else {
-        std::vector<SearchResult> allResults;
-        for (const auto& [path, record] : fileIndex) {
-            for (const auto& chunk : record.chunks) {
-                double sim = cosineSimilarity(queryEmbedding, chunk.embedding);
-                allResults.push_back({path, chunk.text, sim});
-            }
-        }
-        std::sort(allResults.begin(), allResults.end(), [](const SearchResult& a, const SearchResult& b) { return a.score > b.score; });
-        if (allResults.size() > (size_t)k) { allResults.resize(k); }
-        return allResults;
-    }
-}
-
-std::pair<std::string, std::string> ContextIndexer::findMostSimilar(const std::string& queryText)
-{
-    auto topResults = findTopK(queryText, 1);
-    if (topResults.empty()) {
-        SPDLOG_WARN("Не удалось найти похожие файлы для запроса.");
-        return {"", ""};
     }
 
-    const auto& bestResult = topResults[0];
-    SPDLOG_INFO("Наиболее похожий файл: {} (схожесть: {})", bestResult.filePath, bestResult.score);
-
-    // The main loop expects the full file content, not just the chunk.
-    std::string fileContent = readFileContent(bestResult.filePath);
-    return { bestResult.filePath, fileContent };
+    return finalResults;
 }
 
 void ContextIndexer::setIgnoredDirectories(const std::vector<std::string>& ignoredDirs)

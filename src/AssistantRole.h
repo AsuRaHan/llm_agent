@@ -3,12 +3,14 @@
 #include <string>
 #include <httplib.h>
 
+// Forward declarations to avoid including full headers
+struct SearchResult;
 struct Config; // Forward declaration
 
 class AssistantRole {
 public:
     explicit AssistantRole(const Config& config);
-    std::string analyzeCode(const std::string& filePath, const std::string& fileContent, const std::string& userQuery);
+    std::string answerWithContext(const std::string& userQuery, const std::vector<SearchResult>& searchResults);
     std::string generateProjectSummaryGreeting(int file_count, int embedding_count);
 
 private:
