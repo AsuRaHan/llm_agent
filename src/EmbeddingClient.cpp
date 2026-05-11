@@ -44,7 +44,7 @@ std::vector<float> EmbeddingClient::getEmbedding(const std::string& text, const 
         std::cerr << "  [EmbeddingClient] Error: Failed to get embedding for '" << filename << "'. Status: " 
                   << (res ? res->status : -1) << std::endl;
         if(res) {
-            std::cout << "SERVER RESPONSE: " << res->body << std::endl;
+            std::cout << "ОТВЕТ СЕРВЕРА: " << res->body << std::endl;
         }
         return {};
     }

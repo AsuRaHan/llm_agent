@@ -18,14 +18,14 @@ ContextIndexer::ContextIndexer()
         ".recipe", ".tlog", ".lastbuildstate", ".bin", ".stamp", ".cmake",
         ".json" // Ignore our own database
     };
-    std::cout << "ContextIndexer initialized..." << std::endl;
+    std::cout << "ContextIndexer инициализирован..." << std::endl;
     loadIndex();
 }
 
 ContextIndexer::~ContextIndexer()
 {
     saveIndex();
-    std::cout << "ContextIndexer destroyed." << std::endl;
+    std::cout << "ContextIndexer уничтожен." << std::endl;
 }
 
 void ContextIndexer::loadIndex()
@@ -33,7 +33,7 @@ void ContextIndexer::loadIndex()
     std::ifstream dbFile(dbPath);
     if (!dbFile.is_open())
     {
-        std::cout << "Index file '" << dbPath << "' not found. A new one will be created." << std::endl;
+        std::cout << "Индексный файл '" << dbPath << "' не найден. Будет создан новый." << std::endl;
         return;
     }
 
@@ -53,7 +53,7 @@ void ContextIndexer::loadIndex()
         fileIndex.clear(); // Start with a clean slate if JSON is corrupt
     }
 
-    std::cout << "Loaded " << fileIndex.size() << " entries from index." << std::endl;
+    std::cout << "Загружено " << fileIndex.size() << " записей из индекса." << std::endl;
 }
 
 void ContextIndexer::saveIndex()
@@ -74,7 +74,7 @@ void ContextIndexer::saveIndex()
         };
     }
     dbFile << j.dump(4); // Pretty-print with 4 spaces
-    std::cout << "Saved " << fileIndex.size() << " entries to index." << std::endl;
+    std::cout << "Сохранено " << fileIndex.size() << " записей в индекс." << std::endl;
 }
 
 double ContextIndexer::cosineSimilarity(const std::vector<float>& a, const std::vector<float>& b) {
@@ -105,12 +105,12 @@ double ContextIndexer::cosineSimilarity(const std::vector<float>& a, const std::
 
 std::pair<std::string, std::string> ContextIndexer::findMostSimilar(const std::string& queryText) {
     if (fileIndex.empty()) {
-        return { "Index is empty. No files to compare against.", "" };
+        return { "Индекс пуст. Нет файлов для сравнения.", "" };
     }
 
     std::vector<float> queryEmbedding = embeddingClient.getEmbedding(queryText, "query");
     if (queryEmbedding.empty()) {
-        return { "Could not generate embedding for the query text.", "" };
+        return { "Не удалось сгенерировать embedding для запроса.", "" };
     }
 
     std::string bestMatchPath = "";
@@ -129,10 +129,10 @@ std::pair<std::string, std::string> ContextIndexer::findMostSimilar(const std::s
     }
 
     if (bestMatchPath.empty()) {
-        return { "Could not find any similar files.", "" };
+        return { "Не удалось найти похожие файлы.", "" };
     }
 
-    std::cout << "Best match: '" + bestMatchPath + "' with similarity score: " + std::to_string(maxSimilarity) << std::endl;
+    std::cout << "Лучшее совпадение: '" + bestMatchPath + "' с коэффициентом сходства: " + std::to_string(maxSimilarity) << std::endl;
 
     std::string content = readFileContent(bestMatchPath);
     return { bestMatchPath, content };
@@ -161,7 +161,7 @@ std::string ContextIndexer::readFileContent(const fs::path& path)
     std::ifstream file(path, std::ios::in | std::ios::binary);
     if (!file)
     {
-        std::cerr << "Could not open file: " << path.string() << std::endl;
+        std::cerr << "Не удалось открыть файл: " << path.string() << std::endl;
         return "";
     }
     std::stringstream buffer;
@@ -210,10 +210,10 @@ void ContextIndexer::indexDirectory(const fs::path& directoryPath)
             if (isNew || isModified) {
                 if(isNew) {
                     newFiles++;
-                    std::cout << "New file detected: " << canonicalPath << std::endl;
+                    std::cout << "Обнаружен новый файл: " << canonicalPath << std::endl;
                 } else {
                     updatedFiles++;
-                    std::cout << "Modified file detected: " << canonicalPath << std::endl;
+                    std::cout << "Обнаружен изменённый файл: " << canonicalPath << std::endl;
                 }
 
                 std::string content = readFileContent(path);
@@ -235,6 +235,6 @@ void ContextIndexer::indexDirectory(const fs::path& directoryPath)
         }
     }
     embeddings_count = getEmbeddingsCount();
-    std::cout << "Finished indexing. New files: " << newFiles << ", Modified files: " << updatedFiles << std::endl;
+    std::cout << "Завершено индексирование. Новых файлов: " << newFiles << ", Изменённых файлов: " << updatedFiles << std::endl;
 }
 

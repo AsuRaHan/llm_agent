@@ -31,7 +31,7 @@ void show_last_log_entries(const std::string& filePath, int linesToShow = 15)
         }
     }
 
-    std::cout << "\n--- Last " << lastLines.size() << " Log Entries ---" << std::endl;
+    std::cout << "\n--- Последние " << lastLines.size() << " записей логов ---" << std::endl;
     for (const auto& l : lastLines)
     {
         std::cout << l << std::endl;
@@ -46,7 +46,7 @@ int main(int argc, char* argv[])
 
     show_last_log_entries("ai_log.md");
 
-    std::cout << "Starting Agent..." << std::endl;
+    std::cout << "Запуск Agent..." << std::endl;
 
     ContextIndexer indexer;
     indexer.indexDirectory(".");
@@ -57,7 +57,7 @@ int main(int argc, char* argv[])
 
         std::string query;
         while (true) {
-            std::cout << "\nEnter a search query to find the most similar file (or press Enter to exit): ";
+            std::cout << "\nВведите поисковый запрос для нахождения наиболее похожего файла (или нажмите Enter для выхода): ";
             std::getline(std::cin, query);
 
             if (query.empty()) {
