@@ -10,10 +10,12 @@
 #include <httplib.h>
 #include <nlohmann/json.hpp>
 
+struct Config; // Forward declaration
+
 class EmbeddingClient
 {
 public:
-    EmbeddingClient();
+    explicit EmbeddingClient(const Config& config);
 
     /**
      * @brief Generates an embedding for the given text.
@@ -22,7 +24,9 @@ public:
      * @return std::vector<float> The embedding vector.
      */
     std::vector<float> getEmbedding(const std::string& text, const std::string& filename);
+    bool checkConnection() const;
 
 private:
+    const Config& config;
     httplib::Client cli;
 };

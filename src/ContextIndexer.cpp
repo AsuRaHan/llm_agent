@@ -7,20 +7,17 @@
 #include <cmath>
 #include <algorithm>
 #include "Logger.h" // Include the new logger header
+#include "Config.h"
 
 using json = nlohmann::json;
 namespace fs = std::filesystem;
 
-ContextIndexer::ContextIndexer()
+ContextIndexer::ContextIndexer(const Config& config)
+    : config(config), embeddingClient(config)
 {
-    ignoredDirectories = { "build", ".git", ".vscode", "CMakeFiles" };
-    ignoredFiles = { ".gitignore" };
-    ignoredExtensions = {
-        ".exe", ".obj", ".pdb", ".ilk", ".sln", ".vcxproj", ".filters", ".user",
-        ".recipe", ".tlog", ".lastbuildstate", ".bin", ".stamp", ".cmake",
-        ".json", // Ignore our own database
-        ".log" // Ignore log files
-    };
+    ignoredDirectories.insert(config.ignored_directories.begin(), config.ignored_directories.end());
+    ignoredExtensions.insert(config.ignored_extensions.begin(), config.ignored_extensions.end());
+    ignoredFiles.insert(config.ignored_files.begin(), config.ignored_files.end());
     SPDLOG_INFO("ContextIndexer инициализирован...");
     loadIndex();
     // After loading, calculate initial count
@@ -36,7 +33,7 @@ ContextIndexer::ContextIndexer()
 
 ContextIndexer::~ContextIndexer()
 {
-    saveIndex();
+    saveIndex(); // Save index on destruction
     SPDLOG_INFO("ContextIndexer уничтожен.");
 }
 
@@ -293,7 +290,7 @@ void ContextIndexer::indexDirectory(const fs::path& directoryPath)
                 // For now, let's just not add new chunks.
                 if (!isNew && content.empty()) { fileIndex.erase(it); continue; }
                 
-                std::vector<std::string> textChunks = chunkText(content);
+                std::vector<std::string> textChunks = chunkText(content, config.chunk_size, config.chunk_overlap);
                 std::vector<Chunk> indexedChunks;
 
                 for (size_t i = 0; i < textChunks.size(); ++i) {

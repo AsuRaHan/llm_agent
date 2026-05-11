@@ -50,6 +50,7 @@ add_executable(Agent
       src/EmbeddingClient.cpp 
       src/AssistantRole.cpp
       src/Logger.cpp
+      src/Config.cpp
       )
 
 target_include_directories(Agent PUBLIC

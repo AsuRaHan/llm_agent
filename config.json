@@ -1,0 +1,30 @@
+{
+    "assistant": {
+        "chat_completion_timeout_sec": 300
+    },
+    "indexing": {
+        "chunk_overlap": 200,
+        "chunk_size": 1000,
+        "ignored_directories": [
+            "build",
+            ".git",
+            ".vscode",
+            "CMakeFiles"
+        ],
+        "ignored_extensions": [
+            ".exe", ".obj", ".pdb", ".ilk", ".sln", ".vcxproj", ".filters", ".user",
+            ".recipe", ".tlog", ".lastbuildstate", ".bin", ".stamp", ".cmake",
+            ".json",
+            ".log"
+        ],
+        "ignored_files": [
+            ".gitignore"
+        ]
+    },
+    "server": {
+        "host": "localhost",
+        "port": 8080,
+        "retry_count": 3,
+        "retry_delay_ms": 500
+    }
+}

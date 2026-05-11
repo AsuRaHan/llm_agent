@@ -10,6 +10,8 @@
 #include "EmbeddingClient.h"
 #include "nlohmann/json.hpp"
 
+struct Config; // Forward declaration
+
 namespace fs = std::filesystem;
 
 // Struct to hold a search result
@@ -33,7 +35,7 @@ struct FileRecord
 class ContextIndexer
 {
 public:
-    ContextIndexer();
+    explicit ContextIndexer(const Config& config);
     ~ContextIndexer();
 
     void setIgnoredDirectories(const std::vector<std::string>& ignoredDirs);
@@ -53,7 +55,7 @@ private:
     std::vector<SearchResult> findTopK(const std::string& queryText, int k); // Moved to private, as findMostSimilar is the public interface
     std::vector<std::string> chunkText(const std::string& text, size_t chunkSize = 1000, size_t overlap = 200);
 
-
+    const Config& config;
     EmbeddingClient embeddingClient;
     std::unordered_set<std::string> ignoredDirectories;
     std::unordered_set<std::string> ignoredExtensions;

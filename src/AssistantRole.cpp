@@ -1,10 +1,14 @@
 #include "AssistantRole.h"
 #include "Logger.h"
+#include <thread>
+#include <chrono>
+
+#include "Config.h"
 
 using json = nlohmann::json;
 
-AssistantRole::AssistantRole() : cli("localhost", 8080) {
-    cli.set_connection_timeout(300, 0); // 5 minutes timeout for chat completion
+AssistantRole::AssistantRole(const Config& config) : config(config), cli(config.server_host, config.server_port) {
+    cli.set_connection_timeout(config.chat_completion_timeout_sec, 0);
 }
 
 std::string AssistantRole::analyzeCode(const std::string& filePath, const std::string& fileContent, const std::string& userQuery) {
@@ -25,7 +29,17 @@ std::string AssistantRole::analyzeCode(const std::string& filePath, const std::s
         {"temperature", 0.3}
     };
 
-    auto res = cli.Post("/v1/chat/completions", body.dump(), "application/json");
+    httplib::Result res;
+    for (int attempt = 1; attempt <= config.retry_count; ++attempt) {
+        res = cli.Post("/v1/chat/completions", body.dump(), "application/json");
+        if (res) { // If we got any response (even an error status), we can break.
+            break;
+        }
+        // If res is false, it's a connection error.
+        SPDLOG_WARN("[AssistantRole] Попытка {}/{} для анализа '{}' не удалась. Ошибка соединения: {}. Повтор через {} мс...",
+                    attempt, config.retry_count, filePath, httplib::to_string(res.error()), config.retry_delay_ms);
+        std::this_thread::sleep_for(std::chrono::milliseconds(config.retry_delay_ms));
+    }
 
     if (res && res->status == 200) {
         try {
@@ -36,14 +50,17 @@ std::string AssistantRole::analyzeCode(const std::string& filePath, const std::s
                     return first_choice["message"]["content"].get<std::string>();
                 }
             }
-        } catch (const json::parse_error& e) {
+        } catch (const json::exception& e) { // Catch any nlohmann::json exception
             SPDLOG_ERROR("Failed to parse JSON response. Details: {}", e.what());
             return "Ошибка обработки ответа от модели.";
         }
     } else {
-        SPDLOG_ERROR("Failed to get analysis. Status: {}", (res ? res->status : -1));
-        if(res) {
+        if (res) { // HTTP error
+            SPDLOG_ERROR("Failed to get analysis. Status: {}", res->status);
             SPDLOG_ERROR("Server response: {}", res->body);
+        } else { // Connection error
+            auto err = res.error();
+            SPDLOG_ERROR("Failed to get analysis. Connection error: {}", httplib::to_string(err));
         }
         return "Не удалось связаться с моделью.";
     }
