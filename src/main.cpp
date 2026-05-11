@@ -1,3 +1,8 @@
+// Per README instructions, to prevent conflicts with cpp-httplib
+#ifdef _WIN32
+#include <Windows.h>
+#endif
+
 #include "ContextIndexer.h"
 #include "AssistantRole.h" // Include the new class
 #include <iostream>
@@ -6,10 +11,7 @@
 #include <vector>
 #include <deque>
 #include <locale>
-
-#ifdef _WIN32
-#include <Windows.h>
-#endif
+#include "Logger.h" // Include the new logger header
 
 void show_last_log_entries(const std::string& filePath, int linesToShow = 15)
 {
@@ -43,51 +45,69 @@ void show_last_log_entries(const std::string& filePath, int linesToShow = 15)
 int main(int argc, char* argv[])
 {
     setlocale(LC_ALL, ".UTF8");
+#ifdef _WIN32
+    // Set console to UTF-8 to correctly display Cyrillic characters from AI responses
+    // This is a more reliable method on Windows than just setlocale.
+    SetConsoleOutputCP(CP_UTF8);
+#endif
 
-    show_last_log_entries("ai_log.md");
+    init_logger("app.log"); // Initialize the logger
+    // show_last_log_entries("app.log"); // Now reads from the application log file
+    
+    try {
+        SPDLOG_INFO("Запуск Agent...");
 
-    std::cout << "Запуск Agent..." << std::endl;
+        ContextIndexer indexer;
+        indexer.indexDirectory(".");
 
-    ContextIndexer indexer;
-    indexer.indexDirectory(".");
+        if (indexer.getEmbeddingsCount() > 0)
+        {
+            SPDLOG_INFO("\nСвязь с Llama.cpp установлена, получено эмбеддингов: {}", indexer.getEmbeddingsCount());
 
-    if (indexer.getEmbeddingsCount() > 0)
-    {
-        std::cout << "\nСвязь с Llama.cpp установлена, получено эмбеддингов: " << indexer.getEmbeddingsCount() << std::endl;
+            AssistantRole assistant; // Create assistant once
+            std::string query;
+            while (true) { // Main loop
+                SPDLOG_INFO("\nВведите поисковый запрос для нахождения наиболее похожего файла (или нажмите Enter для выхода): ");
+                std::getline(std::cin, query);
 
-        std::string query;
-        while (true) {
-            std::cout << "\nВведите поисковый запрос для нахождения наиболее похожего файла (или нажмите Enter для выхода): ";
-            std::getline(std::cin, query);
+                if (query.empty()) {
+                    break;
+                }
 
-            if (query.empty()) {
-                break;
-            }
+                auto result = indexer.findMostSimilar(query);
+                std::string filePath = result.first;
+                std::string fileContent = result.second;
 
-            auto result = indexer.findMostSimilar(query);
-            std::string filePath = result.first;
-            std::string fileContent = result.second;
+                if (fileContent.empty()) {
+                    SPDLOG_ERROR("Error or empty file: {}", filePath);
+                    continue;
+                }
 
-            if (fileContent.empty()) {
-                std::cout << "Error or empty file: " << filePath << std::endl;
-                continue;
-            }
+                SPDLOG_INFO("Хочешь, чтобы я проанализировал этот файл? (y/n): ");
+                std::string answer;
+                std::getline(std::cin, answer);
 
-            std::cout << "Хочешь, чтобы я проанализировал этот файл? (y/n): ";
-            std::string answer;
-            std::getline(std::cin, answer);
-
-            if (answer == "y" || answer == "Y") {
-                AssistantRole assistant;
-                std::string analysis = assistant.analyzeCode(filePath, fileContent, query);
-                std::cout << "\n--- AI Analysis ---" << std::endl;
-                std::cout << analysis << std::endl;
-                std::cout << "---------------------\n" << std::endl;
+                if (answer == "y" || answer == "Y") {
+                    std::string analysis = assistant.analyzeCode(filePath, fileContent, query);
+                    SPDLOG_INFO("\n--- AI Analysis ---");
+                    SPDLOG_INFO("{}", analysis);
+                    SPDLOG_INFO("---------------------\n");
+                }
             }
         }
-    }
 
-    std::cout << "\nAgent finished." << std::endl;
+        SPDLOG_INFO("\nAgent finished.");
+    }
+    catch (const std::exception& e) {
+        SPDLOG_CRITICAL("Перехвачено необработанное исключение: {}", e.what());
+        show_last_log_entries("app.log", 30);
+        return 1;
+    }
+    catch (...) {
+        SPDLOG_CRITICAL("Перехвачено неизвестное необработанное исключение!");
+        show_last_log_entries("app.log", 30);
+        return 1;
+    }
 
     return 0;
 }

@@ -6,6 +6,7 @@
 #include <numeric>
 #include <cmath>
 #include <algorithm>
+#include "Logger.h" // Include the new logger header
 
 using json = nlohmann::json;
 namespace fs = std::filesystem;
@@ -13,19 +14,30 @@ namespace fs = std::filesystem;
 ContextIndexer::ContextIndexer()
 {
     ignoredDirectories = { "build", ".git", ".vscode", "CMakeFiles" };
+    ignoredFiles = { ".gitignore" };
     ignoredExtensions = {
         ".exe", ".obj", ".pdb", ".ilk", ".sln", ".vcxproj", ".filters", ".user",
         ".recipe", ".tlog", ".lastbuildstate", ".bin", ".stamp", ".cmake",
-        ".json" // Ignore our own database
+        ".json", // Ignore our own database
+        ".log" // Ignore log files
     };
-    std::cout << "ContextIndexer инициализирован..." << std::endl;
+    SPDLOG_INFO("ContextIndexer инициализирован...");
     loadIndex();
+    // After loading, calculate initial count
+    resetEmbeddingsCount();
+    for (const auto& [path, record] : fileIndex) {
+        for (const auto& chunk : record.chunks) {
+            if (!chunk.embedding.empty()) {
+                incrementEmbeddingsCount();
+            }
+        }
+    }
 }
 
 ContextIndexer::~ContextIndexer()
 {
     saveIndex();
-    std::cout << "ContextIndexer уничтожен." << std::endl;
+    SPDLOG_INFO("ContextIndexer уничтожен.");
 }
 
 void ContextIndexer::loadIndex()
@@ -33,7 +45,7 @@ void ContextIndexer::loadIndex()
     std::ifstream dbFile(dbPath);
     if (!dbFile.is_open())
     {
-        std::cout << "Индексный файл '" << dbPath << "' не найден. Будет создан новый." << std::endl;
+        SPDLOG_WARN("Индексный файл '{}' не найден. Будет создан новый.", dbPath);
         return;
     }
 
@@ -57,11 +69,11 @@ void ContextIndexer::loadIndex()
         }
     }
     catch (json::parse_error& e) {
-        std::cerr << "Error: Could not parse index file '" << dbPath << "'. Starting fresh. Error: " << e.what() << std::endl;
+        SPDLOG_ERROR("Error: Could not parse index file '{}'. Starting fresh. Error: {}", dbPath, e.what());
         fileIndex.clear(); // Start with a clean slate if JSON is corrupt
     }
 
-    std::cout << "Загружено " << fileIndex.size() << " записей из индекса." << std::endl;
+    SPDLOG_INFO("Загружено {} записей из индекса.", fileIndex.size());
 }
 
 void ContextIndexer::saveIndex()
@@ -69,7 +81,7 @@ void ContextIndexer::saveIndex()
     std::ofstream dbFile(dbPath);
     if (!dbFile.is_open())
     {
-        std::cerr << "Error: Could not open index file '" << dbPath << "' for writing." << std::endl;
+        SPDLOG_ERROR("Error: Could not open index file '{}' for writing.", dbPath);
         return;
     }
 
@@ -89,8 +101,9 @@ void ContextIndexer::saveIndex()
             {"chunks", chunks_json}
         };
     }
-    dbFile << j.dump(4); // Pretty-print with 4 spaces
-    std::cout << "Сохранено " << fileIndex.size() << " записей в индекс." << std::endl;
+    // Dump with an error handler to replace invalid UTF-8 sequences
+    dbFile << j.dump(4, ' ', false, nlohmann::json::error_handler_t::replace);
+    SPDLOG_INFO("Сохранено {} записей в индекс.", fileIndex.size());
 }
 
 double ContextIndexer::cosineSimilarity(const std::vector<float>& a, const std::vector<float>& b) {
@@ -133,30 +146,58 @@ std::vector<std::string> ContextIndexer::chunkText(const std::string& text, size
     return chunks;
 }
 
-std::vector<SearchResult> ContextIndexer::findTopK(const std::string& queryText, int k) {
-    std::vector<SearchResult> allResults;
-    
+std::vector<SearchResult> ContextIndexer::findTopK(const std::string& queryText, int k)
+{
     std::vector<float> queryEmbedding = embeddingClient.getEmbedding(queryText, "query");
     if (queryEmbedding.empty()) return {};
 
-    for (const auto& [path, record] : fileIndex) {
-        for (const auto& chunk : record.chunks) {
-            double sim = cosineSimilarity(queryEmbedding, chunk.embedding);
-            allResults.push_back({path, chunk.text, sim});
+    if (k == 1) {
+        double max_score = -1.0; // Cosine similarity is between -1 and 1
+        std::string best_filePath = "";
+        std::string best_chunkText = "";
+
+        for (const auto& [path, record] : fileIndex) {
+            for (const auto& chunk : record.chunks) {
+                double sim = cosineSimilarity(queryEmbedding, chunk.embedding);
+                if (sim > max_score) {
+                    max_score = sim;
+                    best_filePath = path;
+                    best_chunkText = chunk.text;
+                }
+            }
         }
+        if (max_score > -1.0) { // If a valid result was found
+            return {{best_filePath, best_chunkText, max_score}};
+        }
+        return {};
+    } else {
+        std::vector<SearchResult> allResults;
+        for (const auto& [path, record] : fileIndex) {
+            for (const auto& chunk : record.chunks) {
+                double sim = cosineSimilarity(queryEmbedding, chunk.embedding);
+                allResults.push_back({path, chunk.text, sim});
+            }
+        }
+        std::sort(allResults.begin(), allResults.end(), [](const SearchResult& a, const SearchResult& b) { return a.score > b.score; });
+        if (allResults.size() > (size_t)k) { allResults.resize(k); }
+        return allResults;
+    }
+}
+
+std::pair<std::string, std::string> ContextIndexer::findMostSimilar(const std::string& queryText)
+{
+    auto topResults = findTopK(queryText, 1);
+    if (topResults.empty()) {
+        SPDLOG_WARN("Не удалось найти похожие файлы для запроса.");
+        return {"", ""};
     }
 
-    // Сортируем по убыванию сходства
-    std::sort(allResults.begin(), allResults.end(), [](const SearchResult& a, const SearchResult& b) {
-        return a.score > b.score;
-    });
+    const auto& bestResult = topResults[0];
+    SPDLOG_INFO("Наиболее похожий файл: {} (схожесть: {})", bestResult.filePath, bestResult.score);
 
-    // Берем только первые K
-    if (allResults.size() > (size_t)k) {
-        allResults.resize(k);
-    }
-
-    return allResults;
+    // The main loop expects the full file content, not just the chunk.
+    std::string fileContent = readFileContent(bestResult.filePath);
+    return { bestResult.filePath, fileContent };
 }
 
 void ContextIndexer::setIgnoredDirectories(const std::vector<std::string>& ignoredDirs)
@@ -182,7 +223,7 @@ std::string ContextIndexer::readFileContent(const fs::path& path)
     std::ifstream file(path, std::ios::in | std::ios::binary);
     if (!file)
     {
-        std::cerr << "Не удалось открыть файл: " << path.string() << std::endl;
+        SPDLOG_ERROR("Не удалось открыть файл: {}", path.string());
         return "";
     }
     std::stringstream buffer;
@@ -190,20 +231,16 @@ std::string ContextIndexer::readFileContent(const fs::path& path)
     return buffer.str();
 }
 
-int ContextIndexer::getEmbeddingsCount() const {
-    int count = 0;
-    for (const auto& pair : fileIndex) {
-        count += std::count_if(pair.second.chunks.begin(), pair.second.chunks.end(), [](const auto& chunk){
-            return !chunk.embedding.empty();
-        });
-    }
-    return count;
-}
-
 void ContextIndexer::indexDirectory(const fs::path& directoryPath)
 {
-    std::cout << "\nStarting filtered indexing of directory: " << directoryPath.string() << std::endl;
+    SPDLOG_INFO("\nStarting filtered indexing of directory: {}", directoryPath.string());
     auto iterator = fs::recursive_directory_iterator(directoryPath);
+
+    std::unordered_set<std::string> files_in_index;
+    for (const auto& [path, record] : fileIndex) {
+        files_in_index.insert(path);
+    }
+
     int updatedFiles = 0;
     int newFiles = 0;
 
@@ -218,13 +255,17 @@ void ContextIndexer::indexDirectory(const fs::path& directoryPath)
         if (entry.is_regular_file())
         {
             const auto& path = entry.path();
-            if (ignoredExtensions.count(path.extension().string()) || path.filename() == dbPath)
+            if (ignoredExtensions.count(path.extension().string()) ||
+                ignoredFiles.count(path.filename().string()) ||
+                path.filename() == dbPath)
             {
                 continue;
             }
             
             auto canonicalPath = fs::weakly_canonical(path).string();
             std::replace(canonicalPath.begin(), canonicalPath.end(), '\\', '/');
+            files_in_index.erase(canonicalPath); // Mark file as present on disk
+
             auto lastWriteTime = fs::last_write_time(path);
 
             auto it = fileIndex.find(canonicalPath);
@@ -234,40 +275,64 @@ void ContextIndexer::indexDirectory(const fs::path& directoryPath)
             if (isNew || isModified) {
                 if(isNew) {
                     newFiles++;
-                    std::cout << "Обнаружен новый файл: " << canonicalPath << std::endl;
+                    SPDLOG_INFO("Обнаружен новый файл: {}", canonicalPath);
                 } else {
                     updatedFiles++;
-                    std::cout << "Обнаружен изменённый файл: " << canonicalPath << std::endl;
+                    SPDLOG_INFO("Обнаружен изменённый файл: {}", canonicalPath);
+                    for (const auto& chunk : it->second.chunks) {
+                        if (!chunk.embedding.empty()) { decrementEmbeddingsCount(); }
+                    }
                 }
 
                 std::string content = readFileContent(path);
                 if (content.empty()) {
-                    std::cout << "  Skipping empty file." << std::endl;
+                    SPDLOG_DEBUG("  Skipping empty file: {}", canonicalPath);
                     continue;
                 }
+                // If it was a modified file, and now it's empty, we should remove it from index or mark it.
+                // For now, let's just not add new chunks.
+                if (!isNew && content.empty()) { fileIndex.erase(it); continue; }
                 
                 std::vector<std::string> textChunks = chunkText(content);
                 std::vector<Chunk> indexedChunks;
 
                 for (size_t i = 0; i < textChunks.size(); ++i) {
                     std::string chunkName = canonicalPath + " [#chunk " + std::to_string(i) + "]";
+                    SPDLOG_DEBUG("  Получение эмбеддинга для чанка: {}", chunkName);
                     auto emb = embeddingClient.getEmbedding(textChunks[i], chunkName);
                     
                     if (!emb.empty()) {
                         indexedChunks.push_back({ textChunks[i], emb });
+                        incrementEmbeddingsCount(); // Increment for new valid chunk
                     }
+                    // Если программа падает, это сообщение не появится в логе
                 }
 
                 if (!indexedChunks.empty()) {
                     fileIndex[canonicalPath] = { lastWriteTime, indexedChunks };
                 } else {
-                    // If we can't get an embedding, still record the file, but with an empty vector of chunks
-                    fileIndex[canonicalPath] = { lastWriteTime, {} };
+                    // If we can't get an embedding for any chunk, remove the file from index if it was existing,
+                    // or add it with empty chunks if it's new.
+                    if (!isNew) { fileIndex.erase(it); }
+                    else { fileIndex[canonicalPath] = { lastWriteTime, {} }; }
                 }
             }
         }
     }
-    embeddings_count = getEmbeddingsCount();
-    std::cout << "Завершено индексирование. Новых файлов: " << newFiles << ", Изменённых файлов: " << updatedFiles << std::endl;
-}
 
+    int deletedFiles = 0;
+    for (const auto& deleted_path : files_in_index) {
+        auto it = fileIndex.find(deleted_path);
+        if (it != fileIndex.end()) {
+            for (const auto& chunk : it->second.chunks) {
+                if (!chunk.embedding.empty()) { decrementEmbeddingsCount(); }
+            }
+            fileIndex.erase(it);
+            deletedFiles++;
+            SPDLOG_INFO("Удален из индекса отсутствующий файл: {}", deleted_path);
+        }
+    }
+
+    SPDLOG_INFO("Завершено индексирование. Новых файлов: {}, Изменённых файлов: {}, Удалено файлов: {}",
+                newFiles, updatedFiles, deletedFiles);
+}

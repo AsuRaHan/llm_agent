@@ -1,5 +1,6 @@
 #include "EmbeddingClient.h"
 #include <iostream>
+#include "Logger.h" // Include the new logger header
 
 // Use the alias for convenience
 using json = nlohmann::json;
@@ -13,18 +14,20 @@ std::vector<float> EmbeddingClient::getEmbedding(const std::string& text, const 
 {
     std::string text_to_embed = text;
     if (text_to_embed.length() > 1500) {
-        std::cout << "  [EmbeddingClient] Text for '" << filename << "' is too long (" << text.length() << " chars), truncating to 1500." << std::endl;
+        SPDLOG_WARN("  [EmbeddingClient] Text for '{}' is too long ({} chars), truncating to 1500.", filename, text.length());
         text_to_embed = text_to_embed.substr(0, 1500);
     }
 
-    std::cout << "  [EmbeddingClient] Generating embedding for '" << filename << "' (size: " << text_to_embed.length() << " chars)..." << std::endl;
+    SPDLOG_DEBUG("  [EmbeddingClient] Generating embedding for '{}' (size: {} chars)...", filename, text_to_embed.length());
 
     json body = {
         { "input", text_to_embed },
         { "model", "any" }
     };
     
-    auto res = cli.Post("/v1/embeddings", body.dump(), "application/json");
+    // Dump with an error handler to replace invalid UTF-8 sequences before sending
+    std::string body_str = body.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
+    auto res = cli.Post("/v1/embeddings", body_str, "application/json");
 
     if (res && res->status == 200) {
         try {
@@ -36,15 +39,15 @@ std::vector<float> EmbeddingClient::getEmbedding(const std::string& text, const 
                     return first_item["embedding"].get<std::vector<float>>();
                 }
             }
-        } catch (const json::parse_error& e) {
-            std::cerr << "  [EmbeddingClient] Error: Failed to parse JSON response for '" << filename << "'. Details: " << e.what() << std::endl;
+        } catch (const json::exception& e) { // Catch any nlohmann::json exception
+            SPDLOG_ERROR("  [EmbeddingClient] Error: Failed to parse JSON response for '{}'. Details: {}", filename, e.what());
             return {};
         }
     } else {
-        std::cerr << "  [EmbeddingClient] Error: Failed to get embedding for '" << filename << "'. Status: " 
-                  << (res ? res->status : -1) << std::endl;
+        SPDLOG_ERROR("  [EmbeddingClient] Error: Failed to get embedding for '{}'. Status: {}",
+                     filename, (res ? res->status : -1));
         if(res) {
-            std::cout << "ОТВЕТ СЕРВЕРА: " << res->body << std::endl;
+            SPDLOG_ERROR("ОТВЕТ СЕРВЕРА: {}", res->body);
         }
         return {};
     }

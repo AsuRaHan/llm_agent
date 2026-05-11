@@ -1,5 +1,5 @@
 #include "AssistantRole.h"
-#include <iostream>
+#include "Logger.h"
 
 using json = nlohmann::json;
 
@@ -8,7 +8,7 @@ AssistantRole::AssistantRole() : cli("localhost", 8080) {
 }
 
 std::string AssistantRole::analyzeCode(const std::string& filePath, const std::string& fileContent, const std::string& userQuery) {
-    std::cout << "\n[Assistant] Analyzing '" << filePath << "'..." << std::endl;
+    SPDLOG_INFO("Analyzing '{}'...", filePath);
 
     // Form the prompt for the Llama model
     std::string prompt_text = 
@@ -19,8 +19,8 @@ std::string AssistantRole::analyzeCode(const std::string& filePath, const std::s
 
     json body = {
         {"messages", json::array({
-            {"role", "system"}, {"content", "Вы — полезный помощник для программистов."},
-            {{"role", "user"}, {"content", prompt_text}}
+            { {"role", "system"}, {"content", "Вы — полезный помощник для программистов."} },
+            { {"role", "user"}, {"content", prompt_text} }
         })},
         {"temperature", 0.3}
     };
@@ -37,18 +37,16 @@ std::string AssistantRole::analyzeCode(const std::string& filePath, const std::s
                 }
             }
         } catch (const json::parse_error& e) {
-            std::cerr << "[Assistant] Error: Failed to parse JSON response. Details: " << e.what() << std::endl;
+            SPDLOG_ERROR("Failed to parse JSON response. Details: {}", e.what());
             return "Ошибка обработки ответа от модели.";
         }
     } else {
-        std::cerr << "[Assistant] Error: Failed to get analysis. Status: "
-                  << (res ? res->status : -1) << std::endl;
+        SPDLOG_ERROR("Failed to get analysis. Status: {}", (res ? res->status : -1));
         if(res) {
-            std::cerr << "ОТВЕТ СЕРВЕРА: " << res->body << std::endl;
+            SPDLOG_ERROR("Server response: {}", res->body);
         }
         return "Не удалось связаться с моделью.";
     }
 
     return "Получен неожиданный ответ от модели.";
 }
-

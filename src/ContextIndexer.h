@@ -39,7 +39,10 @@ public:
     void setIgnoredDirectories(const std::vector<std::string>& ignoredDirs);
     void setIgnoredExtensions(const std::vector<std::string>& ignoredExts);
     void indexDirectory(const fs::path& directoryPath);
-    int getEmbeddingsCount() const;
+    int getEmbeddingsCount() const { return embeddings_count; }
+    void incrementEmbeddingsCount() { embeddings_count++; }
+    void decrementEmbeddingsCount() { embeddings_count--; }
+    void resetEmbeddingsCount() { embeddings_count = 0; }
     std::pair<std::string, std::string> findMostSimilar(const std::string& queryText);
 
 private:
@@ -47,12 +50,14 @@ private:
     void loadIndex();
     void saveIndex();
     double cosineSimilarity(const std::vector<float>& a, const std::vector<float>& b);
+    std::vector<SearchResult> findTopK(const std::string& queryText, int k); // Moved to private, as findMostSimilar is the public interface
     std::vector<std::string> chunkText(const std::string& text, size_t chunkSize = 1000, size_t overlap = 200);
 
 
     EmbeddingClient embeddingClient;
     std::unordered_set<std::string> ignoredDirectories;
     std::unordered_set<std::string> ignoredExtensions;
+    std::unordered_set<std::string> ignoredFiles;
     std::unordered_map<std::string, FileRecord> fileIndex;
     int embeddings_count = 0;
     const std::string dbPath = "index.json";
