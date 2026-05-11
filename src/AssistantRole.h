@@ -9,6 +9,7 @@ class AssistantRole {
 public:
     explicit AssistantRole(const Config& config);
     std::string analyzeCode(const std::string& filePath, const std::string& fileContent, const std::string& userQuery);
+    std::string generateProjectSummaryGreeting(int file_count, int embedding_count);
 
 private:
     const Config& config;

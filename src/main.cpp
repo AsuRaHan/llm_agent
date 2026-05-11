@@ -96,6 +96,13 @@ int main(int argc, char* argv[]) // Modified main signature
             SPDLOG_INFO("\nСвязь с Llama.cpp установлена, получено эмбеддингов: {}", indexer.getEmbeddingsCount());
 
             AssistantRole assistant(config); // Create assistant once
+
+            // Generate and display a creative greeting from the agent
+            std::string greeting = assistant.generateProjectSummaryGreeting(indexer.getFileCount(), indexer.getEmbeddingsCount());
+            SPDLOG_INFO("\n--- Сообщение от Агента ---");
+            SPDLOG_INFO("{}", greeting);
+            SPDLOG_INFO("---------------------------\n");
+
             std::string query;
             while (true) { // Main loop
                 SPDLOG_INFO("\nВведите поисковый запрос для нахождения наиболее похожего файла (или нажмите Enter для выхода): ");

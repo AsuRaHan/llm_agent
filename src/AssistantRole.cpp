@@ -67,3 +67,46 @@ std::string AssistantRole::analyzeCode(const std::string& filePath, const std::s
 
     return "Получен неожиданный ответ от модели.";
 }
+
+std::string AssistantRole::generateProjectSummaryGreeting(int file_count, int embedding_count) {
+    SPDLOG_INFO("Генерация приветственного сообщения о проекте...");
+
+    std::string prompt_text = 
+        "Ты — остроумный и дружелюбный ИИ-ассистент для программиста. Ты только что закончил "
+        "сканирование его проекта. Ты проиндексировал " + std::to_string(file_count) + 
+        " файлов и создал " + std::to_string(embedding_count) + 
+        " смысловых 'воспоминаний' (эмбеддингов). Твоя задача — сгенерировать короткое, "
+        "креативное и ободряющее приветственное сообщение для разработчика. Дай ему понять, "
+        "что ты в сети и готов помочь разобраться в коде. Не просто констатируй факты, "
+        "прояви немного индивидуальности. Говори от первого лица.";
+
+    json body = {
+        {"messages", json::array({
+            { {"role", "system"}, {"content", "Ты — полезный ИИ-ассистент."} },
+            { {"role", "user"}, {"content", prompt_text} }
+        })},
+        {"temperature", 0.7} // A bit more creative
+    };
+
+    httplib::Result res;
+    // Using a simplified retry logic for this non-critical call
+    for (int attempt = 1; attempt <= config.retry_count; ++attempt) {
+        res = cli.Post("/v1/chat/completions", body.dump(), "application/json");
+        if (res) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(config.retry_delay_ms));
+    }
+
+    if (res && res->status == 200) {
+        try {
+            auto json_body = json::parse(res->body);
+            if (json_body.contains("choices") && !json_body["choices"].empty()) {
+                return json_body["choices"][0]["message"]["content"].get<std::string>();
+            }
+        } catch (const json::exception& e) {
+            SPDLOG_ERROR("[AssistantRole] Не удалось разобрать ответ для приветствия: {}", e.what());
+        }
+    }
+    
+    // Fallback message if AI fails
+    return "Привет! Я просканировал твой проект. Готов отвечать на вопросы.";
+}

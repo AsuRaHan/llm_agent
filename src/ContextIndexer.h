@@ -42,6 +42,7 @@ public:
     void setIgnoredExtensions(const std::vector<std::string>& ignoredExts);
     void indexDirectory(const fs::path& directoryPath);
     int getEmbeddingsCount() const { return embeddings_count; }
+    int getFileCount() const { return fileIndex.size(); }
     void incrementEmbeddingsCount() { embeddings_count++; }
     void decrementEmbeddingsCount() { embeddings_count--; }
     void resetEmbeddingsCount() { embeddings_count = 0; }
