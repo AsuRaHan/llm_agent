@@ -1,0 +1,22 @@
+# Бинарные файлы
+Agent.exe
+
+# Сгенерированные файлы и каталоги
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.dylib
+*.pdb
+
+# Временные файлы
+*.tmp
+*.log
+index.json
+
+# VS Code настройки
+.vscode/
+build
+bin
+build_check
