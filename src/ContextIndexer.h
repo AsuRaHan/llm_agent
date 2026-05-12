@@ -54,7 +54,6 @@ private:
     void loadIndex();
     // cosineSimilarity is no longer needed for search, but can be useful for score calculation
     double cosineSimilarity(const std::vector<float>& a, const std::vector<float>& b);
-    std::vector<std::string> fixedSizeChunkText(const std::string& text, size_t chunkSize, size_t overlap);
     void addChunk(const std::string& path, const std::string& text, const std::vector<float>& embedding);
 
     const Config& config;

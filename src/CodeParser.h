@@ -8,10 +8,11 @@
 // Forward declare Tree-sitter types to avoid including C headers in a C++ header
 struct TSLanguage;
 struct TSParser;
+struct Config; // Forward declare Config
 
 class CodeParser {
 public:
-    CodeParser();
+    explicit CodeParser(const Config& config);
     ~CodeParser();
 
     /**
@@ -24,6 +25,7 @@ public:
     std::vector<std::string> parse(const std::string& sourceCode, const std::string& fileExtension);
 
 private:
+    const Config& config;
     // A map from file extension (e.g., ".cpp") to the corresponding Tree-sitter language parser.
     std::unordered_map<std::string, TSLanguage*> languageMap;
     
@@ -35,4 +37,5 @@ private:
     
     // Helper to recursively extract nodes
     void extractChunks(const std::string& sourceCode, void* rootNode, std::vector<std::string>& chunks);
+    std::vector<std::string> fixedSizeChunkText(const std::string& text, size_t chunkSize, size_t overlap);
 };

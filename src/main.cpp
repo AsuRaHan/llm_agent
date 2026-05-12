@@ -91,6 +91,11 @@ int main(int argc, char* argv[]) // Modified main signature
         ContextIndexer indexer(config);
         indexer.indexDirectory(project_dir_str); // Pass the determined project_dir_str
 
+        // Explicitly save the index after all indexing operations are complete.
+        // This ensures data is safe before the interactive part begins.
+        SPDLOG_INFO("Индексирование завершено. Сохранение индекса...");
+        indexer.saveIndex();
+
         if (indexer.getEmbeddingsCount() > 0)
         {
             SPDLOG_INFO("\nСвязь с Llama.cpp установлена, получено эмбеддингов: {}", indexer.getEmbeddingsCount());

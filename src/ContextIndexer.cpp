@@ -23,7 +23,7 @@ ContextIndexer::ContextIndexer(const Config& config)
     SPDLOG_INFO("ContextIndexer инициализирован...");
 
     if (config.chunking_strategy == "tree-sitter") {
-        codeParser = std::make_unique<CodeParser>();
+        codeParser = std::make_unique<CodeParser>(config);
     }
 
     // Ensure the .shdata directory exists
@@ -199,21 +199,6 @@ double ContextIndexer::cosineSimilarity(const std::vector<float>& a, const std::
     }
 
     return dot_product / (norm_a_sqrt * norm_b_sqrt);
-}
-
-std::vector<std::string> ContextIndexer::fixedSizeChunkText(const std::string& text, size_t chunkSize, size_t overlap) {
-    std::vector<std::string> chunks;
-    if (text.empty()) return chunks;
-
-    size_t start = 0;
-    while (start < text.length()) {
-        size_t end = std::min(start + chunkSize, text.length());
-        chunks.push_back(text.substr(start, end - start));
-        
-        if (end == text.length()) break;
-        start += (chunkSize - overlap); // Сдвигаемся с учетом нахлеста
-    }
-    return chunks;
 }
 
 std::vector<SearchResult> ContextIndexer::findTopK(const std::string& queryText, int k)
@@ -440,12 +425,12 @@ void ContextIndexer::indexDirectory(const fs::path& directoryPath)
                 if (config.chunking_strategy == "tree-sitter" && codeParser) {
                     textChunks = codeParser->parse(content, path.extension().string());
                     // Fallback to fixed size if tree-sitter fails or returns no chunks for a non-empty file
-                    if (textChunks.empty() && !content.empty()) {
-                        SPDLOG_WARN("Tree-sitter не вернул чанков для файла '{}'. Используется разбиение по умолчанию.", canonicalPath);
-                        textChunks = fixedSizeChunkText(content, config.chunk_size, config.chunk_overlap);
-                    }
+                    // The parser now handles its own fallbacks internally. We just check if it returned anything.
                 } else {
-                    textChunks = fixedSizeChunkText(content, config.chunk_size, config.chunk_overlap);
+                    // This is now a fallback for when tree-sitter is not the chosen strategy.
+                    // We need a temporary parser object to do this.
+                    CodeParser tempParser(config);
+                    textChunks = tempParser.parse(content, "fallback"); // Use a dummy extension
                 }
                 
                 // Update file record timestamp and prepare for new chunks
