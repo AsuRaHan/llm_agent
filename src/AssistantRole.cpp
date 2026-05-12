@@ -90,7 +90,7 @@ std::string AssistantRole::generateProjectSummaryGreeting(int file_count, int em
         " смысловых 'воспоминаний' (эмбеддингов). Твоя задача — сгенерировать короткое, "
         "креативное и ободряющее приветственное сообщение для разработчика. Дай ему понять, "
         "что ты в сети и готов помочь разобраться в коде. Не просто констатируй факты, "
-        "прояви немного индивидуальности. Говори от первого лица.";
+        "прояви немного индивидуальности. Говори от первого лица. И не много расскажи о самом проекте который ты проанализировал.";
 
     json body = {
         {"messages", json::array({
@@ -128,7 +128,7 @@ std::string AssistantRole::generateChunkSummary(const std::string& codeChunk, co
     SPDLOG_DEBUG("[AssistantRole] Запрос на генерацию саммари для чанка '{}'...", chunkName);
 
     std::string system_prompt =
-        "Твоя задача — создать очень короткое, лаконичное саммари (одно предложение) для предоставленного фрагмента кода. "
+        "Твоя задача — создать очень короткое, лаконичное саммари (одно два предложения) для предоставленного фрагмента кода. "
         "Саммари должно описывать основное назначение или действие этого кода. "
         "Отвечай только текстом саммари, без лишних слов и преамбул.";
 
@@ -140,7 +140,7 @@ std::string AssistantRole::generateChunkSummary(const std::string& codeChunk, co
             { {"role", "user"}, {"content", user_prompt} }
         })},
         {"temperature", 0.0}, // Factual summary
-        {"max_tokens", 100}   // Limit response size
+        {"max_tokens", 200}   // Limit response size
     };
 
     httplib::Result res;
