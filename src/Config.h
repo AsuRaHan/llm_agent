@@ -19,10 +19,10 @@ struct Config {
     int embedding_max_text_length = 1500;
 
     // Indexing settings
-    size_t chunk_size = 1000;
-    size_t chunk_overlap = 200;
+    size_t chunk_size = 10000;
+    size_t chunk_overlap = 2000;
     int top_k_results = 3;
-    std::string chunking_strategy = "tree-sitter"; // "fixed" or "tree-sitter"
+    std::string chunking_strategy = "tree-sitter-hybrid"; // "fixed", "tree-sitter", or "tree-sitter-hybrid"
     std::vector<std::string> ignored_directories;
     std::vector<std::string> ignored_extensions;
     std::vector<std::string> ignored_files;

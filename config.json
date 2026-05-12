@@ -6,9 +6,9 @@
         "max_text_length": 1500
     },
     "indexing": {
-        "chunk_overlap": 200,
-        "chunk_size": 1000,
-        "chunking_strategy": "tree-sitter",
+        "chunk_overlap": 2000,
+        "chunk_size": 10000,
+        "chunking_strategy": "tree-sitter-hybrid",
         "ignored_directories": [
             "build",
             ".git",

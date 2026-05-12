@@ -13,6 +13,7 @@
 #include "hnswlib/hnswlib.h" // Include HNSWLib
 #include "CodeParser.h" // Include our new parser
 
+struct AssistantRole;
 struct Config; // Forward declaration
 
 namespace fs = std::filesystem;
@@ -54,11 +55,13 @@ private:
     void loadIndex();
     // cosineSimilarity is no longer needed for search, but can be useful for score calculation
     double cosineSimilarity(const std::vector<float>& a, const std::vector<float>& b);
+    std::vector<std::string> fixedSizeChunkText(const std::string& text, size_t chunkSize, size_t overlap);
     void addChunk(const std::string& path, const std::string& text, const std::vector<float>& embedding);
 
     const Config& config;
     EmbeddingClient embeddingClient;
     std::unique_ptr<CodeParser> codeParser; // The parser instance
+    std::unique_ptr<AssistantRole> summarizerAssistant;
     std::unordered_set<std::string> ignoredDirectories;
     std::unordered_set<std::string> ignoredExtensions;
     std::unordered_set<std::string> ignoredFiles;

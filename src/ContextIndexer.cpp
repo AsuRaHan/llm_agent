@@ -10,20 +10,24 @@
 #include <regex>
 #include "Logger.h" // Include the new logger header
 #include "Config.h"
+#include "AssistantRole.h"
 
 using json = nlohmann::json;
 namespace fs = std::filesystem;
 
 ContextIndexer::ContextIndexer(const Config& config)
-    : config(config), embeddingClient(config), codeParser(nullptr), space(nullptr), index(nullptr)
+    : config(config), embeddingClient(config), codeParser(nullptr), summarizerAssistant(nullptr), space(nullptr), index(nullptr)
 {
     ignoredDirectories.insert(config.ignored_directories.begin(), config.ignored_directories.end());
     ignoredExtensions.insert(config.ignored_extensions.begin(), config.ignored_extensions.end());
     ignoredFiles.insert(config.ignored_files.begin(), config.ignored_files.end());
     SPDLOG_INFO("ContextIndexer инициализирован...");
 
-    if (config.chunking_strategy == "tree-sitter") {
+    if (config.chunking_strategy == "tree-sitter" || config.chunking_strategy == "tree-sitter-hybrid") {
         codeParser = std::make_unique<CodeParser>(config);
+    }
+    if (config.chunking_strategy == "tree-sitter-hybrid") {
+        summarizerAssistant = std::make_unique<AssistantRole>(config);
     }
 
     // Ensure the .shdata directory exists
@@ -199,6 +203,21 @@ double ContextIndexer::cosineSimilarity(const std::vector<float>& a, const std::
     }
 
     return dot_product / (norm_a_sqrt * norm_b_sqrt);
+}
+
+std::vector<std::string> ContextIndexer::fixedSizeChunkText(const std::string& text, size_t chunkSize, size_t overlap) {
+    std::vector<std::string> chunks;
+    if (text.empty()) return chunks;
+
+    size_t start = 0;
+    while (start < text.length()) {
+        size_t end = std::min(start + chunkSize, text.length());
+        chunks.push_back(text.substr(start, end - start));
+        
+        if (end == text.length()) break;
+        start += (chunkSize - overlap); // Сдвигаемся с учетом нахлеста
+    }
+    return chunks;
 }
 
 std::vector<SearchResult> ContextIndexer::findTopK(const std::string& queryText, int k)
@@ -422,28 +441,36 @@ void ContextIndexer::indexDirectory(const fs::path& directoryPath)
                 }
                 
                 std::vector<std::string> textChunks;
-                if (config.chunking_strategy == "tree-sitter" && codeParser) {
+                if ((config.chunking_strategy == "tree-sitter" || config.chunking_strategy == "tree-sitter-hybrid") && codeParser) {
                     textChunks = codeParser->parse(content, path.extension().string());
                     // Fallback to fixed size if tree-sitter fails or returns no chunks for a non-empty file
-                    // The parser now handles its own fallbacks internally. We just check if it returned anything.
+                    if (textChunks.empty() && !content.empty()) {
+                        SPDLOG_WARN("Tree-sitter не вернул чанков для файла '{}'. Используется разбиение по умолчанию.", canonicalPath);
+                        textChunks = fixedSizeChunkText(content, config.chunk_size, config.chunk_overlap);
+                    }
                 } else {
-                    // This is now a fallback for when tree-sitter is not the chosen strategy.
-                    // We need a temporary parser object to do this.
-                    CodeParser tempParser(config);
-                    textChunks = tempParser.parse(content, "fallback"); // Use a dummy extension
+                    // Fallback to fixed-size chunking if strategy is "fixed" or something else.
+                    textChunks = fixedSizeChunkText(content, config.chunk_size, config.chunk_overlap);
                 }
                 
                 // Update file record timestamp and prepare for new chunks
                 fileIndex[canonicalPath].last_write_time = lastWriteTime;
                 fileIndex[canonicalPath].chunks.clear(); // Ensure it's empty before adding new ones
 
-                for (size_t i = 0; i < textChunks.size(); ++i) {
+                for (size_t i = 0; i < textChunks.size(); ++i)
+                {
+                    const std::string& chunk = textChunks[i];
                     std::string chunkName = canonicalPath + " [#chunk " + std::to_string(i) + "]";
-                    SPDLOG_DEBUG("  Получение эмбеддинга для чанка: {}", chunkName);
-                    auto emb = embeddingClient.getEmbedding(textChunks[i], chunkName);
+                    std::string text_for_embedding = chunk;
+
+                    if (config.chunking_strategy == "tree-sitter-hybrid" && summarizerAssistant) {
+                        std::string summary = summarizerAssistant->generateChunkSummary(chunk, chunkName);
+                        text_for_embedding = "[SUMMARY]: " + summary + "\n[CODE]:\n" + chunk;
+                    }
+                    auto emb = embeddingClient.getEmbedding(text_for_embedding, chunkName);
 
                     if (!emb.empty()) {
-                        addChunk(canonicalPath, textChunks[i], emb);
+                        addChunk(canonicalPath, chunk, emb);
                     }
                 }
 

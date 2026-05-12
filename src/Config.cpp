@@ -20,7 +20,7 @@ void Config::create_default(const std::string& filepath) const {
     j["indexing"]["chunk_size"] = chunk_size;
     j["indexing"]["chunk_overlap"] = chunk_overlap;
     j["indexing"]["top_k_results"] = top_k_results;
-    j["indexing"]["chunking_strategy"] = chunking_strategy;
+    j["indexing"]["chunking_strategy"] = "tree-sitter-hybrid";
     j["indexing"]["ignored_directories"] = { "build", ".git", ".vscode", "CMakeFiles" };
     j["indexing"]["ignored_extensions"] = {
         ".exe", ".obj", ".pdb", ".ilk", ".sln", ".vcxproj", ".filters", ".user",

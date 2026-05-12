@@ -1,5 +1,6 @@
 #include "CodeParser.h"
 #include "Logger.h"
+#include <algorithm>
 #include "Config.h" // Include Config header
 
 // Include the C headers from tree-sitter
@@ -86,17 +87,26 @@ void CodeParser::extractChunks(const std::string& sourceCode, void* node, std::v
         nodeType == "struct_specifier" ||
         nodeType == "template_declaration") {
 
-        const uint32_t start_byte = ts_node_start_byte(tsNode);
-        const uint32_t end_byte = ts_node_end_byte(tsNode);
-        const size_t chunk_len = end_byte - start_byte;
+        uint32_t start_byte = ts_node_start_byte(tsNode);
+        uint32_t end_byte = ts_node_end_byte(tsNode);
+        size_t chunk_len = end_byte - start_byte;
 
         if (chunk_len > 0) {
             std::string chunk_text = sourceCode.substr(start_byte, chunk_len);
 
             // If the semantically extracted chunk is too large, fall back to fixed-size chunking for it.
-            if (chunk_len > config.embedding_max_text_length) {
+            if (chunk_len > config.chunk_size) { // Compare with chunk_size for consistency
                 SPDLOG_WARN("Семантический чанк типа '{}' слишком большой ({} символов). Применяется разбиение по фиксированному размеру.", nodeType, chunk_len);
-                auto sub_chunks = fixedSizeChunkText(chunk_text, config.chunk_size, config.chunk_overlap);
+                
+                std::vector<std::string> sub_chunks;
+                size_t start = 0;
+                while (start < chunk_text.length()) {
+                    size_t end = std::min(start + config.chunk_size, chunk_text.length());
+                    sub_chunks.push_back(chunk_text.substr(start, end - start));
+                    if (end == chunk_text.length()) break;
+                    start += (config.chunk_size - config.chunk_overlap);
+                }
+
                 chunks.insert(chunks.end(), sub_chunks.begin(), sub_chunks.end());
             } else {
                 chunks.push_back(std::move(chunk_text));
@@ -115,19 +125,4 @@ void CodeParser::extractChunks(const std::string& sourceCode, void* node, std::v
             extractChunks(sourceCode, &child_node, chunks);
         }
     }
-}
-
-std::vector<std::string> CodeParser::fixedSizeChunkText(const std::string& text, size_t chunkSize, size_t overlap) {
-    std::vector<std::string> chunks;
-    if (text.empty()) return chunks;
-
-    size_t start = 0;
-    while (start < text.length()) {
-        size_t end = std::min(start + chunkSize, text.length());
-        chunks.push_back(text.substr(start, end - start));
-        
-        if (end == text.length()) break;
-        start += (chunkSize - overlap); // Сдвигаемся с учетом нахлеста
-    }
-    return chunks;
 }

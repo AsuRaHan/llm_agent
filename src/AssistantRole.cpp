@@ -123,3 +123,53 @@ std::string AssistantRole::generateProjectSummaryGreeting(int file_count, int em
     // Fallback message if AI fails
     return "Привет! Я просканировал твой проект. Готов отвечать на вопросы.";
 }
+
+std::string AssistantRole::generateChunkSummary(const std::string& codeChunk, const std::string& chunkName) {
+    SPDLOG_DEBUG("[AssistantRole] Запрос на генерацию саммари для чанка '{}'...", chunkName);
+
+    std::string system_prompt =
+        "Твоя задача — создать очень короткое, лаконичное саммари (одно предложение) для предоставленного фрагмента кода. "
+        "Саммари должно описывать основное назначение или действие этого кода. "
+        "Отвечай только текстом саммари, без лишних слов и преамбул.";
+
+    std::string user_prompt = "Создай саммари для этого кода:\n```\n" + codeChunk + "\n```";
+
+    json body = {
+        {"messages", json::array({
+            { {"role", "system"}, {"content", system_prompt} },
+            { {"role", "user"}, {"content", user_prompt} }
+        })},
+        {"temperature", 0.0}, // Factual summary
+        {"max_tokens", 100}   // Limit response size
+    };
+
+    httplib::Result res;
+    for (int attempt = 1; attempt <= config.retry_count; ++attempt) {
+        std::string body_str = body.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
+        res = cli.Post("/v1/chat/completions", body_str, "application/json");
+        if (res) break;
+        SPDLOG_WARN("[AssistantRole] Попытка {}/{} для саммари '{}' не удалась. Ошибка соединения: {}. Повтор...",
+                    attempt, config.retry_count, chunkName, httplib::to_string(res.error()));
+        std::this_thread::sleep_for(std::chrono::milliseconds(config.retry_delay_ms));
+    }
+
+    if (res && res->status == 200) {
+        try {
+            auto json_body = json::parse(res->body);
+            if (json_body.contains("choices") && !json_body["choices"].empty()) {
+                std::string summary = json_body["choices"][0]["message"]["content"].get<std::string>();
+                // Clean up summary: remove quotes and newlines
+                summary.erase(std::remove(summary.begin(), summary.end(), '\"'), summary.end());
+                summary.erase(std::remove(summary.begin(), summary.end(), '\n'), summary.end());
+                summary.erase(std::remove(summary.begin(), summary.end(), '\r'), summary.end());
+                SPDLOG_DEBUG("[AssistantRole] Саммари для '{}': {}", chunkName, summary);
+                return summary;
+            }
+        } catch (const json::exception& e) {
+            SPDLOG_ERROR("[AssistantRole] Не удалось разобрать ответ для саммари '{}': {}", chunkName, e.what());
+        }
+    }
+
+    SPDLOG_WARN("[AssistantRole] Не удалось сгенерировать саммари для '{}'. Будет использован пустой текст.", chunkName);
+    return ""; // Return empty string on failure
+}

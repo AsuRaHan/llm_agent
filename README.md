@@ -70,20 +70,56 @@ cmake --build build --config Release
 
 ```json
 {
-  "server_host": "localhost",
-  "server_port": 8080,
-  "embedding_timeout_sec": 60,
-  "chat_completion_timeout_sec": 180,
-  "retry_count": 3,
-  "retry_delay_ms": 1000,
-  "top_k_results": 5,
-  "chunk_size": 1024,
-  "chunk_overlap": 200,
-  "embedding_max_text_length": 8192,
-  "ignored_extensions": [".json", ".md", ".log", ".exe", ".dll", ".obj", ".o", ".bin", ".db"],
-  "ignored_directories": ["build", ".git", ".vs"]
+    "server": {
+        "host": "localhost",
+        "port": 8080,
+        "retry_count": 3,
+        "retry_delay_ms": 500
+    },
+    "embedding": {
+        "max_text_length": 1500
+    },
+    "assistant": {
+        "chat_completion_timeout_sec": 300
+    },
+    "indexing": {
+        "chunk_size": 1000,
+        "chunk_overlap": 200,
+        "top_k_results": 5,
+        "chunking_strategy": "tree-sitter-hybrid",
+        "ignored_directories": [
+            "build", ".git", ".vscode", "CMakeFiles", ".shdata"
+        ],
+        "ignored_extensions": [
+            ".exe", ".obj", ".pdb", ".ilk", ".sln", ".vcxproj", ".filters", ".user",
+            ".recipe", ".tlog", ".lastbuildstate", ".bin", ".stamp", ".cmake",
+            ".json", ".log", ".md"
+        ],
+        "ignored_files": [
+            ".gitignore"
+        ]
+    }
 }
 ```
+
+#### Описание параметров
+
+*   **`server`**: Настройки подключения к LLM-серверу.
+    *   `host`, `port`: Адрес и порт вашего локального сервера.
+    *   `retry_count`: Количество повторных попыток при сбое сетевого соединения.
+    *   `retry_delay_ms`: Задержка между повторными попытками в миллисекундах.
+*   **`embedding`**: Настройки для генерации эмбеддингов.
+    *   `max_text_length`: Максимальная длина текста (в символах), отправляемого на векторизацию. Текст большей длины будет обрезан.
+*   **`assistant`**: Настройки для чат-комплишенов (генерации ответов).
+    *   `chat_completion_timeout_sec`: Таймаут ожидания ответа от модели в секундах.
+*   **`indexing`**: Настройки процесса индексации.
+    *   `chunk_size`, `chunk_overlap`: Размер чанка и его нахлест (в символах). Используется для `fixed` стратегии и для разбиения слишком больших блоков кода при `tree-sitter` стратегии.
+    *   `top_k_results`: Количество наиболее релевантных чанков, которые будут переданы в LLM для генерации ответа.
+    *   `chunking_strategy`: Стратегия разбиения файлов на чанки.
+        *   `"fixed"`: Простое разбиение по `chunk_size`.
+        *   `"tree-sitter"`: "Умное" разбиение на функции и классы с помощью Tree-sitter.
+        *   `"tree-sitter-hybrid"`: (Рекомендуется) Разбиение с помощью Tree-sitter с последующей генерацией краткого саммари для каждого чанка с помощью LLM. Это улучшает релевантность поиска.
+    *   `ignored_directories`, `ignored_extensions`, `ignored_files`: Списки каталогов, расширений и файлов, которые следует игнорировать при индексации.
 
 ### Команда запуска
 

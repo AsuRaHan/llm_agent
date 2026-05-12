@@ -37,5 +37,4 @@ private:
     
     // Helper to recursively extract nodes
     void extractChunks(const std::string& sourceCode, void* rootNode, std::vector<std::string>& chunks);
-    std::vector<std::string> fixedSizeChunkText(const std::string& text, size_t chunkSize, size_t overlap);
 };
