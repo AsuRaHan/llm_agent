@@ -6,6 +6,9 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_SOURCE_DIR}")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_SOURCE_DIR}")
 
+# Force all libraries (including fetched ones) to be built as static libraries (.lib)
+set(BUILD_SHARED_LIBS OFF)
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -37,7 +40,7 @@ FetchContent_MakeAvailable(httplib)
 FetchContent_Declare(
   spdlog
   GIT_REPOSITORY https://github.com/gabime/spdlog.git
-  GIT_TAG        v1.x
+  GIT_TAG        v1.x # не менять!!!!
   GIT_SHALLOW TRUE
   FETCHCONTENT_QUIET OFF
 )
@@ -47,12 +50,46 @@ FetchContent_MakeAvailable(spdlog)
 FetchContent_Declare(
   hnswlib
   GIT_REPOSITORY https://github.com/nmslib/hnswlib.git
-  GIT_TAG        v0.8.0
+  GIT_TAG        master
   GIT_SHALLOW TRUE
   FETCHCONTENT_QUIET OFF
 )
 FetchContent_MakeAvailable(hnswlib)
 # --- Target ---
+
+# tree-sitter core library
+FetchContent_Declare(
+  tree_sitter_core
+  GIT_REPOSITORY https://github.com/tree-sitter/tree-sitter.git
+  GIT_TAG        master # As requested
+  GIT_SHALLOW TRUE
+  FETCHCONTENT_QUIET OFF
+)
+FetchContent_MakeAvailable(tree_sitter_core)
+
+# tree-sitter-cpp grammar
+FetchContent_Declare(
+  tree_sitter_cpp_grammar
+  GIT_REPOSITORY https://github.com/tree-sitter/tree-sitter-cpp.git
+  GIT_TAG        master # As requested
+  GIT_SHALLOW TRUE
+  FETCHCONTENT_QUIET OFF
+)
+FetchContent_MakeAvailable(tree_sitter_cpp_grammar)
+
+# Create static library from tree-sitter-cpp
+add_library(tree_sitter_cpp_lib STATIC
+  ${tree_sitter_cpp_grammar_SOURCE_DIR}/src/parser.c
+  ${tree_sitter_cpp_grammar_SOURCE_DIR}/src/scanner.c
+)
+
+target_include_directories(tree_sitter_cpp_lib PUBLIC
+  ${tree_sitter_cpp_grammar_SOURCE_DIR}/src
+)
+
+target_link_libraries(tree_sitter_cpp_lib PRIVATE
+  tree-sitter
+)
 
 add_executable(Agent 
       src/main.cpp 
@@ -68,10 +105,11 @@ target_include_directories(Agent PUBLIC
   $<BUILD_INTERFACE:${httplib_SOURCE_DIR}>
   $<BUILD_INTERFACE:${spdlog_SOURCE_DIR}/include>
   $<BUILD_INTERFACE:${hnswlib_SOURCE_DIR}>
+  $<BUILD_INTERFACE:${tree_sitter_core_SOURCE_DIR}/lib/include> # Заголовочные файлы Tree-sitter core
 )
 
 # Link against dependencies
-target_link_libraries(Agent PRIVATE spdlog::spdlog hnswlib)
+target_link_libraries(Agent PRIVATE spdlog::spdlog hnswlib tree-sitter tree_sitter_cpp_lib)
 
 # --- Platform Specifics ---
 

@@ -20,6 +20,7 @@ void Config::create_default(const std::string& filepath) const {
     j["indexing"]["chunk_size"] = chunk_size;
     j["indexing"]["chunk_overlap"] = chunk_overlap;
     j["indexing"]["top_k_results"] = top_k_results;
+    j["indexing"]["chunking_strategy"] = chunking_strategy;
     j["indexing"]["ignored_directories"] = { "build", ".git", ".vscode", "CMakeFiles" };
     j["indexing"]["ignored_extensions"] = {
         ".exe", ".obj", ".pdb", ".ilk", ".sln", ".vcxproj", ".filters", ".user",
@@ -64,6 +65,7 @@ bool Config::load(const std::string& filepath) {
         chunk_size = j.value("/indexing/chunk_size"_json_pointer, chunk_size);
         chunk_overlap = j.value("/indexing/chunk_overlap"_json_pointer, chunk_overlap);
         top_k_results = j.value("/indexing/top_k_results"_json_pointer, top_k_results);
+        chunking_strategy = j.value("/indexing/chunking_strategy"_json_pointer, chunking_strategy);
         
         if (j.contains("indexing") && j["indexing"].is_object()) {
             if (j["indexing"].contains("ignored_directories"))

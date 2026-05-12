@@ -22,6 +22,7 @@ struct Config {
     size_t chunk_size = 1000;
     size_t chunk_overlap = 200;
     int top_k_results = 3;
+    std::string chunking_strategy = "fixed"; // "fixed", "semantic", or "tree-sitter"
     std::vector<std::string> ignored_directories;
     std::vector<std::string> ignored_extensions;
     std::vector<std::string> ignored_files;
