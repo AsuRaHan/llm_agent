@@ -21,3 +21,5 @@ config.json
 build
 bin
 build_check
+.shdata
+.vscode

@@ -103,15 +103,67 @@ int main(int argc, char* argv[]) // Modified main signature
             SPDLOG_INFO("{}", greeting);
             SPDLOG_INFO("---------------------------\n");
 
-            std::string query;
-            while (true) { // Main loop
-                SPDLOG_INFO("\nВведите ваш вопрос о проекте (или нажмите Enter для выхода): ");
-                std::getline(std::cin, query);
+#ifdef _WIN32
+            // --- Windows-specific robust input loop using WinAPI ---
+            // This avoids the instability of std::cin with UTF-8 console mode.
+            wchar_t buffer[4096];
+            DWORD charsRead;
+            HANDLE hInput = GetStdHandle(STD_INPUT_HANDLE);
 
-                if (query.empty()) {
+            if (hInput == INVALID_HANDLE_VALUE) {
+                SPDLOG_CRITICAL("Не удалось получить хэндл стандартного ввода (stdin). Error: {}", GetLastError());
+                return 1;
+            }
+
+            while (true) {
+                SPDLOG_INFO("\nВведите ваш вопрос о проекте (или 'exit' для выхода): ");
+                
+                if (!ReadConsoleW(hInput, buffer, sizeof(buffer)/sizeof(wchar_t) - 1, &charsRead, NULL)) {
+                    SPDLOG_ERROR("Ошибка чтения из консоли (ReadConsoleW). Error: {}. Завершение работы.", GetLastError());
                     break;
                 }
 
+                // Null-terminate and remove trailing \r\n
+                if (charsRead > 0) {
+                    if (charsRead >= 2 && buffer[charsRead - 2] == L'\r' && buffer[charsRead - 1] == L'\n') {
+                        buffer[charsRead - 2] = L'\0';
+                    } else if (charsRead >= 1 && buffer[charsRead - 1] == L'\n') {
+                         buffer[charsRead - 1] = L'\0';
+                    } else {
+                        buffer[charsRead] = L'\0';
+                    }
+                } else {
+                    buffer[0] = L'\0';
+                }
+
+                // Convert wide string to UTF-8 std::string
+                std::string query;
+                std::wstring wquery(buffer);
+                if (!wquery.empty()) {
+                    int size_needed = WideCharToMultiByte(CP_UTF8, 0, &wquery[0], (int)wquery.size(), NULL, 0, NULL, NULL);
+                    query.resize(size_needed);
+                    WideCharToMultiByte(CP_UTF8, 0, &wquery[0], (int)wquery.size(), &query[0], size_needed, NULL, NULL);
+                }
+
+                if (query == "exit") {
+                    break;
+                }
+                if (query.empty()) {
+                    continue;
+                }
+#else
+            // --- Standard C++ input loop for non-Windows platforms ---
+            std::string query;
+            SPDLOG_INFO("\nВведите ваш вопрос о проекте (или 'exit' для выхода): ");
+            while (std::getline(std::cin, query)) {
+                if (query == "exit") {
+                    break;
+                }
+                if (query.empty()) {
+                    SPDLOG_INFO("\nВведите ваш вопрос о проекте (или 'exit' для выхода): ");
+                    continue;
+                }
+#endif
                 SPDLOG_INFO("Ищу релевантный контекст в проекте...");
                 auto topResults = indexer.findTopK(query, config.top_k_results);
 
@@ -136,6 +188,9 @@ int main(int argc, char* argv[]) // Modified main signature
                 SPDLOG_INFO("\n--- Ответ Агента ---");
                 SPDLOG_INFO("{}", analysis);
                 SPDLOG_INFO("---------------------\n");
+#ifndef _WIN32
+                SPDLOG_INFO("\nВведите ваш вопрос о проекте (или 'exit' для выхода): ");
+#endif
             }
         }
         else {

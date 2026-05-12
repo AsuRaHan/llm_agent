@@ -9,6 +9,7 @@
 
 #include "EmbeddingClient.h"
 #include "nlohmann/json.hpp"
+#include "hnswlib/hnswlib.h" // Include HNSWLib
 
 struct Config; // Forward declaration
 
@@ -21,15 +22,15 @@ struct SearchResult {
     double score;
 };
 
-// Struct to hold file metadata
-struct Chunk {
+// Struct to hold chunk metadata (without embedding)
+struct ChunkData {
     std::string text;
-    std::vector<float> embedding;
+    size_t id; // ID used in HNSW index
 };
 struct FileRecord
 {
     fs::file_time_type last_write_time;
-    std::vector<Chunk> chunks; // Теперь тут список чанков
+    std::vector<ChunkData> chunks; // Now stores chunk metadata
 };
 
 class ContextIndexer
@@ -41,19 +42,18 @@ public:
     void setIgnoredDirectories(const std::vector<std::string>& ignoredDirs);
     void setIgnoredExtensions(const std::vector<std::string>& ignoredExts);
     void indexDirectory(const fs::path& directoryPath);
-    int getEmbeddingsCount() const { return embeddings_count; }
+    int getEmbeddingsCount() const;
     int getFileCount() const { return fileIndex.size(); }
-    void incrementEmbeddingsCount() { embeddings_count++; }
-    void decrementEmbeddingsCount() { embeddings_count--; }
-    void resetEmbeddingsCount() { embeddings_count = 0; }
+    void saveIndex();
     std::vector<SearchResult> findTopK(const std::string& queryText, int k);
 
 private:
     std::string readFileContent(const fs::path& path);
     void loadIndex();
-    void saveIndex();
+    // cosineSimilarity is no longer needed for search, but can be useful for score calculation
     double cosineSimilarity(const std::vector<float>& a, const std::vector<float>& b);
-    std::vector<std::string> chunkText(const std::string& text, size_t chunkSize = 1000, size_t overlap = 200);
+    std::vector<std::string> chunkText(const std::string& text, size_t chunkSize, size_t overlap);
+    void addChunk(const std::string& path, const std::string& text, const std::vector<float>& embedding);
 
     const Config& config;
     EmbeddingClient embeddingClient;
@@ -61,6 +61,13 @@ private:
     std::unordered_set<std::string> ignoredExtensions;
     std::unordered_set<std::string> ignoredFiles;
     std::unordered_map<std::string, FileRecord> fileIndex;
-    int embeddings_count = 0;
-    const std::string dbPath = "index.json";
+
+    // --- HNSWLib members ---
+    const std::string hnswIndexPath = ".shdata/index.bin";
+    const std::string metadataDbPath = ".shdata/index_meta.json";
+    size_t embedding_dim = 0; // To be determined from the first embedding
+    hnswlib::L2Space* space = nullptr;
+    hnswlib::HierarchicalNSW<float>* index = nullptr;
+    std::unordered_map<size_t, std::pair<std::string, std::string>> id_to_chunk_map; // map ID -> {filePath, chunkText}
+    size_t current_max_elements = 0;
 };

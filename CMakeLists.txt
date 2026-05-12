@@ -42,6 +42,16 @@ FetchContent_Declare(
   FETCHCONTENT_QUIET OFF
 )
 FetchContent_MakeAvailable(spdlog)
+
+# hnswlib
+FetchContent_Declare(
+  hnswlib
+  GIT_REPOSITORY https://github.com/nmslib/hnswlib.git
+  GIT_TAG        v0.8.0
+  GIT_SHALLOW TRUE
+  FETCHCONTENT_QUIET OFF
+)
+FetchContent_MakeAvailable(hnswlib)
 # --- Target ---
 
 add_executable(Agent 
@@ -57,10 +67,11 @@ target_include_directories(Agent PUBLIC
   $<BUILD_INTERFACE:${json_SOURCE_DIR}/include>
   $<BUILD_INTERFACE:${httplib_SOURCE_DIR}>
   $<BUILD_INTERFACE:${spdlog_SOURCE_DIR}/include>
+  $<BUILD_INTERFACE:${hnswlib_SOURCE_DIR}>
 )
 
-# Link against spdlog
-target_link_libraries(Agent PRIVATE spdlog::spdlog)
+# Link against dependencies
+target_link_libraries(Agent PRIVATE spdlog::spdlog hnswlib)
 
 # --- Platform Specifics ---
 

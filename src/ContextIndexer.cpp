@@ -6,6 +6,7 @@
 #include <numeric>
 #include <cmath>
 #include <algorithm>
+#include <vector>
 #include <regex>
 #include "Logger.h" // Include the new logger header
 #include "Config.h"
@@ -14,94 +15,161 @@ using json = nlohmann::json;
 namespace fs = std::filesystem;
 
 ContextIndexer::ContextIndexer(const Config& config)
-    : config(config), embeddingClient(config)
+    : config(config), embeddingClient(config), space(nullptr), index(nullptr)
 {
     ignoredDirectories.insert(config.ignored_directories.begin(), config.ignored_directories.end());
     ignoredExtensions.insert(config.ignored_extensions.begin(), config.ignored_extensions.end());
     ignoredFiles.insert(config.ignored_files.begin(), config.ignored_files.end());
     SPDLOG_INFO("ContextIndexer инициализирован...");
-    loadIndex();
-    // After loading, calculate initial count
-    resetEmbeddingsCount();
-    for (const auto& [path, record] : fileIndex) {
-        for (const auto& chunk : record.chunks) {
-            if (!chunk.embedding.empty()) {
-                incrementEmbeddingsCount();
-            }
-        }
+
+    // Ensure the .shdata directory exists
+    if (!fs::exists(".shdata")) {
+        fs::create_directory(".shdata");
+        SPDLOG_INFO("Создана директория для данных индекса: .shdata");
     }
+    loadIndex();
 }
 
 ContextIndexer::~ContextIndexer()
 {
-    saveIndex(); // Save index on destruction
+    // Saving is now done explicitly in main() after indexing to ensure data safety.
+    delete index;
+    delete space;
     SPDLOG_INFO("ContextIndexer уничтожен.");
+}
+
+int ContextIndexer::getEmbeddingsCount() const {
+    if (index) {
+        return index->cur_element_count;
+    }
+    return 0;
 }
 
 void ContextIndexer::loadIndex()
 {
-    std::ifstream dbFile(dbPath);
-    if (!dbFile.is_open())
-    {
-        SPDLOG_WARN("Индексный файл '{}' не найден. Будет создан новый.", dbPath);
+    std::ifstream metaFile(metadataDbPath);
+    if (!metaFile.is_open()) {
+        SPDLOG_WARN("Файл метаданных '{}' не найден. Будет создан новый индекс.", metadataDbPath);
         return;
     }
 
-    json j;
+    json meta;
     try {
-        dbFile >> j;
-        for (auto& [path, value] : j.items()) {
-            long long time_count = value["last_write_time"];
-            auto duration_since_epoch = fs::file_time_type::duration(time_count);
-            
-            std::vector<Chunk> chunks;
-            if (value.contains("chunks")) {
-                for(const auto& chunk_json : value["chunks"]) {
-                    chunks.push_back({
-                        chunk_json["text"],
-                        chunk_json["embedding"]
-                    });
-                }
-            }
-            fileIndex[path] = { fs::file_time_type(duration_since_epoch), chunks };
+        metaFile >> meta;
+
+        embedding_dim = meta.value("embedding_dim", 0);
+        current_max_elements = meta.value("max_elements", 0);
+
+        if (embedding_dim == 0) { // Can be 0 if index was empty
+            SPDLOG_INFO("Метаданные не содержат векторов. Индекс будет создан при добавлении данных.");
+            return;
         }
+
+        // Restore fileIndex
+        if (meta.contains("file_index")) {
+            for (auto& [path, value] : meta["file_index"].items()) {
+                long long time_count = value["last_write_time"];
+                auto duration_since_epoch = fs::file_time_type::duration(time_count);
+                std::vector<ChunkData> chunks;
+                if (value.contains("chunks")) {
+                    for (const auto& chunk_json : value["chunks"]) {
+                        chunks.push_back({
+                            chunk_json["text"],
+                            chunk_json["id"]
+                        });
+                    }
+                }
+                fileIndex[path] = { fs::file_time_type(duration_since_epoch), chunks };
+            }
+        }
+
+        // Restore id_to_chunk_map
+        if (meta.contains("id_to_chunk_map")) {
+            for (auto& [id_str, data] : meta["id_to_chunk_map"].items()) {
+                size_t id = std::stoull(id_str);
+                id_to_chunk_map[id] = { data["path"], data["text"] };
+            }
+        }
+
     }
     catch (json::parse_error& e) {
-        SPDLOG_ERROR("Error: Could not parse index file '{}'. Starting fresh. Error: {}", dbPath, e.what());
+        SPDLOG_ERROR("Error: Could not parse metadata file '{}'. Starting fresh. Error: {}", metadataDbPath, e.what());
         fileIndex.clear(); // Start with a clean slate if JSON is corrupt
+        id_to_chunk_map.clear();
+        embedding_dim = 0;
+        current_max_elements = 0;
+        return;
     }
 
-    SPDLOG_INFO("Загружено {} записей из индекса.", fileIndex.size());
+    if (!fs::exists(hnswIndexPath)) {
+        SPDLOG_ERROR("Файл метаданных '{}' существует, но бинарный индекс '{}' отсутствует. Создание нового индекса.", metadataDbPath, hnswIndexPath);
+        fileIndex.clear();
+        id_to_chunk_map.clear();
+        embedding_dim = 0;
+        current_max_elements = 0;
+        return;
+    }
+
+    // Now load the HNSW index
+    space = new hnswlib::L2Space(embedding_dim);
+    index = new hnswlib::HierarchicalNSW<float>(space, current_max_elements, 16, 200, 100, true);
+    SPDLOG_INFO("Загрузка бинарного индекса из '{}'...", hnswIndexPath);
+    index->loadIndex(hnswIndexPath, space, current_max_elements);
+    SPDLOG_INFO("Загружено {} векторов из индекса.", index->cur_element_count.load());
 }
 
 void ContextIndexer::saveIndex()
 {
-    std::ofstream dbFile(dbPath);
-    if (!dbFile.is_open())
-    {
-        SPDLOG_ERROR("Error: Could not open index file '{}' for writing.", dbPath);
+    if (!index || getEmbeddingsCount() == 0) {
+        SPDLOG_INFO("Индекс пуст или не инициализирован, сохранение не требуется.");
+        // Clean up old files if they exist
+        fs::remove(hnswIndexPath);
+        fs::remove(metadataDbPath);
         return;
     }
 
-    json j;
-    for (const auto& [path, record] : fileIndex)
-    {
+    SPDLOG_INFO("Сохранение индекса в бинарный файл: {}", hnswIndexPath);
+    index->saveIndex(hnswIndexPath);
+
+    SPDLOG_INFO("Сохранение метаданных в: {}", metadataDbPath);
+    std::ofstream metaFile(metadataDbPath);
+    if (!metaFile.is_open()) {
+        SPDLOG_ERROR("Error: Could not open metadata file '{}' for writing.", metadataDbPath);
+        return;
+    }
+
+    json meta;
+    meta["embedding_dim"] = embedding_dim;
+    meta["max_elements"] = current_max_elements;
+
+    json file_index_json;
+    for (const auto& [path, record] : fileIndex) {
         json chunks_json = json::array();
         for(const auto& chunk : record.chunks) {
             chunks_json.push_back({
-                {"text", chunk.text},
-                {"embedding", chunk.embedding}
+                {"id", chunk.id},
+                {"text", chunk.text}
             });
         }
 
-        j[path] = {
+        file_index_json[path] = {
             {"last_write_time", record.last_write_time.time_since_epoch().count()},
             {"chunks", chunks_json}
         };
     }
-    // Dump with an error handler to replace invalid UTF-8 sequences
-    dbFile << j.dump(4, ' ', false, nlohmann::json::error_handler_t::replace);
-    SPDLOG_INFO("Сохранено {} записей в индекс.", fileIndex.size());
+    meta["file_index"] = file_index_json;
+
+    json id_map_json;
+    for (const auto& [id, data] : id_to_chunk_map) {
+        id_map_json[std::to_string(id)] = {
+            {"path", data.first},
+            {"text", data.second}
+        };
+    }
+    meta["id_to_chunk_map"] = id_map_json;
+
+    metaFile << meta.dump(4, ' ', false, nlohmann::json::error_handler_t::replace);
+    SPDLOG_INFO("Сохранено {} записей в метаданные.", fileIndex.size());
 }
 
 double ContextIndexer::cosineSimilarity(const std::vector<float>& a, const std::vector<float>& b) {
@@ -146,31 +214,56 @@ std::vector<std::string> ContextIndexer::chunkText(const std::string& text, size
 
 std::vector<SearchResult> ContextIndexer::findTopK(const std::string& queryText, int k)
 {
+    if (!index || getEmbeddingsCount() == 0) {
+        SPDLOG_WARN("Индекс пуст. Поиск невозможен.");
+        return {};
+    }
+
     std::vector<float> queryEmbedding = embeddingClient.getEmbedding(queryText, "query");
     if (queryEmbedding.empty()) {
         SPDLOG_WARN("Не удалось сгенерировать эмбеддинг для запроса. Поиск невозможен.");
         return {};
     }
+    if (queryEmbedding.size() != embedding_dim) {
+        SPDLOG_ERROR("Размерность эмбеддинга запроса ({}) не совпадает с размерностью индекса ({}).", queryEmbedding.size(), embedding_dim);
+        return {};
+    }
 
-    std::vector<SearchResult> semanticResults;
-    for (const auto& [path, record] : fileIndex) {
-        for (const auto& chunk : record.chunks) {
-            if (chunk.embedding.empty()) continue;
-            double sim = cosineSimilarity(queryEmbedding, chunk.embedding);
-            semanticResults.push_back({path, chunk.text, sim});
+    // Perform k-NN search
+    auto result = index->searchKnn(queryEmbedding.data(), k);
+
+    std::vector<SearchResult> topResults;
+    std::vector<std::pair<float, size_t>> result_pairs; // The pair is <distance, label>
+    while (!result.empty()) {
+        result_pairs.emplace_back(result.top());
+        result.pop();
+    }
+    // The priority queue from searchKnn is a max-heap on distance. Popping gives elements from furthest to nearest.
+    // We reverse to get them in order of nearest to furthest (best to worst score).
+    std::reverse(result_pairs.begin(), result_pairs.end());
+
+    for(const auto& pair : result_pairs) {
+        size_t id = pair.second; // ID is the second element
+        auto it = id_to_chunk_map.find(id);
+        if (it != id_to_chunk_map.end()) {
+            const auto& chunk_data = it->second;
+            // To calculate cosine similarity, we need the original vector.
+            std::vector<float> data_vec = index->getDataByLabel<float>(id);
+            double score = cosineSimilarity(queryEmbedding, data_vec);
+            topResults.push_back({chunk_data.first, chunk_data.second, score});
         }
     }
-    std::sort(semanticResults.begin(), semanticResults.end(), [](const SearchResult& a, const SearchResult& b) { return a.score > b.score; });
-    if (semanticResults.size() > (size_t)k) {
-        semanticResults.resize(k);
-    }
+
+    // Sort by score descending
+    std::sort(topResults.begin(), topResults.end(), [](const SearchResult& a, const SearchResult& b) {
+        return a.score > b.score;
+    });
 
     // --- Intelligent Keyword Boost ---
     // If the query mentions a filename like "config.json", this extracts the stem ("config")
     // and finds source files with a matching stem (e.g., "Config.cpp"), forcing them into the context.
-    std::vector<SearchResult> finalResults = semanticResults;
     std::unordered_set<std::string> seenChunks;
-    for(const auto& res : finalResults) {
+    for(const auto& res : topResults) {
         seenChunks.insert(res.chunkText);
     }
 
@@ -193,17 +286,23 @@ std::vector<SearchResult> ContextIndexer::findTopK(const std::string& queryText,
 
             if (file_stem == keyword_stem) {
                 SPDLOG_DEBUG("Keyword boost: Found match for '{}', adding chunks from '{}'", keyword_stem, path);
-                for (const auto& chunk : record.chunks) {
-                    if (seenChunks.find(chunk.text) == seenChunks.end()) {
-                        finalResults.push_back({path, chunk.text, 1.1}); // Boost with score > 1.0
-                        seenChunks.insert(chunk.text);
+                for (const auto& chunk_meta : record.chunks) {
+                    if (seenChunks.find(chunk_meta.text) == seenChunks.end()) {
+                        topResults.push_back({path, chunk_meta.text, 1.1}); // Boost with score > 1.0
+                        seenChunks.insert(chunk_meta.text);
                     }
                 }
             }
         }
     }
 
-    return finalResults;
+    // Re-sort and resize if keyword boost added items
+    std::sort(topResults.begin(), topResults.end(), [](const SearchResult& a, const SearchResult& b) { return a.score > b.score; });
+    if (topResults.size() > (size_t)k) {
+        topResults.resize(k);
+    }
+
+    return topResults;
 }
 
 void ContextIndexer::setIgnoredDirectories(const std::vector<std::string>& ignoredDirs)
@@ -237,15 +336,42 @@ std::string ContextIndexer::readFileContent(const fs::path& path)
     return buffer.str();
 }
 
+void ContextIndexer::addChunk(const std::string& path, const std::string& text, const std::vector<float>& embedding) {
+    if (embedding.empty()) return;
+
+    // Initialize index if this is the first element
+    if (!index) {
+        embedding_dim = embedding.size();
+        space = new hnswlib::L2Space(embedding_dim);
+        // Start with a reasonable max size, allow resizing and replacing deleted elements.
+        index = new hnswlib::HierarchicalNSW<float>(space, 10000, 16, 200, 100, true);
+        SPDLOG_INFO("HNSW index initialized with embedding dimension: {}", embedding_dim);
+    }
+
+    if (embedding.size() != embedding_dim) {
+        SPDLOG_ERROR("Inconsistent embedding dimension! Expected {}, got {}. Skipping chunk.", embedding_dim, embedding.size());
+        return;
+    }
+
+    size_t new_id = current_max_elements;
+    // Check if we need to resize the index
+    if (new_id >= index->max_elements_) {
+        SPDLOG_INFO("Resizing HNSW index from {} to {}", index->max_elements_, index->max_elements_ * 2);
+        index->resizeIndex(index->max_elements_ * 2);
+    }
+
+    index->addPoint(embedding.data(), new_id);
+    id_to_chunk_map[new_id] = {path, text};
+    fileIndex[path].chunks.push_back({text, new_id});
+    current_max_elements++;
+}
+
 void ContextIndexer::indexDirectory(const fs::path& directoryPath)
 {
     SPDLOG_INFO("\nStarting filtered indexing of directory: {}", directoryPath.string());
     auto iterator = fs::recursive_directory_iterator(directoryPath);
 
-    std::unordered_set<std::string> files_in_index;
-    for (const auto& [path, record] : fileIndex) {
-        files_in_index.insert(path);
-    }
+    std::unordered_set<std::string> files_on_disk;
 
     int updatedFiles = 0;
     int newFiles = 0;
@@ -263,14 +389,15 @@ void ContextIndexer::indexDirectory(const fs::path& directoryPath)
             const auto& path = entry.path();
             if (ignoredExtensions.count(path.extension().string()) ||
                 ignoredFiles.count(path.filename().string()) ||
-                path.filename() == dbPath)
+                path.filename() == metadataDbPath ||
+                path.filename() == hnswIndexPath)
             {
                 continue;
             }
             
             auto canonicalPath = fs::weakly_canonical(path).string();
             std::replace(canonicalPath.begin(), canonicalPath.end(), '\\', '/');
-            files_in_index.erase(canonicalPath); // Mark file as present on disk
+            files_on_disk.insert(canonicalPath);
 
             auto lastWriteTime = fs::last_write_time(path);
 
@@ -285,57 +412,73 @@ void ContextIndexer::indexDirectory(const fs::path& directoryPath)
                 } else {
                     updatedFiles++;
                     SPDLOG_INFO("Обнаружен изменённый файл: {}", canonicalPath);
-                    for (const auto& chunk : it->second.chunks) {
-                        if (!chunk.embedding.empty()) { decrementEmbeddingsCount(); }
+                    // Mark old chunks for deletion
+                    for (const auto& chunk_data : it->second.chunks) {
+                        if (index) {
+                           index->markDelete(chunk_data.id);
+                        }
+                        id_to_chunk_map.erase(chunk_data.id);
                     }
+                    // Clear old chunks from file record
+                    it->second.chunks.clear();
                 }
 
                 std::string content = readFileContent(path);
                 if (content.empty()) {
                     SPDLOG_DEBUG("  Skipping empty file: {}", canonicalPath);
+                    if (!isNew) {
+                        fileIndex.erase(it); // Remove from index if it became empty
+                    }
                     continue;
                 }
-                // If it was a modified file, and now it's empty, we should remove it from index or mark it.
-                // For now, let's just not add new chunks.
-                if (!isNew && content.empty()) { fileIndex.erase(it); continue; }
                 
                 std::vector<std::string> textChunks = chunkText(content, config.chunk_size, config.chunk_overlap);
-                std::vector<Chunk> indexedChunks;
+                
+                // Update file record timestamp and prepare for new chunks
+                fileIndex[canonicalPath].last_write_time = lastWriteTime;
+                fileIndex[canonicalPath].chunks.clear(); // Ensure it's empty before adding new ones
 
                 for (size_t i = 0; i < textChunks.size(); ++i) {
                     std::string chunkName = canonicalPath + " [#chunk " + std::to_string(i) + "]";
                     SPDLOG_DEBUG("  Получение эмбеддинга для чанка: {}", chunkName);
                     auto emb = embeddingClient.getEmbedding(textChunks[i], chunkName);
-                    
+
                     if (!emb.empty()) {
-                        indexedChunks.push_back({ textChunks[i], emb });
-                        incrementEmbeddingsCount(); // Increment for new valid chunk
+                        addChunk(canonicalPath, textChunks[i], emb);
                     }
-                    // Если программа падает, это сообщение не появится в логе
                 }
 
-                if (!indexedChunks.empty()) {
-                    fileIndex[canonicalPath] = { lastWriteTime, indexedChunks };
-                } else {
-                    // If we can't get an embedding for any chunk, remove the file from index if it was existing,
-                    // or add it with empty chunks if it's new.
-                    if (!isNew) { fileIndex.erase(it); }
-                    else { fileIndex[canonicalPath] = { lastWriteTime, {} }; }
+                // If no embeddings were generated for a file, it should not be in the index.
+                if (fileIndex.count(canonicalPath) && fileIndex.at(canonicalPath).chunks.empty()) {
+                    SPDLOG_WARN("Не удалось сгенерировать эмбеддинги для файла: {}. Он будет удален из индекса.", canonicalPath);
+                    fileIndex.erase(canonicalPath);
                 }
             }
         }
     }
 
+    // Find and process deleted files
     int deletedFiles = 0;
-    for (const auto& deleted_path : files_in_index) {
-        auto it = fileIndex.find(deleted_path);
+    std::vector<std::string> files_to_erase;
+    for (const auto& [path, record] : fileIndex) {
+        if (files_on_disk.find(path) == files_on_disk.end()) {
+            files_to_erase.push_back(path);
+        }
+    }
+
+    for (const auto& path_to_erase : files_to_erase) {
+        auto it = fileIndex.find(path_to_erase);
         if (it != fileIndex.end()) {
-            for (const auto& chunk : it->second.chunks) {
-                if (!chunk.embedding.empty()) { decrementEmbeddingsCount(); }
+            SPDLOG_INFO("Удален из индекса отсутствующий файл: {}", path_to_erase);
+            // Mark all chunks of this file for deletion
+            for (const auto& chunk_data : it->second.chunks) {
+                if (index) {
+                    index->markDelete(chunk_data.id);
+                }
+                id_to_chunk_map.erase(chunk_data.id);
             }
             fileIndex.erase(it);
             deletedFiles++;
-            SPDLOG_INFO("Удален из индекса отсутствующий файл: {}", deleted_path);
         }
     }
 
