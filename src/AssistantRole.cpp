@@ -15,9 +15,12 @@ AssistantRole::AssistantRole(const Config& config) : config(config), cli(config.
 
 std::string AssistantRole::answerWithContext(const std::string& userQuery, const std::vector<SearchResult>& searchResults) {
     std::stringstream prompt_context;
-    prompt_context << "Ты — эксперт-программист. Ответь на вопрос пользователя, основываясь на следующих наиболее релевантных фрагментах кода из проекта. "
-                   << "Структурируй свой ответ, будь точным и, если уместно, ссылайся на файлы-источники.\n\n"
-                   << "Вопрос пользователя: " << userQuery << "\n\n"
+    prompt_context << "Ты — эксперт-программист. Твоя задача — ответить на вопрос пользователя, основываясь **исключительно** "
+                   << "на предоставленных ниже фрагментах кода из проекта. Не придумывай информацию, которой нет в контексте. "
+                   << "Если контекста недостаточно для полного ответа, прямо укажи, какой информации тебе не хватает "
+                   << "(например, \"для ответа мне нужно увидеть содержимое файла X.cpp\"). "
+                   << "Структурируй свой ответ, будь точным и ссылайся на файлы-источники из контекста.\n\n"
+                   << "Вопрос пользователя: \"" << userQuery << "\"\n\n"
                    << "Контекст из проекта:\n";
 
     for (const auto& result : searchResults) {
@@ -40,10 +43,15 @@ std::string AssistantRole::answerWithContext(const std::string& userQuery, const
         {"temperature", 0.3}
     };
 
+    httplib::Headers headers;
+    if (!config.api_key.empty()) {
+        headers.emplace("Authorization", "Bearer " + config.api_key);
+    }
+    std::string body_str = body.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
+
     httplib::Result res;
     for (int attempt = 1; attempt <= config.retry_count; ++attempt) {
-        std::string body_str = body.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
-        res = cli.Post("/v1/chat/completions", body_str, "application/json");
+        res = cli.Post("/v1/chat/completions", headers, body_str, "application/json");
         if (res) { // If we got any response (even an error status), we can break.
             break;
         }
@@ -100,11 +108,16 @@ std::string AssistantRole::generateProjectSummaryGreeting(int file_count, int em
         {"temperature", 0.7} // A bit more creative
     };
 
+    httplib::Headers headers;
+    if (!config.api_key.empty()) {
+        headers.emplace("Authorization", "Bearer " + config.api_key);
+    }
+    std::string body_str = body.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
+
     httplib::Result res;
     // Using a simplified retry logic for this non-critical call
     for (int attempt = 1; attempt <= config.retry_count; ++attempt) {
-        std::string body_str = body.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
-        res = cli.Post("/v1/chat/completions", body_str, "application/json");
+        res = cli.Post("/v1/chat/completions", headers, body_str, "application/json");
         if (res) break;
         std::this_thread::sleep_for(std::chrono::milliseconds(config.retry_delay_ms));
     }
@@ -143,10 +156,15 @@ std::string AssistantRole::generateChunkSummary(const std::string& codeChunk, co
         {"max_tokens", 200}   // Limit response size
     };
 
+    httplib::Headers headers;
+    if (!config.api_key.empty()) {
+        headers.emplace("Authorization", "Bearer " + config.api_key);
+    }
+    std::string body_str = body.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
+
     httplib::Result res;
     for (int attempt = 1; attempt <= config.retry_count; ++attempt) {
-        std::string body_str = body.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
-        res = cli.Post("/v1/chat/completions", body_str, "application/json");
+        res = cli.Post("/v1/chat/completions", headers, body_str, "application/json");
         if (res) break;
         SPDLOG_WARN("[AssistantRole] Попытка {}/{} для саммари '{}' не удалась. Ошибка соединения: {}. Повтор...",
                     attempt, config.retry_count, chunkName, httplib::to_string(res.error()));

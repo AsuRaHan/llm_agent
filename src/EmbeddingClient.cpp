@@ -32,9 +32,15 @@ std::vector<float> EmbeddingClient::getEmbedding(const std::string& text, const 
     // Dump with an error handler to replace invalid UTF-8 sequences before sending
     std::string body_str = body.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
     
+    httplib::Headers headers;
+    if (!config.api_key.empty()) {
+        // Typically, the key is sent as "Bearer <key>"
+        headers.emplace("Authorization", "Bearer " + config.api_key);
+    }
+
     httplib::Result res;
     for (int attempt = 1; attempt <= config.retry_count; ++attempt) {
-        res = cli.Post("/v1/embeddings", body_str, "application/json");
+        res = cli.Post("/v1/embeddings", headers, body_str, "application/json");
         if (res) { // If we got any response (even an error status), we can break.
             break;
         }
@@ -78,8 +84,14 @@ bool EmbeddingClient::checkConnection() const {
     httplib::Client temp_cli(cli.host(), cli.port());
     temp_cli.set_connection_timeout(5, 0); // 5 seconds timeout for health check
 
+    httplib::Headers headers;
+    if (!config.api_key.empty()) {
+        headers.emplace("Authorization", "Bearer " + config.api_key);
+    }
+
     for (int attempt = 1; attempt <= config.retry_count; ++attempt) {
-        auto res = temp_cli.Get("/health"); // Standard health check endpoint
+        // Pass headers to the Get request
+        auto res = temp_cli.Get("/health", headers); // Standard health check endpoint
 
         if (res) {
             if (res->status == 200) {

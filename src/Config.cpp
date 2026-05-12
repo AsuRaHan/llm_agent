@@ -10,6 +10,7 @@ void Config::create_default(const std::string& filepath) const {
 
     j["server"]["host"] = server_host;
     j["server"]["port"] = server_port;
+    j["server"]["api_key"] = api_key;
     j["server"]["retry_count"] = retry_count;
     j["server"]["retry_delay_ms"] = retry_delay_ms;
 
@@ -55,6 +56,7 @@ bool Config::load(const std::string& filepath) {
         // Safely get values, using defaults if a key is missing
         server_host = j.value("/server/host"_json_pointer, server_host);
         server_port = j.value("/server/port"_json_pointer, server_port);
+        api_key = j.value("/server/api_key"_json_pointer, api_key);
         retry_count = j.value("/server/retry_count"_json_pointer, retry_count);
         retry_delay_ms = j.value("/server/retry_delay_ms"_json_pointer, retry_delay_ms);
 

@@ -41,6 +41,7 @@
     "server": {
         "host": "localhost",
         "port": 8080,
+        "api_key": "",
         "retry_count": 3,
         "retry_delay_ms": 500
     }

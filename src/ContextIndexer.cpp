@@ -250,6 +250,12 @@ std::vector<SearchResult> ContextIndexer::findTopK(const std::string& queryText,
     // We reverse to get them in order of nearest to furthest (best to worst score).
     std::reverse(result_pairs.begin(), result_pairs.end());
 
+    SPDLOG_DEBUG("HNSW search returned {} results (distance, label):", result_pairs.size());
+    for(const auto& pair : result_pairs) {
+        // pair.first is L2 distance, smaller is better.
+        SPDLOG_DEBUG("  - dist={:.4f}, id={}", pair.first, pair.second);
+    }
+
     for(const auto& pair : result_pairs) {
         size_t id = pair.second; // ID is the second element
         auto it = id_to_chunk_map.find(id);

@@ -177,6 +177,14 @@ int main(int argc, char* argv[]) // Modified main signature
                     continue;
                 }
 
+                SPDLOG_DEBUG("Топ-{} релевантных чанков, переданных в контекст:", topResults.size());
+                for(size_t i = 0; i < topResults.size(); ++i) {
+                    const auto& res = topResults[i];
+                    std::string text_preview = res.chunkText.substr(0, 150);
+                    text_preview.erase(std::remove(text_preview.begin(), text_preview.end(), '\n'), text_preview.end());
+                    SPDLOG_DEBUG("  - Чанк #{}: score={:.3f}, file='{}', text='{}...'", i + 1, res.score, res.filePath, text_preview);
+                }
+
                 // Log the files being used for context
                 std::string sources_str;
                 std::unordered_set<std::string> unique_sources;

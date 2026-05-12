@@ -73,6 +73,7 @@ cmake --build build --config Release
     "server": {
         "host": "localhost",
         "port": 8080,
+        "api_key": "",
         "retry_count": 3,
         "retry_delay_ms": 500
     },
@@ -106,6 +107,7 @@ cmake --build build --config Release
 
 *   **`server`**: Настройки подключения к LLM-серверу.
     *   `host`, `port`: Адрес и порт вашего локального сервера.
+    *   `api_key`: (Опционально) Ваш API-ключ для удаленного сервиса. Если он указан, будет отправляться в заголовке Authorization: Bearer
     *   `retry_count`: Количество повторных попыток при сбое сетевого соединения.
     *   `retry_delay_ms`: Задержка между повторными попытками в миллисекундах.
 *   **`embedding`**: Настройки для генерации эмбеддингов.
@@ -134,3 +136,30 @@ cmake --build build --config Release
 ```
 
 После запуска агент проиндексирует файлы и будет готов отвечать на ваши вопросы о коде.
+
+### Команда запуска llama.cpp для работы агента
+
+пример bat фала для запуска llama.cpp на локальном сервере.
+параметры `--embedding --pooling mean` должны быть обязательными. без них этот ИИ агент работать не будет.
+
+```bat
+@echo off
+cd /d "E:\ai_training\llama.cpp\build\bin\Release"
+
+set SERVER_BIN=llama-server.exe
+set MODEL_PATH=E:\ai_training\models\Tesslate\OmniCoder-9B-GGUF\omnicoder-9b-q8_0.gguf
+
+:: Оптимизировано под 16GB VRAM
+"%SERVER_BIN%" ^
+    --model "%MODEL_PATH%" ^
+    --n-gpu-layers 99 ^
+    --ctx-size 232768 ^
+    --flash-attn on ^
+    --cache-type-k q4_0 ^
+    --cache-type-v q4_0 ^
+    --mlock --embedding --pooling mean
+
+
+echo Сервер на запущен. Нажмите Ctrl+C для остановки.
+pause
+```

@@ -8,6 +8,7 @@ struct Config {
     // Server settings
     std::string server_host = "localhost";
     int server_port = 8080;
+    std::string api_key = ""; // API key for remote services (e.g., "Bearer sk-...")
 
     // Network settings
     int retry_count = 3;
