@@ -8,6 +8,7 @@
     "indexing": {
         "chunk_overlap": 200,
         "chunk_size": 1000,
+        "chunking_strategy": "tree-sitter",
         "ignored_directories": [
             "build",
             ".git",

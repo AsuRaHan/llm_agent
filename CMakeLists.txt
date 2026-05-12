@@ -97,6 +97,7 @@ add_executable(Agent
       src/EmbeddingClient.cpp 
       src/AssistantRole.cpp
       src/Logger.cpp
+      src/CodeParser.cpp
       src/Config.cpp
       )
 

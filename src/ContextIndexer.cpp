@@ -15,12 +15,16 @@ using json = nlohmann::json;
 namespace fs = std::filesystem;
 
 ContextIndexer::ContextIndexer(const Config& config)
-    : config(config), embeddingClient(config), space(nullptr), index(nullptr)
+    : config(config), embeddingClient(config), codeParser(nullptr), space(nullptr), index(nullptr)
 {
     ignoredDirectories.insert(config.ignored_directories.begin(), config.ignored_directories.end());
     ignoredExtensions.insert(config.ignored_extensions.begin(), config.ignored_extensions.end());
     ignoredFiles.insert(config.ignored_files.begin(), config.ignored_files.end());
     SPDLOG_INFO("ContextIndexer инициализирован...");
+
+    if (config.chunking_strategy == "tree-sitter") {
+        codeParser = std::make_unique<CodeParser>();
+    }
 
     // Ensure the .shdata directory exists
     if (!fs::exists(".shdata")) {
@@ -197,7 +201,7 @@ double ContextIndexer::cosineSimilarity(const std::vector<float>& a, const std::
     return dot_product / (norm_a_sqrt * norm_b_sqrt);
 }
 
-std::vector<std::string> ContextIndexer::chunkText(const std::string& text, size_t chunkSize, size_t overlap) {
+std::vector<std::string> ContextIndexer::fixedSizeChunkText(const std::string& text, size_t chunkSize, size_t overlap) {
     std::vector<std::string> chunks;
     if (text.empty()) return chunks;
 
@@ -432,7 +436,17 @@ void ContextIndexer::indexDirectory(const fs::path& directoryPath)
                     continue;
                 }
                 
-                std::vector<std::string> textChunks = chunkText(content, config.chunk_size, config.chunk_overlap);
+                std::vector<std::string> textChunks;
+                if (config.chunking_strategy == "tree-sitter" && codeParser) {
+                    textChunks = codeParser->parse(content, path.extension().string());
+                    // Fallback to fixed size if tree-sitter fails or returns no chunks for a non-empty file
+                    if (textChunks.empty() && !content.empty()) {
+                        SPDLOG_WARN("Tree-sitter не вернул чанков для файла '{}'. Используется разбиение по умолчанию.", canonicalPath);
+                        textChunks = fixedSizeChunkText(content, config.chunk_size, config.chunk_overlap);
+                    }
+                } else {
+                    textChunks = fixedSizeChunkText(content, config.chunk_size, config.chunk_overlap);
+                }
                 
                 // Update file record timestamp and prepare for new chunks
                 fileIndex[canonicalPath].last_write_time = lastWriteTime;
