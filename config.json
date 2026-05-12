@@ -2,6 +2,9 @@
     "assistant": {
         "chat_completion_timeout_sec": 300
     },
+    "embedding": {
+        "max_text_length": 1500
+    },
     "indexing": {
         "chunk_overlap": 200,
         "chunk_size": 1000,
@@ -12,14 +15,27 @@
             "CMakeFiles"
         ],
         "ignored_extensions": [
-            ".exe", ".obj", ".pdb", ".ilk", ".sln", ".vcxproj", ".filters", ".user",
-            ".recipe", ".tlog", ".lastbuildstate", ".bin", ".stamp", ".cmake",
+            ".exe",
+            ".obj",
+            ".pdb",
+            ".ilk",
+            ".sln",
+            ".vcxproj",
+            ".filters",
+            ".user",
+            ".recipe",
+            ".tlog",
+            ".lastbuildstate",
+            ".bin",
+            ".stamp",
+            ".cmake",
             ".json",
             ".log"
         ],
         "ignored_files": [
             ".gitignore"
-        ]
+        ],
+        "top_k_results": 3
     },
     "server": {
         "host": "localhost",
