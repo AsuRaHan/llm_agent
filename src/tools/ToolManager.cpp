@@ -10,10 +10,11 @@
 #include "ApplyDiffTool.h"      // Include the new diff tool
 #include "ExecuteShellCommandTool.h" // Include the shell tool
 #include "GetDateTimeTool.h"    // Include the datetime tool
+#include "GetSystemInfoTool.h"  // Include the system info tool
 #include "../Config.h" // Needed for the constructor
 
 ToolManager::ToolManager(const Config& config) {
-    SPDLOG_INFO("Initializing ToolManager...");
+    SPDLOG_INFO("Включение инструментов...");
     // Register safe, read-only tools
     registerTool(std::make_unique<ReadFileTool>());
     registerTool(std::make_unique<ListDirectoryTool>());
@@ -21,6 +22,7 @@ ToolManager::ToolManager(const Config& config) {
     registerTool(std::make_unique<GrepSearchTool>());
     registerTool(std::make_unique<FileGlobSearchTool>(config));
     registerTool(std::make_unique<GetDateTimeTool>());
+    registerTool(std::make_unique<GetSystemInfoTool>());
 
     // Register dangerous, write-access tools only if explicitly enabled
     if (config.enable_dangerous_tools) {
@@ -35,7 +37,7 @@ ToolManager::ToolManager(const Config& config) {
 void ToolManager::registerTool(std::unique_ptr<ITool> tool) {
     if (!tool) return;
     std::string name = tool->getName();
-    SPDLOG_INFO("Registering tool: {}", name);
+    SPDLOG_INFO("Зарегистрирован инструмент для модели: {}", name);
     tools[name] = std::move(tool);
 }
 

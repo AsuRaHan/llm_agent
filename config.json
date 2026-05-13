@@ -43,7 +43,9 @@
         "top_k_results": 3
     },
     "logging": {
-        "log_file_path": "app.log",
+        "log_console_level": "trace",
+        "log_file_level": "trace",
+        "log_file_path": "agent.log",
         "log_to_console": true
     },
     "server": {

@@ -462,7 +462,7 @@ void ContextIndexer::addChunk(const std::string& path, const std::string& text, 
     size_t new_id = current_max_elements;
     // Check if we need to resize the index
     if (new_id >= index->max_elements_) {
-        SPDLOG_INFO("Resizing HNSW index from {} to {}", index->max_elements_, index->max_elements_ * 2);
+        SPDLOG_INFO("Изменил размер индекса HNSW с {} на {}", index->max_elements_, index->max_elements_ * 2);
         index->resizeIndex(index->max_elements_ * 2);
     }
 
@@ -475,7 +475,7 @@ void ContextIndexer::addChunk(const std::string& path, const std::string& text, 
 void ContextIndexer::indexDirectory(const fs::path& directoryPath)
 {
     std::lock_guard lock(mtx);
-    SPDLOG_INFO("\nStarting filtered indexing of directory: {}", directoryPath.string());
+    SPDLOG_INFO("Начало индексирования каталога: {}", directoryPath.string());
     auto iterator = fs::recursive_directory_iterator(directoryPath);
 
     std::unordered_set<std::string> files_on_disk;
@@ -611,8 +611,6 @@ void ContextIndexer::reindexFile(const std::string& path) {
 
     if (fileIndex.count(path) && fileIndex.at(path).chunks.empty()) {
         fileIndex.erase(path);
-    } else {
-        saveIndex(); // Save after successful re-indexing
     }
 }
 
@@ -626,6 +624,5 @@ void ContextIndexer::removeFileFromIndex(const std::string& path) {
             id_to_chunk_map.erase(chunk_data.id);
         }
         fileIndex.erase(it);
-        saveIndex(); // Save after removal
     }
 }

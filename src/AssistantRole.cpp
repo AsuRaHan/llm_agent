@@ -41,6 +41,7 @@ std::string AssistantRole::processQuery(const std::string& userQuery, const std:
                     "    *   `apply_diff`: для применения патча в формате unified diff к файлу.\n"
                     "    *   `execute_shell_command`: для выполнения команды в системной оболочке (shell/cmd).\n"
                     "    *   `get_datetime`: для получения текущей даты и времени в формате UTC.\n"
+                    "    *   `get_system_info`: для получения информации об операционной системе, на которой запущен агент.\n"
                     "4.  **Думай по шагам.** После каждого шага (вызова инструмента) анализируй полученную информацию и решай, что делать дальше, пока не соберешь достаточно данных для исчерпывающего ответа.\n"
                     "5.  **Дай точный ответ.** В конце, ссылаясь на собранную информацию, дай пользователю точный и подробный ответ."}
     });
@@ -90,7 +91,7 @@ std::string AssistantRole::processQuery(const std::string& userQuery, const std:
         for (int attempt = 1; attempt <= config.retry_count; ++attempt) {
             res = cli.Post("/v1/chat/completions", headers, body_str, "application/json");
             if (res) break;
-            SPDLOG_WARN("[AssistantRole] Попытка {}/{} для генерации ответа не удалась. Ошибка соединения: {}. Повтор...",
+            SPDLOG_ERROR("Попытка {} из {} для генерации ответа не удалась. Ошибка соединения: {}. Повтор...",
                         attempt, config.retry_count, httplib::to_string(res.error()));
             std::this_thread::sleep_for(std::chrono::milliseconds(config.retry_delay_ms));
         }

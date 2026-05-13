@@ -76,6 +76,7 @@ bool initializeApplication(const std::string& projectDir, Config& outConfig)
     setlocale(LC_ALL, ".UTF8");
 #ifdef _WIN32
     SetConsoleOutputCP(CP_UTF8);
+    SetConsoleCP(CP_UTF8); // Устанавливаем кодовую страницу для ВВОДА
 #endif
 
     if (!outConfig.load("config.json")) {
@@ -148,11 +149,43 @@ std::string getUTF8Input(const std::string& prompt)
     std::cout << prompt;
     std::cout.flush();
     
+#ifdef _WIN32
+    // Используем Windows-специфичный API для надежного ввода UTF-8,
+    // так как std::cin может некорректно работать с кодировками в консоли Windows.
+    HANDLE hInput = GetStdHandle(STD_INPUT_HANDLE);
+    if (hInput == INVALID_HANDLE_VALUE) {
+        return "";
+    }
+
+    wchar_t buffer[1024];
+    DWORD charsRead = 0;
+    if (ReadConsoleW(hInput, buffer, sizeof(buffer)/sizeof(wchar_t) - 1, &charsRead, NULL)) {
+        // Обрезаем символы новой строки в конце
+        if (charsRead > 0 && buffer[charsRead - 1] == L'\n') {
+            charsRead--;
+        }
+        if (charsRead > 0 && buffer[charsRead - 1] == L'\r') {
+            charsRead--;
+        }
+        buffer[charsRead] = L'\0';
+
+        // Конвертируем wide string (UTF-16) в UTF-8
+        int utf8_len = WideCharToMultiByte(CP_UTF8, 0, buffer, -1, NULL, 0, NULL, NULL);
+        if (utf8_len > 0) {
+            std::string utf8_str(utf8_len - 1, 0); // -1 для исключения null-терминатора
+            WideCharToMultiByte(CP_UTF8, 0, buffer, -1, &utf8_str[0], utf8_len, NULL, NULL);
+            return utf8_str;
+        }
+    }
+    return "";
+#else
+    // Стандартная реализация для платформ, отличных от Windows
     std::string input;
     if (std::getline(std::cin, input)) {
         return input;
     }
     return "";
+#endif
 }
 
 /// Выводит главное меню и возвращает выбор пользователя (1-4)
@@ -304,7 +337,7 @@ int main(int argc, char* argv[])
 
         if (indexer->getEmbeddingsCount() == 0) {
             SPDLOG_WARN("Индексирование завершено, но эмбеддинги не получены. Возможно, все файлы были игнорированы.");
-            std::cout << "\n⚠️  Внимание: эмбеддинги не получены. Проверьте конфиг и сервер LLM.\n";
+            std::cout << "\nВнимание: эмбеддинги не получены. Проверьте конфиг и сервер LLM.\n";
             return 1;
         }
 
@@ -326,10 +359,11 @@ int main(int argc, char* argv[])
                     // Задать вопрос о проекте
                     std::cout << "\n";
                     std::string userQuery = getUTF8Input("Введите ваш вопрос о проекте:\n> ");
+                    SPDLOG_DEBUG("Получен запрос от пользователя: '{}'", userQuery);
                     if (!userQuery.empty()) {
                         processUserQuery(userQuery, *indexer, assistant, config);
                     } else {
-                        std::cout << "\n⚠️  Введите не пустой вопрос.\n";
+                        std::cout << "\nВведите не пустой вопрос.\n";
                     }
                     getUTF8Input("\nНажмите Enter для продолжения... ");
                     break;
@@ -354,7 +388,7 @@ int main(int argc, char* argv[])
 
         SPDLOG_INFO("Остановка файлового мониторинга...");
         watcher.stop();
-        SPDLOG_INFO("Agent finished successfully.");
+        SPDLOG_INFO("Agent завершил работу.");
         clear_screen();
         std::cout << "\n";
         print_separator('=', 60);
