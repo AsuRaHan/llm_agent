@@ -29,7 +29,7 @@ public:
      * @param fileExtension The extension of the file (e.g., ".cpp", ".h").
      * @return A vector of strings, where each string is a logical chunk of code.
      */
-    std::vector<CodeChunk> parse(const std::string& sourceCode, const std::string& fileExtension);
+    std::vector<CodeChunk> parse(const std::string& sourceCode, const std::string& fileExtension); // Обновлен тип возвращаемого значения
 
 private:
     const Config& config;
