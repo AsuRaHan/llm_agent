@@ -21,7 +21,7 @@ std::vector<float> EmbeddingClient::getEmbedding(const std::string& text, const 
 
     json body = {
         { "input", text_to_embed },
-        { "model", "any" }
+        { "model", config.embedding_model_name }
     };
     
     // Dump with an error handler to replace invalid UTF-8 sequences before sending

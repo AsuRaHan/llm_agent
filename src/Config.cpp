@@ -16,9 +16,11 @@ void Config::create_default(const std::string& filepath) const {
 
     j["embedding"]["max_text_length"] = embedding_max_text_length;
     j["embedding"]["chunk_overlap"] = embedding_chunk_overlap;
+    j["embedding"]["model_name"] = embedding_model_name;
 
     j["assistant"]["chat_completion_timeout_sec"] = chat_completion_timeout_sec;
     j["assistant"]["max_tool_calls"] = max_tool_calls;
+    j["assistant"]["model_name"] = chat_model_name;
 
     j["tools"]["enable_dangerous_tools"] = enable_dangerous_tools;
 
@@ -65,9 +67,11 @@ bool Config::load(const std::string& filepath) {
 
         embedding_max_text_length = j.value("/embedding/max_text_length"_json_pointer, embedding_max_text_length);
         embedding_chunk_overlap = j.value("/embedding/chunk_overlap"_json_pointer, embedding_chunk_overlap);
+        embedding_model_name = j.value("/embedding/model_name"_json_pointer, embedding_model_name);
 
         chat_completion_timeout_sec = j.value("/assistant/chat_completion_timeout_sec"_json_pointer, chat_completion_timeout_sec);
         max_tool_calls = j.value("/assistant/max_tool_calls"_json_pointer, max_tool_calls);
+        chat_model_name = j.value("/assistant/model_name"_json_pointer, chat_model_name);
 
         enable_dangerous_tools = j.value("/tools/enable_dangerous_tools"_json_pointer, enable_dangerous_tools);
 
