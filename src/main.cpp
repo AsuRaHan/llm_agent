@@ -4,220 +4,361 @@
 #endif
 
 #include "ContextIndexer.h"
-#include "AssistantRole.h" // Include the new class
+#include "AssistantRole.h"
 #include <iostream>
 #include <fstream>
 #include <string>
 #include <vector>
 #include <deque>
 #include <locale>
-#include <filesystem> // For fs::current_path
-#include "Logger.h" // Include the new logger header
-#include "Config.h" // Include the new config header
+#include <unordered_set>
+#include <algorithm>
+#include <filesystem>
+#include "Logger.h"
+#include "Config.h"
 
 namespace fs = std::filesystem;
+
+// ============================================================================
+// Utility Functions
+// ============================================================================
 
 void show_last_log_entries(const std::string& filePath, int linesToShow = 15)
 {
     std::ifstream file(filePath);
-    if (!file.is_open())
-    {
+    if (!file.is_open()) {
         return;
     }
 
     std::deque<std::string> lastLines;
     std::string line;
 
-    while (std::getline(file, line))
-    {
+    while (std::getline(file, line)) {
         lastLines.push_back(line);
-        if (lastLines.size() > linesToShow)
-        {
+        if (lastLines.size() > linesToShow) {
             lastLines.pop_front();
         }
     }
 
     std::cout << "\n--- Последние " << lastLines.size() << " записей логов ---" << std::endl;
-    for (const auto& l : lastLines)
-    {
+    for (const auto& l : lastLines) {
         std::cout << l << std::endl;
     }
     std::cout << "--------------------------\n" << std::endl;
 }
 
+void clear_screen()
+{
+#ifdef _WIN32
+    system("cls");
+#else
+    system("clear");
+#endif
+}
 
-int main(int argc, char* argv[]) // Modified main signature
+void print_separator(char ch = '=', int width = 80)
+{
+    for (int i = 0; i < width; ++i) {
+        std::cout << ch;
+    }
+    std::cout << std::endl;
+}
+
+// ============================================================================
+// Initialization Functions
+// ============================================================================
+
+/// Инициализирует приложение: логирование, конфиг, рабочий каталог
+/// Возвращает true при успехе, false при ошибке
+bool initializeApplication(const std::string& projectDir, Config& outConfig)
 {
     setlocale(LC_ALL, ".UTF8");
 #ifdef _WIN32
-    // Set console to UTF-8 to correctly display Cyrillic characters from AI responses
-    // This is a more reliable method on Windows than just setlocale.
     SetConsoleOutputCP(CP_UTF8);
 #endif
 
-    init_logger("app.log"); // Initialize the logger
-    // show_last_log_entries("app.log"); // Now reads from the application log file
+    init_logger("app.log");
     
-    Config config;
-    if (!config.load("config.json")) {
+    if (!outConfig.load("config.json")) {
         SPDLOG_CRITICAL("Не удалось загрузить конфигурацию. Завершение работы.");
-        return 1;
+        return false;
     }
 
-    std::string project_dir_str = "."; // Default to current directory
-    if (argc > 1) {
-        project_dir_str = argv[1];
-        // Change current working directory if specified
+    std::string workDir = (projectDir == ".") ? projectDir : projectDir;
+    if (projectDir != ".") {
         try {
-            fs::current_path(project_dir_str);
+            fs::current_path(projectDir);
             SPDLOG_INFO("Рабочий каталог изменен на: {}", fs::current_path().string());
         } catch (const fs::filesystem_error& e) {
-            SPDLOG_CRITICAL("Ошибка при смене рабочего каталога на '{}': {}", project_dir_str, e.what());
-            return 1;
+            SPDLOG_CRITICAL("Ошибка при смене рабочего каталога на '{}': {}", projectDir, e.what());
+            return false;
         }
     } else {
         SPDLOG_INFO("Рабочий каталог по умолчанию: {}", fs::current_path().string());
     }
 
+    return true;
+}
+
+/// Проверяет подключение к LLM-серверу
+bool checkLLMConnection(const Config& config)
+{
     try {
-        // Check LLM server connection before proceeding
-        EmbeddingClient temp_embedding_client_for_check(config); // Create a temporary client for connection check
-        if (!temp_embedding_client_for_check.checkConnection()) {
+        EmbeddingClient tempClient(config);
+        if (!tempClient.checkConnection()) {
             SPDLOG_CRITICAL("Не удалось подключиться к серверу LLM. Завершение работы.");
+            return false;
+        }
+        return true;
+    } catch (const std::exception& e) {
+        SPDLOG_CRITICAL("Ошибка при проверке подключения к LLM: {}", e.what());
+        return false;
+    }
+}
+
+/// Индексирует директорию проекта и возвращает заполненный ContextIndexer
+/// Возвращает nullptr при ошибке
+std::unique_ptr<ContextIndexer> indexProject(const std::string& projectDir, const Config& config)
+{
+    try {
+        auto indexer = std::make_unique<ContextIndexer>(config);
+        
+        SPDLOG_INFO("Запуск индексирования проекта...");
+        indexer->indexDirectory(projectDir);
+        
+        SPDLOG_INFO("Индексирование завершено. Сохранение индекса...");
+        indexer->saveIndex();
+        
+        return indexer;
+    } catch (const std::exception& e) {
+        SPDLOG_CRITICAL("Ошибка при индексировании: {}", e.what());
+        return nullptr;
+    }
+}
+
+// ============================================================================
+// Interface Functions
+// ============================================================================
+
+/// Получает кроссплатформенный ввод с подсказкой
+std::string getUTF8Input(const std::string& prompt)
+{
+    std::cout << prompt;
+    std::cout.flush();
+    
+    std::string input;
+    if (std::getline(std::cin, input)) {
+        return input;
+    }
+    return "";
+}
+
+/// Выводит главное меню и возвращает выбор пользователя (1-4)
+int showMainMenu()
+{
+    std::cout << "\n";
+    print_separator('=', 60);
+    std::cout << "  ГЛАВНОЕ МЕНЮ\n";
+    print_separator('=', 60);
+    std::cout << "  1. Задать вопрос о проекте\n";
+    std::cout << "  2. Информация о проекте\n";
+    std::cout << "  3. Справка\n";
+    std::cout << "  4. Выход\n";
+    print_separator('-', 60);
+    
+    while (true) {
+        std::string choice = getUTF8Input("Выберите опцию (1-4): ");
+        
+        if (choice.length() == 1 && choice[0] >= '1' && choice[0] <= '4') {
+            return choice[0] - '0';
+        }
+        
+        std::cout << "Ошибка: введите число от 1 до 4.\n";
+    }
+}
+
+/// Выводит справку
+void showHelp()
+{
+    clear_screen();
+    print_separator('=', 60);
+    std::cout << "  СПРАВКА\n";
+    print_separator('=', 60);
+    std::cout << "\nЭто консольное приложение - локальный AI-ассистент для анализа кода.\n";
+    std::cout << "\nВозможности:\n";
+    std::cout << "  • Индексирование кодовой базы с помощью Tree-sitter\n";
+    std::cout << "  • Поиск релевантного контекста через HNSW\n";
+    std::cout << "  • Ответы на вопросы о проекте через локальный LLM\n";
+    std::cout << "\nОпции меню:\n";
+    std::cout << "  1 - Введите вопрос, и агент найдет релевантный код\n";
+    std::cout << "  2 - Просмотрите информацию об индексировании проекта\n";
+    std::cout << "  3 - Эта справка\n";
+    std::cout << "  4 - Завершить работу\n";
+    std::cout << "\n";
+    getUTF8Input("Нажмите Enter для возврата в меню... ");
+}
+
+/// Выводит приветствие и информацию о проекте
+void displayProjectSummary(AssistantRole& assistant, size_t fileCount, size_t embeddingsCount)
+{
+    clear_screen();
+    print_separator('=', 60);
+    std::cout << "  ИНФОРМАЦИЯ О ПРОЕКТЕ\n";
+    print_separator('=', 60);
+    
+    SPDLOG_INFO("Связь с LLM установлена, получено эмбеддингов: {}", embeddingsCount);
+    
+    std::string greeting = assistant.generateProjectSummaryGreeting(fileCount, embeddingsCount);
+    
+    std::cout << "\n" << greeting << "\n\n";
+    std::cout << "Статистика индексирования:\n";
+    std::cout << "  • Обработано файлов: " << fileCount << "\n";
+    std::cout << "  • Создано эмбеддингов: " << embeddingsCount << "\n";
+    print_separator('-', 60);
+    
+    getUTF8Input("Нажмите Enter для возврата в меню... ");
+}
+
+/// Обрабатывает вопрос пользователя
+void processUserQuery(const std::string& query, ContextIndexer& indexer, 
+                      AssistantRole& assistant, const Config& config)
+{
+    if (query.empty()) {
+        return;
+    }
+
+    SPDLOG_INFO("Ищу релевантный контекст в проекте...");
+    std::cout << "\n[*] Обработка запроса...\n";
+    
+    auto topResults = indexer.findTopK(query, config.top_k_results);
+
+    if (topResults.empty()) {
+        std::cout << "\n⚠️  К сожалению, релевантной информации не найдено.\n";
+        SPDLOG_WARN("По запросу '{}' не найдено релевантной информации.", query);
+        return;
+    }
+
+    SPDLOG_DEBUG("Топ-{} релевантных чанков, переданных в контекст:", topResults.size());
+    for (size_t i = 0; i < topResults.size(); ++i) {
+        const auto& res = topResults[i];
+        std::string text_preview = res.chunkText.substr(0, 100);
+        text_preview.erase(std::remove(text_preview.begin(), text_preview.end(), '\n'), text_preview.end());
+        SPDLOG_DEBUG("  - Чанк #{}: score={:.3f}, file='{}'", i + 1, res.score, res.filePath);
+    }
+
+    // Сбор уникальных источников
+    std::string sources_str;
+    std::unordered_set<std::string> unique_sources;
+    for (const auto& res : topResults) {
+        unique_sources.insert(fs::path(res.filePath).filename().string());
+    }
+    for (const auto& src : unique_sources) {
+        if (!sources_str.empty()) sources_str += ", ";
+        sources_str += src;
+    }
+    
+    SPDLOG_INFO("Использую контекст из файлов: {}", sources_str);
+    std::cout << "📄 Контекст из: " << sources_str << "\n\n";
+
+    std::string analysis = assistant.processQuery(query, topResults, indexer);
+    
+    print_separator('~', 60);
+    std::cout << analysis << "\n";
+    print_separator('~', 60);
+    
+    SPDLOG_INFO("Ответ на запрос: {}", analysis);
+}
+
+
+// ============================================================================
+// Main Application
+// ============================================================================
+
+int main(int argc, char* argv[])
+{
+    try {
+        // ====== Инициализация ======
+        Config config;
+        std::string projectDir = (argc > 1) ? argv[1] : ".";
+
+        if (!initializeApplication(projectDir, config)) {
+            show_last_log_entries("app.log", 30);
             return 1;
         }
+
+        // ====== Проверка подключения LLM ======
+        if (!checkLLMConnection(config)) {
+            show_last_log_entries("app.log", 30);
+            return 1;
+        }
+
+        // ====== Индексирование проекта ======
+        auto indexer = indexProject(projectDir, config);
+        if (!indexer) {
+            show_last_log_entries("app.log", 30);
+            return 1;
+        }
+
+        if (indexer->getEmbeddingsCount() == 0) {
+            SPDLOG_WARN("Индексирование завершено, но эмбеддинги не получены. Возможно, все файлы были игнорированы.");
+            std::cout << "\n⚠️  Внимание: эмбеддинги не получены. Проверьте конфиг и сервер LLM.\n";
+            return 1;
+        }
+
         SPDLOG_INFO("Запуск Agent...");
 
-        ContextIndexer indexer(config);
-        indexer.indexDirectory(project_dir_str); // Pass the determined project_dir_str
+        // ====== Создание ассистента ======
+        AssistantRole assistant(config);
 
-        // Explicitly save the index after all indexing operations are complete.
-        // This ensures data is safe before the interactive part begins.
-        SPDLOG_INFO("Индексирование завершено. Сохранение индекса...");
-        indexer.saveIndex();
+        // ====== Главный цикл приложения ======
+        bool running = true;
+        while (running) {
+            int choice = showMainMenu();
 
-        if (indexer.getEmbeddingsCount() > 0)
-        {
-            SPDLOG_INFO("\nСвязь с Llama.cpp установлена, получено эмбеддингов: {}", indexer.getEmbeddingsCount());
-
-            AssistantRole assistant(config); // Create assistant once
-
-            // Generate and display a creative greeting from the agent
-            std::string greeting = assistant.generateProjectSummaryGreeting(indexer.getFileCount(), indexer.getEmbeddingsCount());
-            SPDLOG_INFO("\n--- Сообщение от Агента ---");
-            SPDLOG_INFO("{}", greeting);
-            SPDLOG_INFO("---------------------------\n");
-
-#ifdef _WIN32
-            // --- Windows-specific robust input loop using WinAPI ---
-            // This avoids the instability of std::cin with UTF-8 console mode.
-            wchar_t buffer[4096];
-            DWORD charsRead;
-            HANDLE hInput = GetStdHandle(STD_INPUT_HANDLE);
-
-            if (hInput == INVALID_HANDLE_VALUE) {
-                SPDLOG_CRITICAL("Не удалось получить хэндл стандартного ввода (stdin). Error: {}", GetLastError());
-                return 1;
-            }
-
-            while (true) {
-                SPDLOG_INFO("\nВведите ваш вопрос о проекте (или 'exit' для выхода): ");
-                
-                if (!ReadConsoleW(hInput, buffer, sizeof(buffer)/sizeof(wchar_t) - 1, &charsRead, NULL)) {
-                    SPDLOG_ERROR("Ошибка чтения из консоли (ReadConsoleW). Error: {}. Завершение работы.", GetLastError());
-                    break;
-                }
-
-                // Null-terminate and remove trailing \r\n
-                if (charsRead > 0) {
-                    if (charsRead >= 2 && buffer[charsRead - 2] == L'\r' && buffer[charsRead - 1] == L'\n') {
-                        buffer[charsRead - 2] = L'\0';
-                    } else if (charsRead >= 1 && buffer[charsRead - 1] == L'\n') {
-                         buffer[charsRead - 1] = L'\0';
+            switch (choice) {
+                case 1: {
+                    // Задать вопрос о проекте
+                    std::cout << "\n";
+                    std::string userQuery = getUTF8Input("Введите ваш вопрос о проекте:\n> ");
+                    if (!userQuery.empty()) {
+                        processUserQuery(userQuery, *indexer, assistant, config);
                     } else {
-                        buffer[charsRead] = L'\0';
+                        std::cout << "\n⚠️  Введите не пустой вопрос.\n";
                     }
-                } else {
-                    buffer[0] = L'\0';
-                }
-
-                // Convert wide string to UTF-8 std::string
-                std::string query;
-                std::wstring wquery(buffer);
-                if (!wquery.empty()) {
-                    int size_needed = WideCharToMultiByte(CP_UTF8, 0, &wquery[0], (int)wquery.size(), NULL, 0, NULL, NULL);
-                    query.resize(size_needed);
-                    WideCharToMultiByte(CP_UTF8, 0, &wquery[0], (int)wquery.size(), &query[0], size_needed, NULL, NULL);
-                }
-
-                if (query == "exit") {
+                    getUTF8Input("\nНажмите Enter для продолжения... ");
                     break;
                 }
-                if (query.empty()) {
-                    continue;
-                }
-#else
-            // --- Standard C++ input loop for non-Windows platforms ---
-            std::string query;
-            SPDLOG_INFO("\nВведите ваш вопрос о проекте (или 'exit' для выхода): ");
-            while (std::getline(std::cin, query)) {
-                if (query == "exit") {
+                case 2: {
+                    // Информация о проекте
+                    displayProjectSummary(assistant, indexer->getFileCount(), indexer->getEmbeddingsCount());
                     break;
                 }
-                if (query.empty()) {
-                    SPDLOG_INFO("\nВведите ваш вопрос о проекте (или 'exit' для выхода): ");
-                    continue;
+                case 3: {
+                    // Справка
+                    showHelp();
+                    break;
                 }
-#endif
-                SPDLOG_INFO("Ищу релевантный контекст в проекте...");
-                auto topResults = indexer.findTopK(query, config.top_k_results);
-
-                if (topResults.empty()) {
-                    SPDLOG_WARN("К сожалению, я не смог найти релевантной информации по вашему запросу.");
-                    continue;
+                case 4: {
+                    // Выход
+                    running = false;
+                    break;
                 }
-
-                SPDLOG_DEBUG("Топ-{} релевантных чанков, переданных в контекст:", topResults.size());
-                for(size_t i = 0; i < topResults.size(); ++i) {
-                    const auto& res = topResults[i];
-                    std::string text_preview = res.chunkText.substr(0, 150);
-                    text_preview.erase(std::remove(text_preview.begin(), text_preview.end(), '\n'), text_preview.end());
-                    SPDLOG_DEBUG("  - Чанк #{}: score={:.3f}, file='{}', text='{}...'", i + 1, res.score, res.filePath, text_preview);
-                }
-
-                // Log the files being used for context
-                std::string sources_str;
-                std::unordered_set<std::string> unique_sources;
-                for(const auto& res : topResults) {
-                    unique_sources.insert(fs::path(res.filePath).filename().string());
-                }
-                for(const auto& src : unique_sources) {
-                    if (!sources_str.empty()) sources_str += ", ";
-                    sources_str += src;
-                }
-                SPDLOG_INFO("Использую контекст из файлов: {}", sources_str);
-
-                std::string analysis = assistant.processQuery(query, topResults, indexer);
-                SPDLOG_INFO("\n--- Ответ Агента ---");
-                SPDLOG_INFO("{}", analysis);
-                SPDLOG_INFO("---------------------\n");
-#ifndef _WIN32
-                SPDLOG_INFO("\nВведите ваш вопрос о проекте (или 'exit' для выхода): ");
-#endif
             }
         }
-        else {
-            SPDLOG_WARN("Индексация завершена, но не получено ни одного эмбеддинга. Возможно, сервер LLM не вернул эмбеддинги или все файлы были проигнорированы.");
-        }
 
-        SPDLOG_INFO("\nAgent finished.");
-    }
-    catch (const std::exception& e) {
+        SPDLOG_INFO("Agent finished successfully.");
+        clear_screen();
+        std::cout << "\n";
+        print_separator('=', 60);
+        std::cout << "  До свидания! Спасибо за использование Smart Hammer.\n";
+        print_separator('=', 60);
+        std::cout << "\n";
+
+    } catch (const std::exception& e) {
         SPDLOG_CRITICAL("Перехвачено необработанное исключение: {}", e.what());
         show_last_log_entries("app.log", 30);
         return 1;
-    }
-    catch (...) {
+    } catch (...) {
         SPDLOG_CRITICAL("Перехвачено неизвестное необработанное исключение!");
         show_last_log_entries("app.log", 30);
         return 1;
