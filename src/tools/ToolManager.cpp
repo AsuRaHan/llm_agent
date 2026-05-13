@@ -5,15 +5,23 @@
 #include "Logger.h"
 #include "GrepSearchTool.h" // Include the grep tool
 #include "FileGlobSearchTool.h" // Include the new glob tool
+#include "WriteFileTool.h"      // Include the new write tool
 #include "../Config.h" // Needed for the constructor
 
 ToolManager::ToolManager(const Config& config) {
     SPDLOG_INFO("Initializing ToolManager...");
+    // Register safe, read-only tools
     registerTool(std::make_unique<ReadFileTool>());
     registerTool(std::make_unique<ListDirectoryTool>());
     registerTool(std::make_unique<CodeSearchTool>());
     registerTool(std::make_unique<GrepSearchTool>());
     registerTool(std::make_unique<FileGlobSearchTool>(config));
+
+    // Register dangerous, write-access tools only if explicitly enabled
+    if (config.enable_dangerous_tools) {
+        SPDLOG_WARN("Включены ОПАСНЫЕ инструменты (например, запись файлов).");
+        registerTool(std::make_unique<WriteFileTool>());
+    }
 }
 
 void ToolManager::registerTool(std::unique_ptr<ITool> tool) {

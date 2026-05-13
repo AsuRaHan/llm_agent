@@ -20,6 +20,8 @@ void Config::create_default(const std::string& filepath) const {
     j["assistant"]["chat_completion_timeout_sec"] = chat_completion_timeout_sec;
     j["assistant"]["max_tool_calls"] = max_tool_calls;
 
+    j["tools"]["enable_dangerous_tools"] = enable_dangerous_tools;
+
     j["indexing"]["chunk_size"] = chunk_size;
     j["indexing"]["chunk_overlap"] = chunk_overlap;
     j["indexing"]["top_k_results"] = top_k_results;
@@ -66,6 +68,8 @@ bool Config::load(const std::string& filepath) {
 
         chat_completion_timeout_sec = j.value("/assistant/chat_completion_timeout_sec"_json_pointer, chat_completion_timeout_sec);
         max_tool_calls = j.value("/assistant/max_tool_calls"_json_pointer, max_tool_calls);
+
+        enable_dangerous_tools = j.value("/tools/enable_dangerous_tools"_json_pointer, enable_dangerous_tools);
 
         chunk_size = j.value("/indexing/chunk_size"_json_pointer, chunk_size);
         chunk_overlap = j.value("/indexing/chunk_overlap"_json_pointer, chunk_overlap);
