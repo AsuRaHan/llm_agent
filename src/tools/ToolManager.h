@@ -6,12 +6,13 @@
 #include <memory>
 #include <map>
 #include <nlohmann/json.hpp>
+#include "../Config.h"
 
 class ContextIndexer; // Forward declaration
 
 class ToolManager {
 public:
-    ToolManager();
+    explicit ToolManager(const Config& config);
 
     void registerTool(std::unique_ptr<ITool> tool);
     nlohmann::json getToolsSpecification() const;

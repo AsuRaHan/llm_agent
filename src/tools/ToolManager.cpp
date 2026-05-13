@@ -4,14 +4,16 @@
 #include "CodeSearchTool.h" // Include the code search tool
 #include "Logger.h"
 #include "GrepSearchTool.h" // Include the grep tool
+#include "FileGlobSearchTool.h" // Include the new glob tool
+#include "../Config.h" // Needed for the constructor
 
-ToolManager::ToolManager() {
+ToolManager::ToolManager(const Config& config) {
     SPDLOG_INFO("Initializing ToolManager...");
     registerTool(std::make_unique<ReadFileTool>());
     registerTool(std::make_unique<ListDirectoryTool>());
     registerTool(std::make_unique<CodeSearchTool>());
     registerTool(std::make_unique<GrepSearchTool>());
-    // Future tools will be registered here
+    registerTool(std::make_unique<FileGlobSearchTool>(config));
 }
 
 void ToolManager::registerTool(std::unique_ptr<ITool> tool) {

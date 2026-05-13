@@ -164,6 +164,7 @@ add_executable(Agent
       src/tools/ToolManager.cpp
       src/tools/CodeSearchTool.cpp
       src/tools/GrepSearchTool.cpp
+      src/tools/FileGlobSearchTool.cpp
       )
 
 target_include_directories(Agent PUBLIC
