@@ -15,6 +15,7 @@ void Config::create_default(const std::string& filepath) const {
     j["server"]["retry_delay_ms"] = retry_delay_ms;
 
     j["embedding"]["max_text_length"] = embedding_max_text_length;
+    j["embedding"]["chunk_overlap"] = embedding_chunk_overlap;
 
     j["assistant"]["chat_completion_timeout_sec"] = chat_completion_timeout_sec;
     j["assistant"]["max_tool_calls"] = max_tool_calls;
@@ -62,6 +63,7 @@ bool Config::load(const std::string& filepath) {
         retry_delay_ms = j.value("/server/retry_delay_ms"_json_pointer, retry_delay_ms);
 
         embedding_max_text_length = j.value("/embedding/max_text_length"_json_pointer, embedding_max_text_length);
+        embedding_chunk_overlap = j.value("/embedding/chunk_overlap"_json_pointer, embedding_chunk_overlap);
 
         chat_completion_timeout_sec = j.value("/assistant/chat_completion_timeout_sec"_json_pointer, chat_completion_timeout_sec);
         max_tool_calls = j.value("/assistant/max_tool_calls"_json_pointer, max_tool_calls);

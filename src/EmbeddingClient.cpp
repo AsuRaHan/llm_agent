@@ -17,11 +17,6 @@ EmbeddingClient::EmbeddingClient(const Config& config)
 std::vector<float> EmbeddingClient::getEmbedding(const std::string& text, const std::string& filename)
 {
     std::string text_to_embed = text;
-    if (text_to_embed.length() > (size_t)config.embedding_max_text_length) {
-        SPDLOG_WARN("  [EmbeddingClient] Text for '{}' is too long ({} chars), truncating to {}.", filename, text.length(), config.embedding_max_text_length);
-        text_to_embed = text_to_embed.substr(0, config.embedding_max_text_length);
-    }
-
     SPDLOG_DEBUG("  [EmbeddingClient] Generating embedding for '{}' (size: {} chars)...", filename, text_to_embed.length());
 
     json body = {

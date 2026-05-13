@@ -94,17 +94,17 @@ void CodeParser::extractChunks(const std::string& sourceCode, void* node, std::v
         if (chunk_len > 0) {
             std::string chunk_text = sourceCode.substr(start_byte, chunk_len);
 
-            // If the semantically extracted chunk is too large, fall back to fixed-size chunking for it.
-            if (chunk_len > config.chunk_size) { // Compare with chunk_size for consistency
-                SPDLOG_WARN("Семантический чанк типа '{}' слишком большой ({} символов). Применяется разбиение по фиксированному размеру.", nodeType, chunk_len);
+            // If the semantically extracted chunk is larger than the embedding limit, split it.
+            if (chunk_len > config.embedding_max_text_length) {
+                SPDLOG_WARN("Семантический чанк типа '{}' слишком большой ({} символов). Применяется разбиение по размеру embedding_max_text_length.", nodeType, chunk_len);
                 
                 std::vector<std::string> sub_chunks;
                 size_t start = 0;
                 while (start < chunk_text.length()) {
-                    size_t end = std::min(start + config.chunk_size, chunk_text.length());
+                    size_t end = std::min(start + (size_t)config.embedding_max_text_length, chunk_text.length());
                     sub_chunks.push_back(chunk_text.substr(start, end - start));
                     if (end == chunk_text.length()) break;
-                    start += (config.chunk_size - config.chunk_overlap);
+                    start += (config.embedding_max_text_length - config.embedding_chunk_overlap);
                 }
 
                 chunks.insert(chunks.end(), sub_chunks.begin(), sub_chunks.end());
