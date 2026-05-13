@@ -103,6 +103,7 @@ add_executable(Agent
       src/tools/ListDirectoryTool.cpp
       src/tools/ToolManager.cpp
       src/tools/CodeSearchTool.cpp
+      src/tools/GrepSearchTool.cpp
       )
 
 target_include_directories(Agent PUBLIC
