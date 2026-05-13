@@ -77,12 +77,13 @@ bool initializeApplication(const std::string& projectDir, Config& outConfig)
     SetConsoleOutputCP(CP_UTF8);
 #endif
 
-    init_logger("app.log");
-    
     if (!outConfig.load("config.json")) {
-        SPDLOG_CRITICAL("Не удалось загрузить конфигурацию. Завершение работы.");
+        // Логгер еще не инициализирован, используем cerr
+        std::cerr << "CRITICAL: Не удалось загрузить конфигурацию 'config.json'. Завершение работы." << std::endl;
         return false;
     }
+
+    init_logger(outConfig);
 
     std::string workDir = (projectDir == ".") ? projectDir : projectDir;
     if (projectDir != ".") {
@@ -282,20 +283,21 @@ int main(int argc, char* argv[])
         std::string projectDir = (argc > 1) ? argv[1] : ".";
 
         if (!initializeApplication(projectDir, config)) {
+            // Конфиг не загружен, используем путь по умолчанию
             show_last_log_entries("app.log", 30);
             return 1;
         }
 
         // ====== Проверка подключения LLM ======
         if (!checkLLMConnection(config)) {
-            show_last_log_entries("app.log", 30);
+            show_last_log_entries(config.log_file_path, 30);
             return 1;
         }
 
         // ====== Индексирование проекта ======
         auto indexer = indexProject(projectDir, config);
         if (!indexer) {
-            show_last_log_entries("app.log", 30);
+            show_last_log_entries(config.log_file_path, 30);
             return 1;
         }
 
@@ -356,11 +358,11 @@ int main(int argc, char* argv[])
 
     } catch (const std::exception& e) {
         SPDLOG_CRITICAL("Перехвачено необработанное исключение: {}", e.what());
-        show_last_log_entries("app.log", 30);
+        show_last_log_entries("app.log", 30); // config может быть недоступен
         return 1;
     } catch (...) {
         SPDLOG_CRITICAL("Перехвачено неизвестное необработанное исключение!");
-        show_last_log_entries("app.log", 30);
+        show_last_log_entries("app.log", 30); // config может быть недоступен
         return 1;
     }
 

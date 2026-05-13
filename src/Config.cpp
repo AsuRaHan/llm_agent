@@ -24,6 +24,9 @@ void Config::create_default(const std::string& filepath) const {
 
     j["tools"]["enable_dangerous_tools"] = enable_dangerous_tools;
 
+    j["logging"]["log_file_path"] = log_file_path;
+    j["logging"]["log_to_console"] = log_to_console;
+
     j["indexing"]["chunk_size"] = chunk_size;
     j["indexing"]["chunk_overlap"] = chunk_overlap;
     j["indexing"]["top_k_results"] = top_k_results;
@@ -74,6 +77,9 @@ bool Config::load(const std::string& filepath) {
         chat_model_name = j.value("/assistant/model_name"_json_pointer, chat_model_name);
 
         enable_dangerous_tools = j.value("/tools/enable_dangerous_tools"_json_pointer, enable_dangerous_tools);
+
+        log_file_path = j.value("/logging/log_file_path"_json_pointer, log_file_path);
+        log_to_console = j.value("/logging/log_to_console"_json_pointer, log_to_console);
 
         chunk_size = j.value("/indexing/chunk_size"_json_pointer, chunk_size);
         chunk_overlap = j.value("/indexing/chunk_overlap"_json_pointer, chunk_overlap);
