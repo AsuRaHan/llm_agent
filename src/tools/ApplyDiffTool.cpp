@@ -128,7 +128,9 @@ std::string ApplyDiffTool::execute(const nlohmann::json& args, ContextIndexer* i
                 } else if (type == '+') {
                     new_file_lines.push_back(content);
                 } else {
-                    return "{\"error\": \"Неверный формат патча. Неизвестный символ в начале строки: '" + std::string(1, type) + "'.\"}";
+                    std::string error_msg = "Неверный формат патча. Неизвестный символ '" + std::string(1, type) + "' в начале строки: " + hunk_line;
+                    SPDLOG_ERROR(error_msg);
+                    return "{\"error\": \"" + error_msg + "\"}";
                 }
                 diff_line_idx++;
             }

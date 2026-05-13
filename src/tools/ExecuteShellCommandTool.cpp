@@ -57,7 +57,8 @@ std::string execute_command(const char* cmd) {
     ZeroMemory(&pi, sizeof(pi));
 
     // Конвертируем команду из UTF-8 в wide string для CreateProcessW
-    std::string command_str = cmd;
+    // Принудительно переключаем кодовую страницу на UTF-8 (65001) для дочернего процесса
+    std::string command_str = "chcp 65001 > nul && " + std::string(cmd);
     int wide_len = MultiByteToWideChar(CP_UTF8, 0, command_str.c_str(), -1, NULL, 0);
     if (wide_len == 0) {
         return "{\"error\": \"Не удалось конвертировать команду в wide string.\"}";
