@@ -84,10 +84,12 @@ cmake --build build --config Release
         "retry_delay_ms": 500
     },
     "embedding": {
+        "model_name": "any",
         "max_text_length": 1500,
         "embedding_chunk_overlap": 200
     },
     "assistant": {
+        "model_name": "any",
         "chat_completion_timeout_sec": 300,
         "max_tool_calls": 5
     },
@@ -119,9 +121,11 @@ cmake --build build --config Release
     *   `retry_count`: Количество повторных попыток при сбое сетевого соединения.
     *   `retry_delay_ms`: Задержка между повторными попытками в миллисекундах.
 *   **`embedding`**: Настройки для генерации эмбеддингов.
+    *   `model_name`: Имя модели для создания эмбеддингов (например, `text-embedding-ada-002`). Если используется локальный `llama.cpp`, можно оставить `"any"`.
     *   `max_text_length`: Максимальная длина текста (в символах), отправляемого на векторизацию. Текст большей длины будет обрезан.
     *   `embedding_chunk_overlap`: Нахлест для чанков, которые создаются из слишком больших блоков текста.
 *   **`assistant`**: Настройки для чат-комплишенов (генерации ответов).
+    *   `model_name`: Имя модели для генерации ответов (например, `gpt-4-turbo` или `Tesslate/omnicoder-9b-q8_0.gguf`). Если используется локальный `llama.cpp` с одной моделью, можно оставить `"any"`.
     *   `chat_completion_timeout_sec`: Таймаут ожидания ответа от модели в секундах.
     *   `max_tool_calls`: Максимальное количество вызовов инструментов в рамках одного запроса пользователя.
 *   **`indexing`**: Настройки процесса индексации.

@@ -73,6 +73,7 @@ std::string AssistantRole::processQuery(const std::string& userQuery, const std:
         // 2. Prepare request for LLM
         json body = {
             {"messages", messages},
+            {"model", config.chat_model_name},
             {"tools", toolManager->getToolsSpecification()},
             {"tool_choice", "auto"},
             {"temperature", 0.1}
@@ -183,6 +184,7 @@ std::string AssistantRole::generateProjectSummaryGreeting(int file_count, int em
             { {"role", "system"}, {"content", "Ты — полезный ИИ-ассистент."} },
             { {"role", "user"}, {"content", prompt_text} }
         })},
+        {"model", config.chat_model_name},
         {"temperature", 0.7} // A bit more creative
     };
 
@@ -230,6 +232,7 @@ std::string AssistantRole::generateChunkSummary(const std::string& codeChunk, co
             { {"role", "system"}, {"content", system_prompt} },
             { {"role", "user"}, {"content", user_prompt} }
         })},
+        {"model", config.chat_model_name},
         {"temperature", 0.0}, // Factual summary
         {"max_tokens", 200}   // Limit response size
     };
