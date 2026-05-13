@@ -95,10 +95,10 @@ void ContextIndexer::loadIndex()
         if (meta.contains("id_to_chunk_map")) {
             for (auto& [id_str, data] : meta["id_to_chunk_map"].items()) {
                 size_t id = std::stoull(id_str);
-                id_to_chunk_map[id] = { 
-                    data["path"], 
-                    {data["start_byte"], data["length"]}
-                };
+                id_to_chunk_map[id] = std::make_pair(
+                    data["path"].get<std::string>(),
+                    ChunkLocation{data["start_byte"].get<size_t>(), data["length"].get<size_t>()}
+                );
             }
         }
 
@@ -315,9 +315,9 @@ std::vector<SearchResult> ContextIndexer::findTopK(const std::string& queryText,
     // --- Intelligent Keyword Boost ---
     // If the query mentions a filename or class name, this extracts it
     // and finds source files with a matching stem, forcing them into the context.
-    std::unordered_set<std::string> seenChunks;
-    for(const auto& res : topResults) {
-        seenChunks.insert(res.chunkText);
+    std::unordered_set<size_t> seenChunkIds;
+    for(const auto& pair : result_pairs) {
+        seenChunkIds.insert(pair.second);
     }
 
     std::unordered_set<std::string> keywords;
@@ -350,11 +350,11 @@ std::vector<SearchResult> ContextIndexer::findTopK(const std::string& queryText,
 
         for (const auto& [path, record] : fileIndex) {
             for (const auto& chunk_info : record.chunks) {
+                // Если этот чанк модель уже и так нашла через эмбеддинги — пропускаем
+                if (seenChunkIds.count(chunk_info.id)) continue;
+
                 std::string chunk_text = readChunkContent(path, chunk_info.location);
                 if (chunk_text.empty()) continue;
-
-                // Если этот чанк модель уже и так нашла через эмбеддинги — пропускаем
-                if (seenChunks.find(chunk_text) != seenChunks.end()) continue;
 
                 std::string lower_chunk_text = chunk_text;
                 std::transform(lower_chunk_text.begin(), lower_chunk_text.end(), lower_chunk_text.begin(),
@@ -363,8 +363,16 @@ std::vector<SearchResult> ContextIndexer::findTopK(const std::string& queryText,
                 // Проверяем вхождение ключевого слова (класса, функции) прямо в тело кода чанка
                 if (lower_chunk_text.find(lower_keyword) != std::string::npos) {
                     SPDLOG_DEBUG("Keyword boost: Найдено совпадение для '{}' внутри чанка файла '{}'", keyword, path);
-                    topResults.push_back({path, chunk_text, 1.15}); // Даем мощный буст (1.15)
-                    seenChunks.insert(chunk_text);
+                    
+                    // Извлекаем оригинальный вектор чанка из HNSW по его ID
+                    std::vector<float> data_vec = index->getDataByLabel<float>(chunk_info.id);
+                    double base_score = cosineSimilarity(queryEmbedding, data_vec);
+                    
+                    // Мягко бустим score, но не позволяем ему улететь в стратосферу выше 1.0
+                    double boosted_score = std::min(1.0, base_score + 0.15); 
+
+                    topResults.push_back({path, chunk_text, boosted_score});
+                    seenChunkIds.insert(chunk_info.id);
                 }
             }
         }
