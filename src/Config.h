@@ -19,6 +19,7 @@ struct Config {
     int chat_completion_timeout_sec = 300;
     int max_tool_calls = 5;
     int embedding_max_text_length = 1500;
+    int embedding_chunk_overlap = 200;
 
     // Indexing settings
     size_t chunk_size = 10000;

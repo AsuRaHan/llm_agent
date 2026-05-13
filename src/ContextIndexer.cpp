@@ -452,11 +452,11 @@ void ContextIndexer::indexDirectory(const fs::path& directoryPath)
                     // Fallback to fixed size if tree-sitter fails or returns no chunks for a non-empty file
                     if (textChunks.empty() && !content.empty()) {
                         SPDLOG_WARN("Tree-sitter не вернул чанков для файла '{}'. Используется разбиение по умолчанию.", canonicalPath);
-                        textChunks = fixedSizeChunkText(content, config.chunk_size, config.chunk_overlap);
+                        textChunks = fixedSizeChunkText(content, config.embedding_max_text_length, config.embedding_chunk_overlap);
                     }
                 } else {
                     // Fallback to fixed-size chunking if strategy is "fixed" or something else.
-                    textChunks = fixedSizeChunkText(content, config.chunk_size, config.chunk_overlap);
+                    textChunks = fixedSizeChunkText(content, config.embedding_max_text_length, config.embedding_chunk_overlap);
                 }
                 
                 // Update file record timestamp and prepare for new chunks
