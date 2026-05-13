@@ -1,91 +1,152 @@
 #include "AssistantRole.h"
 #include "Logger.h"
 #include "ContextIndexer.h" // For SearchResult definition
+#include "tools/ToolManager.h" // Include the new ToolManager
 #include <thread>
 #include <chrono>
 #include <sstream>
-
 #include "Config.h"
-
 using json = nlohmann::json;
 
-AssistantRole::AssistantRole(const Config& config) : config(config), cli(config.server_host, config.server_port) {
+AssistantRole::AssistantRole(const Config& config) 
+    : config(config), 
+      cli(config.server_host, config.server_port),
+      toolManager(std::make_unique<ToolManager>())
+{
     cli.set_connection_timeout(config.chat_completion_timeout_sec, 0);
 }
 
-std::string AssistantRole::answerWithContext(const std::string& userQuery, const std::vector<SearchResult>& searchResults) {
-    std::stringstream prompt_context;
-    prompt_context << "Ты — эксперт-программист. Твоя задача — ответить на вопрос пользователя, основываясь **исключительно** "
-                   << "на предоставленных ниже фрагментах кода из проекта. Не придумывай информацию, которой нет в контексте. "
-                   << "Если контекста недостаточно для полного ответа, прямо укажи, какой информации тебе не хватает "
-                   << "(например, \"для ответа мне нужно увидеть содержимое файла X.cpp\"). "
-                   << "Структурируй свой ответ, будь точным и ссылайся на файлы-источники из контекста.\n\n"
-                   << "Вопрос пользователя: \"" << userQuery << "\"\n\n"
-                   << "Контекст из проекта:\n";
+// Destructor must be defined in the .cpp file where ToolManager is a complete type
+AssistantRole::~AssistantRole() = default;
 
-    for (const auto& result : searchResults) {
-        prompt_context << "--- ИЗ ФАЙЛА: " << result.filePath << " (схожесть: " << std::fixed << std::setprecision(2) << result.score << ") ---\n"
+std::string AssistantRole::processQuery(const std::string& userQuery, const std::vector<SearchResult>& initialContext, ContextIndexer& indexer) {
+    const int MAX_TOOL_CALLS = 5; // To prevent infinite loops
+
+    // 1. Initialize message history
+    json messages = json::array();
+
+    // System Prompt
+    messages.push_back({
+        {"role", "system"},
+        {"content", "Ты — эксперт-программист и AI-ассистент. Твоя задача — отвечать на вопросы пользователя. "
+                    "Ты можешь использовать предоставленный контекст из файлов проекта и вызывать инструменты для получения дополнительной информации или выполнения действий. "
+                    "Будь точным, ссылайся на источники и думай по шагам."}
+    });
+
+    // RAG Context
+    if (!initialContext.empty()) {
+        std::stringstream context_ss;
+        context_ss << "Вот релевантный контекст из кодовой базы, который может помочь с ответом:\n\n";
+        for (const auto& result : initialContext) {
+            context_ss << "--- ИЗ ФАЙЛА: " << result.filePath << " ---\n"
                        << "```\n"
                        << result.chunkText << "\n"
                        << "```\n\n";
-    }
-    prompt_context << "Проанализируй предоставленный контекст и дай исчерпывающий ответ на вопрос пользователя.";
-
-    std::string prompt_text = prompt_context.str();
-
-    SPDLOG_INFO("Генерация ответа с использованием {} фрагментов контекста...", searchResults.size());
-
-    json body = {
-        {"messages", json::array({
-            { {"role", "system"}, {"content", "Вы — полезный помощник для программистов."} },
-            { {"role", "user"}, {"content", prompt_text} }
-        })},
-        {"temperature", 0.3}
-    };
-
-    httplib::Headers headers;
-    if (!config.api_key.empty()) {
-        headers.emplace("Authorization", "Bearer " + config.api_key);
-    }
-    std::string body_str = body.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
-
-    httplib::Result res;
-    for (int attempt = 1; attempt <= config.retry_count; ++attempt) {
-        res = cli.Post("/v1/chat/completions", headers, body_str, "application/json");
-        if (res) { // If we got any response (even an error status), we can break.
-            break;
         }
-        // If res is false, it's a connection error.
-        SPDLOG_WARN("[AssistantRole] Попытка {}/{} для генерации ответа не удалась. Ошибка соединения: {}. Повтор через {} мс...",
-                    attempt, config.retry_count, httplib::to_string(res.error()), config.retry_delay_ms);
-        std::this_thread::sleep_for(std::chrono::milliseconds(config.retry_delay_ms));
+        messages.push_back({
+            {"role", "user"},
+            {"content", context_ss.str()}
+        });
     }
 
-    if (res && res->status == 200) {
-        try {
-            auto json_body = json::parse(res->body);
-            if (json_body.contains("choices") && json_body["choices"].is_array() && !json_body["choices"].empty()) {
-                const auto& first_choice = json_body["choices"][0];
-                if (first_choice.contains("message") && first_choice["message"].contains("content")) {
-                    return first_choice["message"]["content"].get<std::string>();
-                }
+    // Initial User Query
+    messages.push_back({
+        {"role", "user"},
+        {"content", userQuery}
+    });
+
+    for (int i = 0; i < MAX_TOOL_CALLS; ++i) {
+        SPDLOG_INFO("Итерация {} цикла обработки запроса...", i + 1);
+
+        // 2. Prepare request for LLM
+        json body = {
+            {"messages", messages},
+            {"tools", toolManager->getToolsSpecification()},
+            {"tool_choice", "auto"},
+            {"temperature", 0.1}
+        };
+
+        httplib::Headers headers;
+        if (!config.api_key.empty()) {
+            headers.emplace("Authorization", "Bearer " + config.api_key);
+        }
+        std::string body_str = body.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
+
+        // 3. Call LLM
+        httplib::Result res;
+        for (int attempt = 1; attempt <= config.retry_count; ++attempt) {
+            res = cli.Post("/v1/chat/completions", headers, body_str, "application/json");
+            if (res) break;
+            SPDLOG_WARN("[AssistantRole] Попытка {}/{} для генерации ответа не удалась. Ошибка соединения: {}. Повтор...",
+                        attempt, config.retry_count, httplib::to_string(res.error()));
+            std::this_thread::sleep_for(std::chrono::milliseconds(config.retry_delay_ms));
+        }
+
+        if (!res || res->status != 200) {
+            if (res) {
+                SPDLOG_ERROR("Ошибка от LLM. Статус: {}. Тело: {}", res->status, res->body);
+            } else {
+                SPDLOG_ERROR("Ошибка соединения с LLM: {}", httplib::to_string(res.error()));
             }
-        } catch (const json::exception& e) { // Catch any nlohmann::json exception
-            SPDLOG_ERROR("Failed to parse JSON response. Details: {}", e.what());
-            return "Ошибка обработки ответа от модели.";
+            return "Ошибка: не удалось получить ответ от языковой модели.";
         }
-    } else {
-        if (res) { // HTTP error
-            SPDLOG_ERROR("Failed to get analysis. Status: {}", res->status);
-            SPDLOG_ERROR("Server response: {}", res->body);
-        } else { // Connection error
-            auto err = res.error();
-            SPDLOG_ERROR("Failed to get analysis. Connection error: {}", httplib::to_string(err));
+
+        // 4. Process LLM response
+        json response_json;
+        try {
+            response_json = json::parse(res->body);
+        } catch (const json::exception& e) {
+            SPDLOG_ERROR("Не удалось разобрать JSON-ответ от LLM: {}", e.what());
+            return "Ошибка: не удалось обработать ответ модели.";
         }
-        return "Не удалось связаться с моделью.";
+
+        if (!response_json.contains("choices") || response_json["choices"].empty()) {
+            SPDLOG_ERROR("Ответ LLM не содержит 'choices'.");
+            return "Ошибка: получен некорректный ответ от модели.";
+        }
+
+        const auto& choice = response_json["choices"][0];
+        const auto& message = choice["message"];
+
+        // Case 1: LLM provides a direct answer
+        if (message.contains("content") && message["content"].is_string() && !message["content"].get<std::string>().empty()) {
+            SPDLOG_INFO("LLM предоставил прямой ответ. Завершение цикла.");
+            return message["content"].get<std::string>();
+        }
+
+        // Case 2: LLM wants to call tools
+        if (message.contains("tool_calls") && message["tool_calls"].is_array()) {
+            SPDLOG_INFO("LLM запросил вызов инструментов.");
+            // Add the assistant's response (with tool calls) to the history
+            messages.push_back(message);
+
+            const auto& tool_calls = message["tool_calls"];
+            for (const auto& call : tool_calls) {
+                std::string tool_name = call["function"]["name"];
+                // Arguments can be a string that needs parsing
+                json tool_args = json::parse(call["function"]["arguments"].get<std::string>());
+                std::string tool_id = call["id"];
+
+                // Execute the tool
+                std::string result = toolManager->executeTool(tool_name, tool_args, &indexer);
+
+                // Add the tool's result to the history
+                messages.push_back({
+                    {"role", "tool"},
+                    {"tool_call_id", tool_id},
+                    {"content", result}
+                });
+            }
+            // Continue to the next iteration of the loop
+            continue;
+        }
+
+        // Fallback if the response is unexpected (e.g. content is null)
+        SPDLOG_ERROR("Неожиданный формат ответа от LLM: {}", choice.dump(2));
+        return "Ошибка: получен неожиданный формат ответа от модели.";
     }
 
-    return "Получен неожиданный ответ от модели.";
+    return "Ошибка: превышено максимальное количество вызовов инструментов.";
 }
 
 std::string AssistantRole::generateProjectSummaryGreeting(int file_count, int embedding_count) {
