@@ -107,10 +107,29 @@ void CodeParser::extractChunks(const std::string& sourceCode, void* node, std::v
                 std::vector<std::string> sub_chunks;
                 size_t start = 0;
                 while (start < chunk_text.length()) {
-                    size_t end = std::min(start + (size_t)config.embedding_max_text_length, chunk_text.length());
-                    sub_chunks.push_back(chunk_text.substr(start, end - start));
-                    if (end == chunk_text.length()) break;
-                    start += (config.embedding_max_text_length - config.embedding_chunk_overlap);
+                    if (start + config.embedding_max_text_length >= chunk_text.length()) {
+                        sub_chunks.push_back(chunk_text.substr(start));
+                        break;
+                    }
+
+                    size_t target_end = start + config.embedding_max_text_length;
+                    // Пытаемся найти перевод строки в зоне перекрытия (overlap), чтобы разбить красиво
+                    size_t newline_pos = chunk_text.rfind('\n', target_end);
+                    
+                    size_t actual_end = target_end;
+                    if (newline_pos != std::string::npos && newline_pos > start + (config.embedding_max_text_length - config.embedding_chunk_overlap)) {
+                        actual_end = newline_pos + 1; // Режем прямо по концу строки
+                    }
+
+                    sub_chunks.push_back(chunk_text.substr(start, actual_end - start));
+                    
+                    // Сдвигаемся назад на размер overlap для непрерывности контекста
+                    size_t step = actual_end - start;
+                    if (step <= (size_t)config.embedding_chunk_overlap) {
+                        start = actual_end; // Защита от зависания
+                    } else {
+                        start = actual_end - config.embedding_chunk_overlap;
+                    }
                 }
 
                 chunks.insert(chunks.end(), sub_chunks.begin(), sub_chunks.end());
