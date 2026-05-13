@@ -8,7 +8,14 @@
 // Forward declare Tree-sitter types to avoid including C headers in a C++ header
 struct TSLanguage;
 struct TSParser;
+struct TSNode;
 struct Config; // Forward declare Config
+
+struct CodeChunk {
+    std::string text;
+    size_t start_byte;
+    size_t length;
+};
 
 class CodeParser {
 public:
@@ -22,7 +29,7 @@ public:
      * @param fileExtension The extension of the file (e.g., ".cpp", ".h").
      * @return A vector of strings, where each string is a logical chunk of code.
      */
-    std::vector<std::string> parse(const std::string& sourceCode, const std::string& fileExtension);
+    std::vector<CodeChunk> parse(const std::string& sourceCode, const std::string& fileExtension);
 
 private:
     const Config& config;
@@ -35,6 +42,6 @@ private:
     void initializeLanguages();
     void registerLanguage(const std::vector<std::string>& extensions, TSLanguage* language);
     
-    // Helper to recursively extract nodes
-    void extractChunks(const std::string& sourceCode, void* rootNode, std::vector<std::string>& chunks);
+// Helper to recursively extract nodes, now passes TSLanguage* for language-specific chunking
+    void extractChunks(const std::string& sourceCode, TSNode tsNode, std::vector<CodeChunk>& chunks, TSLanguage* language);
 };

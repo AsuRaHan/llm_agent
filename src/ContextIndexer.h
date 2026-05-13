@@ -25,15 +25,21 @@ struct SearchResult {
     double score;
 };
 
-// Struct to hold chunk metadata (without embedding)
-struct ChunkData {
-    std::string text;
+// Points to a specific location of a chunk within a file
+struct ChunkLocation {
+    size_t start_byte;
+    size_t length;
+};
+
+// Stores information about an indexed chunk
+struct ChunkInfo {
     size_t id; // ID used in HNSW index
+    ChunkLocation location;
 };
 struct FileRecord
 {
     fs::file_time_type last_write_time;
-    std::vector<ChunkData> chunks; // Now stores chunk metadata
+    std::vector<ChunkInfo> chunks;
 };
 
 class ContextIndexer
@@ -52,11 +58,12 @@ public:
 
 private:
     std::string readFileContent(const fs::path& path);
+    std::string readChunkContent(const std::string& path, const ChunkLocation& location);
     void loadIndex();
     // cosineSimilarity is no longer needed for search, but can be useful for score calculation
     double cosineSimilarity(const std::vector<float>& a, const std::vector<float>& b);
-    std::vector<std::string> fixedSizeChunkText(const std::string& text, size_t chunkSize, size_t overlap);
-    void addChunk(const std::string& path, const std::string& text, const std::vector<float>& embedding);
+    std::vector<ChunkLocation> fixedSizeChunkText(const std::string& text, size_t chunkSize, size_t overlap);
+    void addChunk(const std::string& path, const std::string& text, const std::vector<float>& embedding, const ChunkLocation& location);
 
     const Config& config;
     EmbeddingClient embeddingClient;
@@ -73,6 +80,6 @@ private:
     size_t embedding_dim = 0; // To be determined from the first embedding
     hnswlib::L2Space* space = nullptr;
     hnswlib::HierarchicalNSW<float>* index = nullptr;
-    std::unordered_map<size_t, std::pair<std::string, std::string>> id_to_chunk_map; // map ID -> {filePath, chunkText}
+    std::unordered_map<size_t, std::pair<std::string, ChunkLocation>> id_to_chunk_map; // map ID -> {filePath, location}
     size_t current_max_elements = 0;
 };
