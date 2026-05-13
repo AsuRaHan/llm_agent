@@ -94,10 +94,10 @@ cmake --build build --config Release
         "ignored_extensions": [
             ".exe", ".obj", ".pdb", ".ilk", ".sln", ".vcxproj", ".filters", ".user",
             ".recipe", ".tlog", ".lastbuildstate", ".bin", ".stamp", ".cmake",
-            ".json", ".log", ".md"
+            ".json", ".log" // .md and .cmake are now parsed by tree-sitter
         ],
         "ignored_files": [
-            ".gitignore"
+            ".gitignore" // CMakeLists.txt is now parsed by tree-sitter
         ]
     }
 }
