@@ -44,7 +44,7 @@
     },
     "logging": {
         "log_file_path": "app.log",
-        "log_to_console": false
+        "log_to_console": true
     },
     "server": {
         "api_key": "",

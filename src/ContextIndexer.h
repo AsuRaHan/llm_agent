@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <chrono>
 #include <memory>
+#include <mutex>
 
 #include "EmbeddingClient.h"
 #include "nlohmann/json.hpp"
@@ -56,6 +57,10 @@ public:
     void saveIndex();
     std::vector<SearchResult> findTopK(const std::string& queryText, int k);
 
+    // Methods for incremental updates
+    void reindexFile(const std::string& path);
+    void removeFileFromIndex(const std::string& path);
+
 private:
     std::string readFileContent(const fs::path& path);
     std::string readChunkContent(const std::string& path, const ChunkLocation& location);
@@ -82,4 +87,5 @@ private:
     hnswlib::HierarchicalNSW<float>* index = nullptr;
     std::unordered_map<size_t, std::pair<std::string, ChunkLocation>> id_to_chunk_map; // map ID -> {filePath, location}
     size_t current_max_elements = 0;
+    mutable std::recursive_mutex mtx;
 };
