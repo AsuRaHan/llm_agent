@@ -20,8 +20,6 @@ AssistantRole::AssistantRole(const Config& config)
 AssistantRole::~AssistantRole() = default;
 
 std::string AssistantRole::processQuery(const std::string& userQuery, const std::vector<SearchResult>& initialContext, ContextIndexer& indexer) {
-    const int MAX_TOOL_CALLS = 5; // To prevent infinite loops
-
     // 1. Initialize message history
     json messages = json::array();
 
@@ -55,7 +53,7 @@ std::string AssistantRole::processQuery(const std::string& userQuery, const std:
         {"content", userQuery}
     });
 
-    for (int i = 0; i < MAX_TOOL_CALLS; ++i) {
+    for (int i = 0; i < config.max_tool_calls; ++i) {
         SPDLOG_INFO("Итерация {} цикла обработки запроса...", i + 1);
 
         // 2. Prepare request for LLM
@@ -123,8 +121,13 @@ std::string AssistantRole::processQuery(const std::string& userQuery, const std:
             const auto& tool_calls = message["tool_calls"];
             for (const auto& call : tool_calls) {
                 std::string tool_name = call["function"]["name"];
-                // Arguments can be a string that needs parsing
-                json tool_args = json::parse(call["function"]["arguments"].get<std::string>());
+                json tool_args;
+                // Handle cases where arguments are a stringified JSON or a direct JSON object
+                if (call["function"]["arguments"].is_string()) {
+                    tool_args = json::parse(call["function"]["arguments"].get<std::string>());
+                } else {
+                    tool_args = call["function"]["arguments"];
+                }
                 std::string tool_id = call["id"];
 
                 // Execute the tool
@@ -146,7 +149,7 @@ std::string AssistantRole::processQuery(const std::string& userQuery, const std:
         return "Ошибка: получен неожиданный формат ответа от модели.";
     }
 
-    return "Ошибка: превышено максимальное количество вызовов инструментов.";
+    return "Ошибка: превышено максимальное количество вызовов инструментов (" + std::to_string(config.max_tool_calls) + ").";
 }
 
 std::string AssistantRole::generateProjectSummaryGreeting(int file_count, int embedding_count) {

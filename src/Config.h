@@ -17,6 +17,7 @@ struct Config {
     // Timeout settings
     int embedding_timeout_sec = 60;
     int chat_completion_timeout_sec = 300;
+    int max_tool_calls = 5;
     int embedding_max_text_length = 1500;
 
     // Indexing settings
