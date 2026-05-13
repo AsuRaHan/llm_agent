@@ -10,6 +10,10 @@ extern "C" {
 
 // Forward declare the function to get the C++ language grammar
 extern "C" TSLanguage* tree_sitter_cpp();
+// Forward declare functions for new grammars
+extern "C" TSLanguage* tree_sitter_markdown();
+extern "C" TSLanguage* tree_sitter_cmake();
+
 
 CodeParser::CodeParser(const Config& config) 
     : config(config) {
@@ -27,6 +31,8 @@ void CodeParser::initializeLanguages() {
     SPDLOG_INFO("Инициализация языковых парсеров Tree-sitter...");
     // Register C++
     registerLanguage({".cpp", ".hpp", ".h", ".cxx", ".hxx", ".cc", ".hh"}, tree_sitter_cpp());
+    registerLanguage({".md"}, tree_sitter_markdown());
+    registerLanguage({".cmake", "CMakeLists.txt"}, tree_sitter_cmake());
     // Future languages will be registered here, e.g.:
     // registerLanguage({".py"}, tree_sitter_python());
 }
