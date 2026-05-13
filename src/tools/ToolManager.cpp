@@ -6,6 +6,7 @@
 #include "GrepSearchTool.h" // Include the grep tool
 #include "FileGlobSearchTool.h" // Include the new glob tool
 #include "WriteFileTool.h"      // Include the new write tool
+#include "EditFileTool.h"       // Include the new edit tool
 #include "../Config.h" // Needed for the constructor
 
 ToolManager::ToolManager(const Config& config) {
@@ -21,6 +22,7 @@ ToolManager::ToolManager(const Config& config) {
     if (config.enable_dangerous_tools) {
         SPDLOG_WARN("Включены ОПАСНЫЕ инструменты (например, запись файлов).");
         registerTool(std::make_unique<WriteFileTool>());
+        registerTool(std::make_unique<EditFileTool>());
     }
 }
 
