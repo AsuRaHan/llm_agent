@@ -301,36 +301,38 @@ std::vector<SearchResult> ContextIndexer::findTopK(const std::string& queryText,
         keywords.insert((*i).str(0));
     }
 
-    // Now, iterate through the collected keywords and boost matching files
-    for (std::string keyword : keywords) {
-        if (keyword.length() < 3) continue; // Ignore short keywords
+    // Умный поиск ключевых слов ВНУТРИ текста чанков кодовой базы
+    for (const std::string& keyword : keywords) {
+        if (keyword.length() < 3) continue; // Игнорируем слишком короткие слова
 
         std::string lower_keyword = keyword;
         std::transform(lower_keyword.begin(), lower_keyword.end(), lower_keyword.begin(),
             [](unsigned char c){ return std::tolower(c); });
 
         for (const auto& [path, record] : fileIndex) {
-            fs::path p(path);
-            std::string file_stem = p.stem().string();
-            std::string lower_file_stem = file_stem;
-            std::transform(lower_file_stem.begin(), lower_file_stem.end(), lower_file_stem.begin(),
-                [](unsigned char c){ return std::tolower(c); });
+            for (const auto& chunk_meta : record.chunks) {
+                // Если этот чанк модель уже и так нашла через эмбеддинги — пропускаем
+                if (seenChunks.find(chunk_meta.text) != seenChunks.end()) continue;
 
-            // Check if the file stem contains the keyword.
-            if (lower_file_stem.find(lower_keyword) != std::string::npos) {
-                SPDLOG_DEBUG("Keyword boost: Found match for '{}' in file stem '{}', adding chunks from '{}'", keyword, file_stem, path);
-                for (const auto& chunk_meta : record.chunks) {
-                    if (seenChunks.find(chunk_meta.text) == seenChunks.end()) {
-                        topResults.push_back({path, chunk_meta.text, 1.1}); // Boost with score > 1.0
-                        seenChunks.insert(chunk_meta.text);
-                    }
+                std::string lower_chunk_text = chunk_meta.text;
+                std::transform(lower_chunk_text.begin(), lower_chunk_text.end(), lower_chunk_text.begin(),
+                    [](unsigned char c){ return std::tolower(c); });
+
+                // Проверяем вхождение ключевого слова (класса, функции) прямо в тело кода чанка
+                if (lower_chunk_text.find(lower_keyword) != std::string::npos) {
+                    SPDLOG_DEBUG("Keyword boost: Найдено совпадение для '{}' внутри чанка файла '{}'", keyword, path);
+                    topResults.push_back({path, chunk_meta.text, 1.15}); // Даем мощный буст (1.15)
+                    seenChunks.insert(chunk_meta.text);
                 }
             }
         }
     }
 
-    // Re-sort and resize if keyword boost added items
-    std::sort(topResults.begin(), topResults.end(), [](const SearchResult& a, const SearchResult& b) { return a.score > b.score; });
+    // Финальная сортировка по убыванию score и обрезка до k результатов
+    std::sort(topResults.begin(), topResults.end(), [](const SearchResult& a, const SearchResult& b) { 
+        return a.score > b.score; 
+    });
+    
     if (topResults.size() > (size_t)k) {
         topResults.resize(k);
     }
