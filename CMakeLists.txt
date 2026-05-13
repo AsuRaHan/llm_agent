@@ -1,4 +1,10 @@
 cmake_minimum_required(VERSION 3.15)
+if(POLICY CMP0169)
+  cmake_policy(SET CMP0169 OLD)
+endif()
+# Разрешаем создание дублирующих целевых (для работы с несколькими tree-sitter грамматиками)
+set(ALLOW_DUPLICATE_CUSTOM_TARGETS ON)
+
 project(Agent)
 
 # Указываем CMake складывать готовый .exe прямо в корень проекта
@@ -69,27 +75,81 @@ FetchContent_MakeAvailable(tree_sitter_core)
 
 # tree-sitter-cpp grammar
 FetchContent_Declare(
-  tree_sitter_cpp_grammar
+  tree_s_cpp_gram
   GIT_REPOSITORY https://github.com/tree-sitter/tree-sitter-cpp.git
   GIT_TAG        master # As requested
   GIT_SHALLOW TRUE
   FETCHCONTENT_QUIET OFF
 )
-FetchContent_MakeAvailable(tree_sitter_cpp_grammar)
+FetchContent_Populate(tree_s_cpp_gram)
+set(tree_sitter_cpp_grammar_SOURCE_DIR ${tree_s_cpp_gram_SOURCE_DIR})
+
+# tree-sitter-markdown grammar
+FetchContent_Declare(
+  tree_s_md_gram
+  GIT_REPOSITORY https://github.com/tree-sitter-grammars/tree-sitter-markdown.git
+  GIT_TAG        split_parser
+  GIT_SHALLOW TRUE
+  FETCHCONTENT_QUIET OFF
+)
+FetchContent_Populate(tree_s_md_gram)
+set(tree_sitter_markdown_grammar_SOURCE_DIR ${tree_s_md_gram_SOURCE_DIR})
+
+# tree-sitter-cmake grammar
+FetchContent_Declare(
+  tree_s_cmake_gram
+  GIT_REPOSITORY https://github.com/uyha/tree-sitter-cmake.git
+  GIT_TAG        master
+  GIT_SHALLOW TRUE
+  FETCHCONTENT_QUIET OFF
+)
+FetchContent_Populate(tree_s_cmake_gram)
+set(tree_sitter_cmake_grammar_SOURCE_DIR ${tree_s_cmake_gram_SOURCE_DIR})
 
 # Create static library from tree-sitter-cpp
 add_library(tree_sitter_cpp_lib STATIC
   ${tree_sitter_cpp_grammar_SOURCE_DIR}/src/parser.c
   ${tree_sitter_cpp_grammar_SOURCE_DIR}/src/scanner.c
 )
-
 target_include_directories(tree_sitter_cpp_lib PUBLIC
   ${tree_sitter_cpp_grammar_SOURCE_DIR}/src
 )
 
-target_link_libraries(tree_sitter_cpp_lib PRIVATE
-  tree-sitter
+# Create static library from tree-sitter-cmake (Только parser.c, сканер отсутствует)
+add_library(tree_sitter_cmake_lib STATIC
+  ${tree_sitter_cmake_grammar_SOURCE_DIR}/src/parser.c
+  ${tree_sitter_cmake_grammar_SOURCE_DIR}/src/scanner.c
 )
+target_include_directories(tree_sitter_cmake_lib PUBLIC
+  ${tree_sitter_cmake_grammar_SOURCE_DIR}/src
+)
+set_source_files_properties(
+  ${tree_sitter_cmake_grammar_SOURCE_DIR}/src/parser.c
+  ${tree_sitter_cmake_grammar_SOURCE_DIR}/src/scanner.c
+  PROPERTIES LANGUAGE C
+)
+
+# Create static library from tree-sitter-markdown
+add_library(tree_sitter_markdown_lib STATIC
+  ${tree_sitter_markdown_grammar_SOURCE_DIR}/tree-sitter-markdown/src/parser.c
+  ${tree_sitter_markdown_grammar_SOURCE_DIR}/tree-sitter-markdown/src/scanner.c
+)
+target_include_directories(tree_sitter_markdown_lib PUBLIC
+  ${tree_sitter_markdown_grammar_SOURCE_DIR}/tree-sitter-markdown/src
+)
+
+# Явно указываем, что это файлы на чистом Си
+set_source_files_properties(
+  ${tree_sitter_markdown_grammar_SOURCE_DIR}/tree-sitter-markdown/src/parser.c
+  ${tree_sitter_markdown_grammar_SOURCE_DIR}/tree-sitter-markdown/src/scanner.c
+  PROPERTIES LANGUAGE C
+)
+
+# Переопределяем видимость символов для статической библиотеки маркдауна, 
+# чтобы предотвратить конфликты одинаковых имен функций с другими сканерами на этапе линковки
+if(MSVC)
+  target_compile_options(tree_sitter_markdown_lib PRIVATE "/wd4005" "/wd4142")
+endif()
 
 add_executable(Agent 
       src/main.cpp 
@@ -117,7 +177,7 @@ target_include_directories(Agent PUBLIC
 )
 
 # Link against dependencies
-target_link_libraries(Agent PRIVATE spdlog::spdlog hnswlib tree-sitter tree_sitter_cpp_lib)
+target_link_libraries(Agent PRIVATE spdlog::spdlog hnswlib tree-sitter tree_sitter_cpp_lib tree_sitter_markdown_lib tree_sitter_cmake_lib)
 
 # --- Platform Specifics ---
 

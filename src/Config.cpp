@@ -28,10 +28,9 @@ void Config::create_default(const std::string& filepath) const {
     j["indexing"]["ignored_extensions"] = {
         ".exe", ".obj", ".pdb", ".ilk", ".sln", ".vcxproj", ".filters", ".user",
         ".recipe", ".tlog", ".lastbuildstate", ".bin", ".stamp", ".cmake",
-        ".json",
-        ".log"
+        ".json", ".log"
     };
-    j["indexing"]["ignored_files"] = { ".gitignore" };
+    j["indexing"]["ignored_files"] = { ".gitignore", "CMakeLists.txt" }; // CMakeLists.txt is now parsed by tree-sitter
 
     std::ofstream file(filepath);
     file << j.dump(4);
