@@ -16,6 +16,7 @@
 #include <filesystem>
 #include "Logger.h"
 #include "Config.h"
+#include "FileWatcher.h"
 
 namespace fs = std::filesystem;
 
@@ -312,6 +313,9 @@ int main(int argc, char* argv[])
         // ====== Создание ассистента ======
         AssistantRole assistant(config);
 
+        // ====== Запуск мониторинга файлов ======
+        FileWatcher watcher(*indexer);
+        watcher.start(projectDir);
         // ====== Главный цикл приложения ======
         bool running = true;
         while (running) {
@@ -348,6 +352,8 @@ int main(int argc, char* argv[])
             }
         }
 
+        SPDLOG_INFO("Остановка файлового мониторинга...");
+        watcher.stop();
         SPDLOG_INFO("Agent finished successfully.");
         clear_screen();
         std::cout << "\n";
