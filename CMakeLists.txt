@@ -96,15 +96,15 @@ FetchContent_Populate(tree_s_md_gram)
 set(tree_sitter_markdown_grammar_SOURCE_DIR ${tree_s_md_gram_SOURCE_DIR})
 
 # tree-sitter-cmake grammar
-FetchContent_Declare(
-  tree_s_cmake_gram
-  GIT_REPOSITORY https://github.com/uyha/tree-sitter-cmake.git
-  GIT_TAG        master
-  GIT_SHALLOW TRUE
-  FETCHCONTENT_QUIET OFF
-)
-FetchContent_Populate(tree_s_cmake_gram)
-set(tree_sitter_cmake_grammar_SOURCE_DIR ${tree_s_cmake_gram_SOURCE_DIR})
+# FetchContent_Declare(
+#   tree_s_cmake_gram
+#   GIT_REPOSITORY https://github.com/uyha/tree-sitter-cmake.git
+#   GIT_TAG        master
+#   GIT_SHALLOW TRUE
+#   FETCHCONTENT_QUIET OFF
+# )
+# FetchContent_Populate(tree_s_cmake_gram)
+# set(tree_sitter_cmake_grammar_SOURCE_DIR ${tree_s_cmake_gram_SOURCE_DIR})
 
 # Create static library from tree-sitter-cpp
 add_library(tree_sitter_cpp_lib STATIC
@@ -116,18 +116,18 @@ target_include_directories(tree_sitter_cpp_lib PUBLIC
 )
 
 # Create static library from tree-sitter-cmake (Только parser.c, сканер отсутствует)
-add_library(tree_sitter_cmake_lib STATIC
-  ${tree_sitter_cmake_grammar_SOURCE_DIR}/src/parser.c
-  ${tree_sitter_cmake_grammar_SOURCE_DIR}/src/scanner.c
-)
-target_include_directories(tree_sitter_cmake_lib PUBLIC
-  ${tree_sitter_cmake_grammar_SOURCE_DIR}/src
-)
-set_source_files_properties(
-  ${tree_sitter_cmake_grammar_SOURCE_DIR}/src/parser.c
-  ${tree_sitter_cmake_grammar_SOURCE_DIR}/src/scanner.c
-  PROPERTIES LANGUAGE C
-)
+# add_library(tree_sitter_cmake_lib STATIC
+#   ${tree_sitter_cmake_grammar_SOURCE_DIR}/src/parser.c
+#   ${tree_sitter_cmake_grammar_SOURCE_DIR}/src/scanner.c
+# )
+# target_include_directories(tree_sitter_cmake_lib PUBLIC
+#   ${tree_sitter_cmake_grammar_SOURCE_DIR}/src
+# )
+# set_source_files_properties(
+#   ${tree_sitter_cmake_grammar_SOURCE_DIR}/src/parser.c
+#   ${tree_sitter_cmake_grammar_SOURCE_DIR}/src/scanner.c
+#   PROPERTIES LANGUAGE C
+# )
 
 # Create static library from tree-sitter-markdown
 add_library(tree_sitter_markdown_lib STATIC
@@ -177,7 +177,7 @@ target_include_directories(Agent PUBLIC
 )
 
 # Link against dependencies
-target_link_libraries(Agent PRIVATE spdlog::spdlog hnswlib tree-sitter tree_sitter_cpp_lib tree_sitter_markdown_lib tree_sitter_cmake_lib)
+target_link_libraries(Agent PRIVATE spdlog::spdlog hnswlib tree-sitter tree_sitter_cpp_lib tree_sitter_markdown_lib)
 
 # --- Platform Specifics ---
 

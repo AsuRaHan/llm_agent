@@ -526,12 +526,7 @@ void ContextIndexer::indexDirectory(const fs::path& directoryPath)
                 std::vector<CodeChunk> semanticChunks;
                 bool use_semantic = false;
 
-                std::string parser_identifier;
-                if (path.filename() == "CMakeLists.txt") {
-                    parser_identifier = "CMakeLists.txt"; // Use full filename for CMakeLists.txt
-                } else {
-                    parser_identifier = path.extension().string(); // Use extension for other files
-                }
+                std::string parser_identifier = path.extension().string(); // Всегда используем расширение файла
 
                 if ((config.chunking_strategy == "tree-sitter" || config.chunking_strategy == "tree-sitter-hybrid") && codeParser) {
                     semanticChunks = codeParser->parse(content, parser_identifier); // Pass the correct identifier

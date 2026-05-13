@@ -1,7 +1,7 @@
 {
     "assistant": {
         "chat_completion_timeout_sec": 300,
-        "max_tool_calls": 5
+        "max_tool_calls": 50
     },
     "embedding": {
         "chunk_overlap": 200,

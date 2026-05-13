@@ -10,9 +10,8 @@ extern "C" {
 
 // Forward declare the function to get the C++ language grammar
 extern "C" TSLanguage* tree_sitter_cpp();
-// Forward declare functions for new grammars
 extern "C" TSLanguage* tree_sitter_markdown();
-extern "C" TSLanguage* tree_sitter_cmake();
+// Forward declare functions for new grammars
 
 
 CodeParser::CodeParser(const Config& config) 
@@ -32,7 +31,6 @@ void CodeParser::initializeLanguages() {
     // Register C++
     registerLanguage({".cpp", ".hpp", ".h", ".cxx", ".hxx", ".cc", ".hh"}, tree_sitter_cpp());
     registerLanguage({".md"}, tree_sitter_markdown());
-    registerLanguage({".cmake", "CMakeLists.txt"}, tree_sitter_cmake());
     // Future languages will be registered here, e.g.:
     // registerLanguage({".py"}, tree_sitter_python());
 }
@@ -102,12 +100,6 @@ void CodeParser::extractChunks(const std::string& sourceCode, TSNode tsNode, std
         if (nodeType == "atx_heading" || nodeType == "setext_heading" || 
             nodeType == "fenced_code_block" || nodeType == "paragraph" ||
             nodeType == "list_item") { // Also consider list items as chunks
-            is_chunk_candidate = true;
-        }
-    } else if (lang_name == "cmake") {
-        // For CMake, consider command invocations, function and macro definitions as chunks
-        if (nodeType == "command_invocation" || nodeType == "function_definition" || 
-            nodeType == "macro_definition") {
             is_chunk_candidate = true;
         }
     }
