@@ -104,12 +104,15 @@ void FileWatcher::run() {
                         case FILE_ACTION_MODIFIED:
                         case FILE_ACTION_RENAMED_NEW_NAME:
                             SPDLOG_INFO("[FileWatcher] Обнаружено изменение/создание файла: {}", canonical_path_str);
+                            last_change_time = std::chrono::steady_clock::now();
                             indexer.reindexFile(canonical_path_str);
+                            index_is_dirty = true;
                             break;
                         case FILE_ACTION_REMOVED:
                         case FILE_ACTION_RENAMED_OLD_NAME:
-                            SPDLOG_INFO("[FileWatcher] Обнаружено удаление файла: {}", canonical_path_str);
+                            SPDLOG_INFO("[FileWatcher] Обнаружено удаление/переименование файла: {}", canonical_path_str);
                             indexer.removeFileFromIndex(canonical_path_str);
+                            index_is_dirty = true;
                             break;
                     }
 
@@ -118,40 +121,29 @@ void FileWatcher::run() {
                 }
             }
         }
+
+        // Debounced save: if there are changes and some time has passed, save the index.
+        if (index_is_dirty && std::chrono::steady_clock::now() - last_change_time > std::chrono::seconds(5)) {
+            SPDLOG_INFO("[FileWatcher] Сохранение накопленных изменений индекса...");
+            indexer.saveIndex();
+            index_is_dirty = false;
+        }
     }
+
+    // Final save before the thread exits, if there are any pending changes.
+    if (index_is_dirty) {
+        SPDLOG_INFO("[FileWatcher] Сохранение финальных изменений индекса перед завершением потока...");
+        indexer.saveIndex();
+        index_is_dirty = false;
+    }
+
     CloseHandle(hDir);
     CloseHandle(overlapped.hEvent);
 #else // Linux inotify implementation
-    // NOTE: This is a simplified implementation. A robust solution would need to
-    // recursively add watches for all subdirectories.
-    int fd = inotify_init1(IN_NONBLOCK);
-    if (fd < 0) {
-        SPDLOG_ERROR("[FileWatcher] Не удалось инициализировать inotify.");
-        return;
-    }
-
-    std::map<int, std::string> wd_to_path;
-    for (auto const& dir_entry : fs::recursive_directory_iterator(directory_to_watch)) {
-        if (dir_entry.is_directory()) {
-            int wd = inotify_add_watch(fd, dir_entry.path().c_str(), IN_CREATE | IN_DELETE | IN_MODIFY | IN_MOVED_TO | IN_MOVED_FROM);
-            if (wd >= 0) {
-                wd_to_path[wd] = dir_entry.path().string();
-            }
-        }
-    }
-
-    const int buffer_size = (10 * (sizeof(struct inotify_event) + NAME_MAX + 1));
-    char buffer[buffer_size];
-
+    SPDLOG_WARN("[FileWatcher] Мониторинг файлов в реальном времени на Linux пока не поддерживается.");
+    // Keep the thread alive but idle until stop() is called.
     while (running) {
-        // This is a simple polling implementation. A real-world app would use select/poll/epoll.
-        int length = read(fd, buffer, buffer_size);
-        if (length > 0) {
-            // Process events... (omitted for brevity, but logic is similar to Windows)
-            // This part is complex and a library like 'efsw' is highly recommended.
-        }
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
-    close(fd);
 #endif
 }

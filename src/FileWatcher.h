@@ -4,6 +4,7 @@
 #include <thread>
 #include <atomic>
 #include <functional>
+#include <chrono>
 
 // Forward declarations
 class ContextIndexer;
@@ -26,4 +27,6 @@ private:
     std::string directory_to_watch;
     std::thread watcher_thread;
     std::atomic<bool> running{false};
+    std::atomic<bool> index_is_dirty{false};
+    std::chrono::steady_clock::time_point last_change_time;
 };

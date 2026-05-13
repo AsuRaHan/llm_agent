@@ -27,8 +27,10 @@ struct Config {
     bool enable_dangerous_tools = true; // Set to true to enable tools that can modify the filesystem (e.g., WriteFileTool)
 
     // Logging settings
-    std::string log_file_path = "app.log";
+    std::string log_file_path = "agent.log";
     bool log_to_console = true;
+    std::string log_file_level = "trace";   // "trace", "debug", "info", "warn", "error", "critical"
+    std::string log_console_level = "trace"; // "trace", "debug", "info", "warn", "error", "critical"
 
     // Indexing settings
     size_t chunk_size = 10000;

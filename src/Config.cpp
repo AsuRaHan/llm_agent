@@ -26,6 +26,8 @@ void Config::create_default(const std::string& filepath) const {
 
     j["logging"]["log_file_path"] = log_file_path;
     j["logging"]["log_to_console"] = log_to_console;
+    j["logging"]["log_file_level"] = log_file_level;
+    j["logging"]["log_console_level"] = log_console_level;
 
     j["indexing"]["chunk_size"] = chunk_size;
     j["indexing"]["chunk_overlap"] = chunk_overlap;
@@ -80,6 +82,8 @@ bool Config::load(const std::string& filepath) {
 
         log_file_path = j.value("/logging/log_file_path"_json_pointer, log_file_path);
         log_to_console = j.value("/logging/log_to_console"_json_pointer, log_to_console);
+        log_file_level = j.value("/logging/log_file_level"_json_pointer, log_file_level);
+        log_console_level = j.value("/logging/log_console_level"_json_pointer, log_console_level);
 
         chunk_size = j.value("/indexing/chunk_size"_json_pointer, chunk_size);
         chunk_overlap = j.value("/indexing/chunk_overlap"_json_pointer, chunk_overlap);
