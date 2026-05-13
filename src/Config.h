@@ -17,9 +17,12 @@ struct Config {
     // Timeout settings
     int embedding_timeout_sec = 60;
     int chat_completion_timeout_sec = 300;
-    int max_tool_calls = 5;
+    int max_tool_calls = 50;
     int embedding_max_text_length = 1500;
     int embedding_chunk_overlap = 200;
+
+    // Tools settings
+    bool enable_dangerous_tools = true; // Set to true to enable tools that can modify the filesystem (e.g., WriteFileTool)
 
     // Indexing settings
     size_t chunk_size = 10000;
