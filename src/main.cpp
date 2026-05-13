@@ -197,7 +197,7 @@ int main(int argc, char* argv[]) // Modified main signature
                 }
                 SPDLOG_INFO("Использую контекст из файлов: {}", sources_str);
 
-                std::string analysis = assistant.answerWithContext(query, topResults);
+                std::string analysis = assistant.processQuery(query, topResults, indexer);
                 SPDLOG_INFO("\n--- Ответ Агента ---");
                 SPDLOG_INFO("{}", analysis);
                 SPDLOG_INFO("---------------------\n");
