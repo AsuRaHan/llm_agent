@@ -274,32 +274,51 @@ std::vector<SearchResult> ContextIndexer::findTopK(const std::string& queryText,
     });
 
     // --- Intelligent Keyword Boost ---
-    // If the query mentions a filename like "config.json", this extracts the stem ("config")
-    // and finds source files with a matching stem (e.g., "Config.cpp"), forcing them into the context.
+    // If the query mentions a filename or class name, this extracts it
+    // and finds source files with a matching stem, forcing them into the context.
     std::unordered_set<std::string> seenChunks;
     for(const auto& res : topResults) {
         seenChunks.insert(res.chunkText);
     }
 
-    std::regex re(R"(([\w\.-]+)\.[\w]+)"); // e.g., "config.json"
-    auto words_begin = std::sregex_iterator(queryText.begin(), queryText.end(), re);
-    auto words_end = std::sregex_iterator();
+    std::unordered_set<std::string> keywords;
 
-    for (std::sregex_iterator i = words_begin; i != words_end; ++i) {
-        std::smatch match = *i;
-        fs::path query_path(match.str(0));
-        std::string keyword_stem = query_path.stem().string();
-        std::transform(keyword_stem.begin(), keyword_stem.end(), keyword_stem.begin(),
+    // 1. Find keywords that look like filenames (e.g., "config.json") and extract the stem ("config")
+    std::regex re_filename(R"(([\w\.-]+)\.[\w]+)");
+    auto fn_begin = std::sregex_iterator(queryText.begin(), queryText.end(), re_filename);
+    auto fn_end = std::sregex_iterator();
+    for (std::sregex_iterator i = fn_begin; i != fn_end; ++i) {
+        fs::path query_path((*i).str(0));
+        keywords.insert(query_path.stem().string());
+    }
+
+    // 2. Find keywords that look like PascalCase or UPPERCASE identifiers (e.g., "ContextIndexer", "URL")
+    // This regex looks for words with at least two capital letters or all-caps words of 2+ length.
+    std::regex re_identifier(R"(\b([A-Z][a-z0-9_]*[A-Z][a-zA-Z0-9_]*|[A-Z]{2,})\b)");
+    auto id_begin = std::sregex_iterator(queryText.begin(), queryText.end(), re_identifier);
+    auto id_end = std::sregex_iterator();
+    for (std::sregex_iterator i = id_begin; i != id_end; ++i) {
+        keywords.insert((*i).str(0));
+    }
+
+    // Now, iterate through the collected keywords and boost matching files
+    for (std::string keyword : keywords) {
+        if (keyword.length() < 3) continue; // Ignore short keywords
+
+        std::string lower_keyword = keyword;
+        std::transform(lower_keyword.begin(), lower_keyword.end(), lower_keyword.begin(),
             [](unsigned char c){ return std::tolower(c); });
 
         for (const auto& [path, record] : fileIndex) {
             fs::path p(path);
             std::string file_stem = p.stem().string();
-            std::transform(file_stem.begin(), file_stem.end(), file_stem.begin(),
+            std::string lower_file_stem = file_stem;
+            std::transform(lower_file_stem.begin(), lower_file_stem.end(), lower_file_stem.begin(),
                 [](unsigned char c){ return std::tolower(c); });
 
-            if (file_stem == keyword_stem) {
-                SPDLOG_DEBUG("Keyword boost: Found match for '{}', adding chunks from '{}'", keyword_stem, path);
+            // Check if the file stem contains the keyword.
+            if (lower_file_stem.find(lower_keyword) != std::string::npos) {
+                SPDLOG_DEBUG("Keyword boost: Found match for '{}' in file stem '{}', adding chunks from '{}'", keyword, file_stem, path);
                 for (const auto& chunk_meta : record.chunks) {
                     if (seenChunks.find(chunk_meta.text) == seenChunks.end()) {
                         topResults.push_back({path, chunk_meta.text, 1.1}); // Boost with score > 1.0

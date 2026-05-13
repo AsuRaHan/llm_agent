@@ -3,12 +3,14 @@
 #include "ListDirectoryTool.h" // Include the new tool
 #include "CodeSearchTool.h" // Include the code search tool
 #include "Logger.h"
+#include "GrepSearchTool.h" // Include the grep tool
 
 ToolManager::ToolManager() {
     SPDLOG_INFO("Initializing ToolManager...");
     registerTool(std::make_unique<ReadFileTool>());
     registerTool(std::make_unique<ListDirectoryTool>());
     registerTool(std::make_unique<CodeSearchTool>());
+    registerTool(std::make_unique<GrepSearchTool>());
     // Future tools will be registered here
 }
 
