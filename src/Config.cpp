@@ -30,7 +30,7 @@ void Config::create_default(const std::string& filepath) const {
         ".recipe", ".tlog", ".lastbuildstate", ".bin", ".stamp", ".cmake",
         ".json", ".log"
     };
-    j["indexing"]["ignored_files"] = { ".gitignore", "CMakeLists.txt" }; // CMakeLists.txt is now parsed by tree-sitter
+    j["indexing"]["ignored_files"] = { ".gitignore" };
 
     std::ofstream file(filepath);
     file << j.dump(4);
