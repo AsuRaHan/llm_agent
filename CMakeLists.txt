@@ -168,6 +168,8 @@ add_executable(Agent
       src/tools/WriteFileTool.cpp
       src/tools/EditFileTool.cpp
       src/tools/ApplyDiffTool.cpp
+      src/tools/ExecuteShellCommandTool.cpp
+      src/tools/GetDateTimeTool.cpp
       )
 
 target_include_directories(Agent PUBLIC

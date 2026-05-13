@@ -8,6 +8,8 @@
 #include "WriteFileTool.h"      // Include the new write tool
 #include "EditFileTool.h"       // Include the new edit tool
 #include "ApplyDiffTool.h"      // Include the new diff tool
+#include "ExecuteShellCommandTool.h" // Include the shell tool
+#include "GetDateTimeTool.h"    // Include the datetime tool
 #include "../Config.h" // Needed for the constructor
 
 ToolManager::ToolManager(const Config& config) {
@@ -18,6 +20,7 @@ ToolManager::ToolManager(const Config& config) {
     registerTool(std::make_unique<CodeSearchTool>());
     registerTool(std::make_unique<GrepSearchTool>());
     registerTool(std::make_unique<FileGlobSearchTool>(config));
+    registerTool(std::make_unique<GetDateTimeTool>());
 
     // Register dangerous, write-access tools only if explicitly enabled
     if (config.enable_dangerous_tools) {
@@ -25,6 +28,7 @@ ToolManager::ToolManager(const Config& config) {
         registerTool(std::make_unique<WriteFileTool>());
         registerTool(std::make_unique<EditFileTool>());
         registerTool(std::make_unique<ApplyDiffTool>());
+        registerTool(std::make_unique<ExecuteShellCommandTool>());
     }
 }
 
