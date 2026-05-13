@@ -48,7 +48,7 @@ void CodeParser::registerLanguage(const std::vector<std::string>& extensions, TS
     }
 }
 
-std::vector<std::string> CodeParser::parse(const std::string& sourceCode, const std::string& fileExtension) {
+std::vector<CodeChunk> CodeParser::parse(const std::string& sourceCode, const std::string& fileExtension) {
     auto it = languageMap.find(fileExtension);
     if (it == languageMap.end()) {
         SPDLOG_WARN("Для расширения '{}' не найден парсер Tree-sitter. Будет использовано разбиение по умолчанию.", fileExtension);
@@ -73,8 +73,8 @@ std::vector<std::string> CodeParser::parse(const std::string& sourceCode, const 
     // Get the root node of the syntax tree
     TSNode root_node = ts_tree_root_node(tree);
 
-    std::vector<std::string> chunks;
-    extractChunks(sourceCode, &root_node, chunks);
+    std::vector<CodeChunk> chunks;
+    extractChunks(sourceCode, root_node, chunks, language);
 
     // Free the syntax tree
     ts_tree_delete(tree);
@@ -82,16 +82,37 @@ std::vector<std::string> CodeParser::parse(const std::string& sourceCode, const 
     return chunks;
 }
 
-void CodeParser::extractChunks(const std::string& sourceCode, void* node, std::vector<std::string>& chunks) {
-    TSNode tsNode = *(static_cast<TSNode*>(node));
+void CodeParser::extractChunks(const std::string& sourceCode, TSNode tsNode, std::vector<CodeChunk>& chunks, TSLanguage* language) {
     const char* type = ts_node_type(tsNode);
-
-    // We are interested in top-level declarations
     std::string nodeType(type);
-    if (nodeType == "function_definition" || 
-        nodeType == "class_specifier" || 
-        nodeType == "struct_specifier" ||
-        nodeType == "template_declaration") {
+    std::string lang_name = ts_language_name(language);
+
+    bool is_chunk_candidate = false;
+
+    if (lang_name == "cpp") {
+        // For C++, we are interested in top-level declarations
+        if (nodeType == "function_definition" || 
+            nodeType == "class_specifier" || 
+            nodeType == "struct_specifier" ||
+            nodeType == "template_declaration") {
+            is_chunk_candidate = true;
+        }
+    } else if (lang_name == "markdown") {
+        // For markdown, consider headings, paragraphs, and code blocks as logical chunks
+        if (nodeType == "atx_heading" || nodeType == "setext_heading" || 
+            nodeType == "fenced_code_block" || nodeType == "paragraph" ||
+            nodeType == "list_item") { // Also consider list items as chunks
+            is_chunk_candidate = true;
+        }
+    } else if (lang_name == "cmake") {
+        // For CMake, consider command invocations, function and macro definitions as chunks
+        if (nodeType == "command_invocation" || nodeType == "function_definition" || 
+            nodeType == "macro_definition") {
+            is_chunk_candidate = true;
+        }
+    }
+
+    if (is_chunk_candidate) {
 
         uint32_t start_byte = ts_node_start_byte(tsNode);
         uint32_t end_byte = ts_node_end_byte(tsNode);
@@ -104,11 +125,11 @@ void CodeParser::extractChunks(const std::string& sourceCode, void* node, std::v
             if (chunk_len > config.embedding_max_text_length) {
                 SPDLOG_WARN("Семантический чанк типа '{}' слишком большой ({} символов). Применяется разбиение по размеру embedding_max_text_length.", nodeType, chunk_len);
                 
-                std::vector<std::string> sub_chunks;
                 size_t start = 0;
                 while (start < chunk_text.length()) {
+                    size_t sub_chunk_start_abs = start_byte + start;
                     if (start + config.embedding_max_text_length >= chunk_text.length()) {
-                        sub_chunks.push_back(chunk_text.substr(start));
+                        chunks.push_back({chunk_text.substr(start), sub_chunk_start_abs, chunk_text.length() - start});
                         break;
                     }
 
@@ -121,33 +142,31 @@ void CodeParser::extractChunks(const std::string& sourceCode, void* node, std::v
                         actual_end = newline_pos + 1; // Режем прямо по концу строки
                     }
 
-                    sub_chunks.push_back(chunk_text.substr(start, actual_end - start));
+                    size_t sub_chunk_len = actual_end - start;
+                    chunks.push_back({chunk_text.substr(start, sub_chunk_len), sub_chunk_start_abs, sub_chunk_len});
                     
                     // Сдвигаемся назад на размер overlap для непрерывности контекста
-                    size_t step = actual_end - start;
+                    size_t step = sub_chunk_len;
                     if (step <= (size_t)config.embedding_chunk_overlap) {
                         start = actual_end; // Защита от зависания
                     } else {
                         start = actual_end - config.embedding_chunk_overlap;
                     }
                 }
-
-                chunks.insert(chunks.end(), sub_chunks.begin(), sub_chunks.end());
             } else {
-                chunks.push_back(std::move(chunk_text));
+                chunks.push_back({std::move(chunk_text), start_byte, chunk_len});
             }
         }
-        // We've captured this whole block, no need to go deeper into its children
-        return;
+        // Once a chunk candidate is processed, we treat it as an atomic unit and don't recurse deeper into it for more chunks.
+        return; 
     }
 
-    // If the node is not a chunk type, recurse into its children
+    // If the node is not a chunk type (or not a top-level C++ declaration), recurse into its children to find potential chunks.
     uint32_t child_count = ts_node_child_count(tsNode);
     for (uint32_t i = 0; i < child_count; ++i) {
         TSNode child_node = ts_node_child(tsNode, i);
-        // We only want to recurse on named children to avoid syntax tokens like '{', '}', etc.
-        if (ts_node_is_named(child_node)) {
-            extractChunks(sourceCode, &child_node, chunks);
+        if (ts_node_is_named(child_node)) { // We only want to recurse on named children
+            extractChunks(sourceCode, child_node, chunks, language); // Pass language
         }
     }
 }

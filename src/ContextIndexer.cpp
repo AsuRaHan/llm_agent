@@ -78,12 +78,12 @@ void ContextIndexer::loadIndex()
             for (auto& [path, value] : meta["file_index"].items()) {
                 long long time_count = value["last_write_time"];
                 auto duration_since_epoch = fs::file_time_type::duration(time_count);
-                std::vector<ChunkData> chunks;
+                std::vector<ChunkInfo> chunks;
                 if (value.contains("chunks")) {
                     for (const auto& chunk_json : value["chunks"]) {
                         chunks.push_back({
-                            chunk_json["text"],
-                            chunk_json["id"]
+                            chunk_json["id"],
+                            {chunk_json["start_byte"], chunk_json["length"]}
                         });
                     }
                 }
@@ -95,7 +95,10 @@ void ContextIndexer::loadIndex()
         if (meta.contains("id_to_chunk_map")) {
             for (auto& [id_str, data] : meta["id_to_chunk_map"].items()) {
                 size_t id = std::stoull(id_str);
-                id_to_chunk_map[id] = { data["path"], data["text"] };
+                id_to_chunk_map[id] = { 
+                    data["path"], 
+                    {data["start_byte"], data["length"]}
+                };
             }
         }
 
@@ -153,10 +156,11 @@ void ContextIndexer::saveIndex()
     json file_index_json;
     for (const auto& [path, record] : fileIndex) {
         json chunks_json = json::array();
-        for(const auto& chunk : record.chunks) {
+        for(const auto& chunk_info : record.chunks) {
             chunks_json.push_back({
-                {"id", chunk.id},
-                {"text", chunk.text}
+                {"id", chunk_info.id},
+                {"start_byte", chunk_info.location.start_byte},
+                {"length", chunk_info.location.length}
             });
         }
 
@@ -168,10 +172,11 @@ void ContextIndexer::saveIndex()
     meta["file_index"] = file_index_json;
 
     json id_map_json;
-    for (const auto& [id, data] : id_to_chunk_map) {
+    for (const auto& [id, chunk_ptr] : id_to_chunk_map) {
         id_map_json[std::to_string(id)] = {
-            {"path", data.first},
-            {"text", data.second}
+            {"path", chunk_ptr.first},
+            {"start_byte", chunk_ptr.second.start_byte},
+            {"length", chunk_ptr.second.length}
         };
     }
     meta["id_to_chunk_map"] = id_map_json;
@@ -205,43 +210,45 @@ double ContextIndexer::cosineSimilarity(const std::vector<float>& a, const std::
     return dot_product / (norm_a_sqrt * norm_b_sqrt);
 }
 
-std::vector<std::string> ContextIndexer::fixedSizeChunkText(const std::string& text, size_t chunkSize, size_t overlap) {
-    std::vector<std::string> chunks;
+std::vector<ChunkLocation> ContextIndexer::fixedSizeChunkText(const std::string& text, size_t chunkSize, size_t overlap) {
+    std::vector<ChunkLocation> chunks;
     if (text.empty()) return chunks;
 
     // Защита от бесконечного цикла при некорректном оверлапе
     if (overlap >= chunkSize) {
-        overlap = chunkSize / 2;
+        overlap = chunkSize > 1 ? chunkSize / 2 : 0;
     }
 
     size_t start = 0;
     while (start < text.length()) {
+        size_t current_chunk_size = text.length() - start;
         if (start + chunkSize >= text.length()) {
-            chunks.push_back(text.substr(start));
+            chunks.push_back({start, current_chunk_size});
             break;
         }
 
         size_t target_end = start + chunkSize;
         // Ищем ближайший перенос строки с конца окна, чтобы не рвать абзацы
         size_t newline_pos = text.rfind('\n', target_end);
-        
+
         size_t actual_end = target_end;
         if (newline_pos != std::string::npos && newline_pos > start + (chunkSize - overlap)) {
             actual_end = newline_pos + 1; // Режем аккуратно по концу строки
         } else {
             // Если переноса строки нет, ищем хотя бы пробел между словами
             size_t space_pos = text.rfind(' ', target_end);
-            if (space_pos != std::string::npos && space_pos > start + (chunkSize - overlap)) {
+            if (space_pos != std::string::npos && space_pos > start) {
                 actual_end = space_pos;
             }
         }
 
-        chunks.push_back(text.substr(start, actual_end - start));
-        
+        current_chunk_size = actual_end - start;
+        chunks.push_back({start, current_chunk_size});
+
         // Сдвигаемся вперед с учетом overlap
-        size_t step = actual_end - start;
+        size_t step = current_chunk_size;
         if (step <= overlap) {
-            start = actual_end; // Предотвращаем зависание, если строка слишком длинная
+            start = actual_end; // Предотвращаем зависание, если шаг слишком мал
         } else {
             start = actual_end - overlap;
         }
@@ -289,11 +296,14 @@ std::vector<SearchResult> ContextIndexer::findTopK(const std::string& queryText,
         size_t id = pair.second; // ID is the second element
         auto it = id_to_chunk_map.find(id);
         if (it != id_to_chunk_map.end()) {
-            const auto& chunk_data = it->second;
+            const auto& chunk_ptr = it->second;
+            std::string chunk_text = readChunkContent(chunk_ptr.first, chunk_ptr.second);
+            if (chunk_text.empty()) continue;
+
             // To calculate cosine similarity, we need the original vector.
             std::vector<float> data_vec = index->getDataByLabel<float>(id);
             double score = cosineSimilarity(queryEmbedding, data_vec);
-            topResults.push_back({chunk_data.first, chunk_data.second, score});
+            topResults.push_back({chunk_ptr.first, chunk_text, score});
         }
     }
 
@@ -339,19 +349,22 @@ std::vector<SearchResult> ContextIndexer::findTopK(const std::string& queryText,
             [](unsigned char c){ return std::tolower(c); });
 
         for (const auto& [path, record] : fileIndex) {
-            for (const auto& chunk_meta : record.chunks) {
-                // Если этот чанк модель уже и так нашла через эмбеддинги — пропускаем
-                if (seenChunks.find(chunk_meta.text) != seenChunks.end()) continue;
+            for (const auto& chunk_info : record.chunks) {
+                std::string chunk_text = readChunkContent(path, chunk_info.location);
+                if (chunk_text.empty()) continue;
 
-                std::string lower_chunk_text = chunk_meta.text;
+                // Если этот чанк модель уже и так нашла через эмбеддинги — пропускаем
+                if (seenChunks.find(chunk_text) != seenChunks.end()) continue;
+
+                std::string lower_chunk_text = chunk_text;
                 std::transform(lower_chunk_text.begin(), lower_chunk_text.end(), lower_chunk_text.begin(),
                     [](unsigned char c){ return std::tolower(c); });
 
                 // Проверяем вхождение ключевого слова (класса, функции) прямо в тело кода чанка
                 if (lower_chunk_text.find(lower_keyword) != std::string::npos) {
                     SPDLOG_DEBUG("Keyword boost: Найдено совпадение для '{}' внутри чанка файла '{}'", keyword, path);
-                    topResults.push_back({path, chunk_meta.text, 1.15}); // Даем мощный буст (1.15)
-                    seenChunks.insert(chunk_meta.text);
+                    topResults.push_back({path, chunk_text, 1.15}); // Даем мощный буст (1.15)
+                    seenChunks.insert(chunk_text);
                 }
             }
         }
@@ -400,7 +413,21 @@ std::string ContextIndexer::readFileContent(const fs::path& path)
     return buffer.str();
 }
 
-void ContextIndexer::addChunk(const std::string& path, const std::string& text, const std::vector<float>& embedding) {
+std::string ContextIndexer::readChunkContent(const std::string& path, const ChunkLocation& location)
+{
+    std::ifstream file(path, std::ios::in | std::ios::binary);
+    if (!file)
+    {
+        SPDLOG_ERROR("Не удалось открыть файл для чтения чанка: {}", path);
+        return "";
+    }
+    file.seekg(location.start_byte);
+    std::string content(location.length, '\0');
+    file.read(&content[0], location.length);
+    return content;
+}
+
+void ContextIndexer::addChunk(const std::string& path, const std::string& text, const std::vector<float>& embedding, const ChunkLocation& location) {
     if (embedding.empty()) return;
 
     // Initialize index if this is the first element
@@ -425,8 +452,8 @@ void ContextIndexer::addChunk(const std::string& path, const std::string& text, 
     }
 
     index->addPoint(embedding.data(), new_id);
-    id_to_chunk_map[new_id] = {path, text};
-    fileIndex[path].chunks.push_back({text, new_id});
+    id_to_chunk_map[new_id] = {path, location};
+    fileIndex[path].chunks.push_back({new_id, location});
     current_max_elements++;
 }
 
@@ -496,37 +523,58 @@ void ContextIndexer::indexDirectory(const fs::path& directoryPath)
                     continue;
                 }
                 
-                std::vector<std::string> textChunks;
-                if ((config.chunking_strategy == "tree-sitter" || config.chunking_strategy == "tree-sitter-hybrid") && codeParser) {
-                    textChunks = codeParser->parse(content, path.extension().string());
-                    // Fallback to fixed size if tree-sitter fails or returns no chunks for a non-empty file
-                    if (textChunks.empty() && !content.empty()) {
-                        SPDLOG_WARN("Tree-sitter не вернул чанков для файла '{}'. Используется разбиение по умолчанию.", canonicalPath);
-                        textChunks = fixedSizeChunkText(content, config.embedding_max_text_length, config.embedding_chunk_overlap);
-                    }
+                std::vector<CodeChunk> semanticChunks;
+                bool use_semantic = false;
+
+                std::string parser_identifier;
+                if (path.filename() == "CMakeLists.txt") {
+                    parser_identifier = "CMakeLists.txt"; // Use full filename for CMakeLists.txt
                 } else {
-                    // Fallback to fixed-size chunking if strategy is "fixed" or something else.
-                    textChunks = fixedSizeChunkText(content, config.embedding_max_text_length, config.embedding_chunk_overlap);
+                    parser_identifier = path.extension().string(); // Use extension for other files
+                }
+
+                if ((config.chunking_strategy == "tree-sitter" || config.chunking_strategy == "tree-sitter-hybrid") && codeParser) {
+                    semanticChunks = codeParser->parse(content, parser_identifier); // Pass the correct identifier
+                    // Fallback to fixed size if tree-sitter fails or returns no chunks for a non-empty file
+                    if (semanticChunks.empty() && !content.empty()) {
+                        SPDLOG_WARN("Tree-sitter не вернул чанков для файла '{}'. Используется разбиение по умолчанию.", canonicalPath);
+                    } else {
+                        use_semantic = !semanticChunks.empty();
+                    }
                 }
                 
                 // Update file record timestamp and prepare for new chunks
                 fileIndex[canonicalPath].last_write_time = lastWriteTime;
                 fileIndex[canonicalPath].chunks.clear(); // Ensure it's empty before adding new ones
 
-                for (size_t i = 0; i < textChunks.size(); ++i)
-                {
-                    const std::string& chunk = textChunks[i];
-                    std::string chunkName = canonicalPath + " [#chunk " + std::to_string(i) + "]";
-                    std::string text_for_embedding = chunk;
+                if (use_semantic) {
+                    for (size_t i = 0; i < semanticChunks.size(); ++i) {
+                        const auto& chunk = semanticChunks[i];
+                        ChunkLocation location = {chunk.start_byte, chunk.length};
+                        std::string chunkName = canonicalPath + " [#chunk " + std::to_string(i) + "]";
+                        std::string text_for_embedding = chunk.text;
 
-                    if (config.chunking_strategy == "tree-sitter-hybrid" && summarizerAssistant) {
-                        std::string summary = summarizerAssistant->generateChunkSummary(chunk, chunkName);
-                        text_for_embedding = "[SUMMARY]: " + summary + "\n[CODE]:\n" + chunk;
+                        if (config.chunking_strategy == "tree-sitter-hybrid" && summarizerAssistant) {
+                            std::string summary = summarizerAssistant->generateChunkSummary(chunk.text, chunkName);
+                            text_for_embedding = "[SUMMARY]: " + summary + "\n[CODE]:\n" + chunk.text;
+                        }
+                        auto emb = embeddingClient.getEmbedding(text_for_embedding, chunkName);
+
+                        if (!emb.empty()) {
+                            addChunk(canonicalPath, chunk.text, emb, location);
+                        }
                     }
-                    auto emb = embeddingClient.getEmbedding(text_for_embedding, chunkName);
-
-                    if (!emb.empty()) {
-                        addChunk(canonicalPath, chunk, emb);
+                } else { // Fallback to fixed size
+                    auto fixedChunks = fixedSizeChunkText(content, config.embedding_max_text_length, config.embedding_chunk_overlap);
+                    for (size_t i = 0; i < fixedChunks.size(); ++i) {
+                        const auto& location = fixedChunks[i];
+                        std::string chunk_text = content.substr(location.start_byte, location.length);
+                        std::string chunkName = canonicalPath + " [#chunk " + std::to_string(i) + "]";
+                        // Hybrid summary is not typically used with fixed-size chunks, but could be added here if needed.
+                        auto emb = embeddingClient.getEmbedding(chunk_text, chunkName);
+                        if (!emb.empty()) {
+                            addChunk(canonicalPath, chunk_text, emb, location);
+                        }
                     }
                 }
 
