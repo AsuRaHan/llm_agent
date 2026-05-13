@@ -209,13 +209,42 @@ std::vector<std::string> ContextIndexer::fixedSizeChunkText(const std::string& t
     std::vector<std::string> chunks;
     if (text.empty()) return chunks;
 
+    // Защита от бесконечного цикла при некорректном оверлапе
+    if (overlap >= chunkSize) {
+        overlap = chunkSize / 2;
+    }
+
     size_t start = 0;
     while (start < text.length()) {
-        size_t end = std::min(start + chunkSize, text.length());
-        chunks.push_back(text.substr(start, end - start));
+        if (start + chunkSize >= text.length()) {
+            chunks.push_back(text.substr(start));
+            break;
+        }
+
+        size_t target_end = start + chunkSize;
+        // Ищем ближайший перенос строки с конца окна, чтобы не рвать абзацы
+        size_t newline_pos = text.rfind('\n', target_end);
         
-        if (end == text.length()) break;
-        start += (chunkSize - overlap); // Сдвигаемся с учетом нахлеста
+        size_t actual_end = target_end;
+        if (newline_pos != std::string::npos && newline_pos > start + (chunkSize - overlap)) {
+            actual_end = newline_pos + 1; // Режем аккуратно по концу строки
+        } else {
+            // Если переноса строки нет, ищем хотя бы пробел между словами
+            size_t space_pos = text.rfind(' ', target_end);
+            if (space_pos != std::string::npos && space_pos > start + (chunkSize - overlap)) {
+                actual_end = space_pos;
+            }
+        }
+
+        chunks.push_back(text.substr(start, actual_end - start));
+        
+        // Сдвигаемся вперед с учетом overlap
+        size_t step = actual_end - start;
+        if (step <= overlap) {
+            start = actual_end; // Предотвращаем зависание, если строка слишком длинная
+        } else {
+            start = actual_end - overlap;
+        }
     }
     return chunks;
 }
