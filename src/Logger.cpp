@@ -8,7 +8,7 @@ static std::shared_ptr<spdlog::logger> global_logger;
 // Вспомогательная функция для преобразования строки в уровень логирования spdlog
 spdlog::level::level_enum level_from_string(const std::string& level_str) {
     std::string lower_level = level_str;
-    std::transform(lower_level.begin(), lower_level.end(), lower_level.begin(), ::tolower);
+    std::transform(lower_level.begin(), lower_level.end(), lower_level.begin(), [](unsigned char c){ return std::tolower(c); });
     if (lower_level == "trace") return spdlog::level::trace;
     if (lower_level == "debug") return spdlog::level::debug;
     if (lower_level == "info") return spdlog::level::info;
