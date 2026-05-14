@@ -24,6 +24,8 @@ void Config::create_default(const std::string& filepath) const {
 
     j["tools"]["enable_dangerous_tools"] = enable_dangerous_tools;
 
+    j["web_search"]["api_key"] = web_search_api_key;
+
     j["logging"]["log_file_path"] = log_file_path;
     j["logging"]["log_to_console"] = log_to_console;
     j["logging"]["log_file_level"] = log_file_level;
@@ -79,6 +81,8 @@ bool Config::load(const std::string& filepath) {
         chat_model_name = j.value("/assistant/model_name"_json_pointer, chat_model_name);
 
         enable_dangerous_tools = j.value("/tools/enable_dangerous_tools"_json_pointer, enable_dangerous_tools);
+
+        web_search_api_key = j.value("/web_search/api_key"_json_pointer, web_search_api_key);
 
         log_file_path = j.value("/logging/log_file_path"_json_pointer, log_file_path);
         log_to_console = j.value("/logging/log_to_console"_json_pointer, log_to_console);
