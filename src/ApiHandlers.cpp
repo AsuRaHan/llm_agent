@@ -1,23 +1,24 @@
+#include <httplib.h>
 #include "ApiHandlers.h"
 #include "ContextIndexer.h"
 #include "AssistantRole.h"
 #include "WebSocketServer.h"
 #include "Config.h"
 #include "Logger.h"
-#include <httplib.h>
 #include <memory>
 #include <chrono>
 
 ApiHandlers::ApiHandlers(const Config& config)
-    : config(config), host(config.web_server_host), port(config.web_server_port), httpServer(nullptr) {
+    : config(config), host(config.web_server_host), port(config.web_server_port), httpServer(nullptr) 
+{
+    wsServer = std::make_unique<WebSocketServer>(config);
 }
 
 // Destructor must be defined in the .cpp file where httplib::Server is a complete type.
 ApiHandlers::~ApiHandlers() = default;
 
 bool ApiHandlers::initialize(std::shared_ptr<ContextIndexer> indexer,
-                              std::shared_ptr<AssistantRole> assistant) {
-    if (!indexer || !assistant) {
+                              std::shared_ptr<AssistantRole> assistant) {    if (!indexer || !assistant || !wsServer) {
         SPDLOG_ERROR("ApiHandlers::initialize: null pointer passed");
         return false;
     }
@@ -51,6 +52,40 @@ bool ApiHandlers::initialize(std::shared_ptr<ContextIndexer> indexer,
             SPDLOG_DEBUG("Served custom 404 page for: {}", req.path);
         }
     });
+
+    // ===== WebSocket Endpoint =====
+    if (!wsServer->start(indexer, assistant)) {
+        SPDLOG_ERROR("Failed to initialize WebSocket server logic");
+        return false;
+    }
+
+    // ===== WebSocket Endpoint =====
+    // WebSocket handler must be set directly on the server, not inside a Get/Post handler.
+httpServer->WebSocket("/ws",
+    [this](const httplib::Request& req, httplib::ws::WebSocket& ws) {
+        // 1. Событие ON_OPEN (выполняется сразу при входе в лямбду)
+        SPDLOG_INFO("[WebSocket] Connection opened from {}", req.remote_addr);
+
+        std::string msg;
+        try {
+            // 2. Событие ON_MESSAGE (блокирующий цикл чтения сообщений)
+            while (ws.read(msg)) {
+                // Делегируем обработку в ваш класс wsServer
+                // ВАЖНО: захватываем ws по ссылке осторожно, так как метод ws.send выполнится в контексте этого же потока
+                this->wsServer->handleMessage(msg, [&ws](const std::string& response) {
+                    ws.send(response);
+                });
+            }
+        } 
+        catch (const std::exception& e) {
+            // 3. Событие ON_ERROR (если при чтении/записи произошло исключение)
+            SPDLOG_ERROR("[WebSocket] Exception on connection from {}: {}", req.remote_addr, e.what());
+        }
+
+        // 4. Событие ON_CLOSE (выполняется, когда цикл ws.read завершился)
+        SPDLOG_INFO("[WebSocket] Connection closed from {}", req.remote_addr);
+    }
+);
 
     // ===== CORS Headers Middleware =====
     httpServer->set_pre_routing_handler([](const httplib::Request&, httplib::Response& res) {
@@ -158,7 +193,8 @@ bool ApiHandlers::initialize(std::shared_ptr<ContextIndexer> indexer,
             api_resp["context"] = context_arr;
             api_resp["timestamp"] = std::chrono::system_clock::now().time_since_epoch().count();
             
-            res.set_content(api_resp.dump(), "application/json");
+            // Используем error_handler_t::replace, чтобы избежать падения из-за невалидного UTF-8 ответа от LLM
+            res.set_content(api_resp.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace), "application/json");
             res.status = 200;
             SPDLOG_DEBUG("Query processed successfully");
             
@@ -166,7 +202,7 @@ bool ApiHandlers::initialize(std::shared_ptr<ContextIndexer> indexer,
             nlohmann::json error_resp;
             error_resp["success"] = false;
             error_resp["message"] = std::string(e.what());
-            res.set_content(error_resp.dump(), "application/json");
+            res.set_content(error_resp.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace), "application/json");
             res.status = 500;
             SPDLOG_ERROR("Query processing error: {}", e.what());
         }
@@ -186,13 +222,14 @@ bool ApiHandlers::initialize(std::shared_ptr<ContextIndexer> indexer,
             nlohmann::json error_resp;
             error_resp["success"] = false;
             error_resp["message"] = std::string(e.what());
-            res.set_content(error_resp.dump(), "application/json");
+            res.set_content(error_resp.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace), "application/json");
             res.status = 500;
             SPDLOG_ERROR("Stats error: {}", e.what());
         }
     });
 
     SPDLOG_INFO("HTTP/REST API handlers initialized on {}:{}", host, port);
+    SPDLOG_INFO("WebSocket endpoint available at ws://{}:{}/ws", host, port);
     return true;
 }
 

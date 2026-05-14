@@ -54,4 +54,5 @@ private:
     int port;
     std::shared_ptr<httplib::Server> httpServer; // Используем shared_ptr для управления временем жизни сервера
     std::string notFoundPageContent; // Содержимое страницы 404
+    std::unique_ptr<WebSocketServer> wsServer; // Обработчик логики WebSocket
 };
