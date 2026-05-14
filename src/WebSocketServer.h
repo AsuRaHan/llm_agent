@@ -1,34 +1,37 @@
 #pragma once
 
+#include "Config.h"
+#include "httplib.h"
+#include <nlohmann/json.hpp>
 #include <string>
 #include <memory>
 #include <functional>
-#include <map>
+#include <unordered_map>
 #include <mutex>
-#include <nlohmann/json.hpp>
+#include <atomic>
 
+namespace httplib {
+    namespace ws {
+        class WebSocket;
+    }
+}
+
+// Forward declarations
 class ContextIndexer;
 class AssistantRole;
-struct Config;
-struct SearchResult;
 
-// WebSocket message types
-struct WSMessage {
-    std::string type;  // "query", "reload_index", "get_stats", etc.
-    nlohmann::json data;
-};
-
-// Response sent back to client
 struct WSResponse {
     std::string type;
     nlohmann::json data;
-    
-    std::string serialize() const {
-        nlohmann::json obj;
-        obj["type"] = type;
-        obj["data"] = data;
-        return obj.dump();
-    }
+};
+
+void to_json(nlohmann::json& j, const WSResponse& r);
+
+struct UserSession {
+    std::string id;
+    nlohmann::json chat_history = nlohmann::json::array();
+    bool is_waiting_confirmation = false;
+    nlohmann::json pending_tool_call = nullptr;
 };
 
 class WebSocketServer {
@@ -36,62 +39,39 @@ public:
     explicit WebSocketServer(const Config& config);
     ~WebSocketServer();
 
-    /**
-     * @brief Initialize and start the WebSocket server
-     * @param indexer Pointer to the ContextIndexer
-     * @param assistant Pointer to the AssistantRole
-     * @return true if server started successfully
-     */
-    bool start(std::shared_ptr<ContextIndexer> indexer, std::shared_ptr<AssistantRole> assistant);
+    bool initialize(std::shared_ptr<ContextIndexer> indexer, std::shared_ptr<AssistantRole> assistant);
 
-    /**
-     * @brief Stop the server gracefully
-     */
-    void stop();
+    void handleConnection(httplib::ws::WebSocket& ws);
 
-    /**
-     * @brief Check if server is running
-     */
-    bool isRunning() const { return running; }
-
-    /**
-     * @brief Get the server port
-     */
-    int getPort() const { return port; }
-
-    /**
-     * @brief Get the server host
-     */
-    std::string getHost() const { return host; }
-
-    // Обработчик входящих сообщений, вызываемый из ApiHandlers
-    // Сделан публичным, чтобы ApiHandlers мог делегировать обработку сообщений.
+private:
     void handleMessage(const std::string& message, const std::function<void(const std::string&)>& send_back);
 
-private:
-
-
-private:
-    // Configuration
-    const Config& config;
-    std::string host;
-    int port;
-    
-    // State
-    std::atomic<bool> running{false};
-    std::shared_ptr<ContextIndexer> indexer;
-    std::shared_ptr<AssistantRole> assistant;
-    
-    // Mutex for thread safety
-    std::mutex mutex;
-
-    // Individual message handlers
-    void handleQuery(const nlohmann::json& data, const std::function<void(const std::string&)>& send_back);
+    // Message handlers
+    void handleQuery(const std::string& session_id, const nlohmann::json& data, const std::function<void(const std::string&)>& send_back);
+    void handleConfirmation(const std::string& session_id, const nlohmann::json& data, const std::function<void(const std::string&)>& send_back);
     void handleGetStats(const std::function<void(const std::string&)>& send_back);
-    void handleReloadIndex(const std::function<void(const std::string&)>& send_back);
     void handleGetProjectInfo(const std::function<void(const std::string&)>& send_back);
+    void handleClearHistory(const std::string& session_id);
 
-    // Helper to send response
+    // Utility methods
     void sendResponse(const WSResponse& response, const std::function<void(const std::string&)>& send_back);
     void sendError(const std::string& message, const std::function<void(const std::string&)>& send_back);
+
+    // Session management
+    UserSession getOrCreateSession(const std::string& session_id);
+    void updateSession(const UserSession& session);
+    
+    // Session persistence
+    void saveSessions();
+    void loadSessions();
+
+private:
+    const Config& config;
+    std::shared_ptr<ContextIndexer> indexer;
+    std::shared_ptr<AssistantRole> assistant;
+
+    // Session storage
+    std::mutex session_mutex;
+    std::unordered_map<std::string, UserSession> sessions;
+    const std::string sessions_db_path = ".shdata/sessions.json";
 };

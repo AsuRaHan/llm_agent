@@ -23,6 +23,7 @@ void Config::create_default(const std::string& filepath) const {
     j["assistant"]["model_name"] = chat_model_name;
 
     j["tools"]["enable_dangerous_tools"] = enable_dangerous_tools;
+    j["tools"]["dangerous_tools"] = {"write_file", "edit_file", "apply_diff", "execute_shell_command"};
 
     j["web_search"]["api_key"] = web_search_api_key;
 
@@ -87,6 +88,14 @@ bool Config::load(const std::string& filepath) {
         chat_model_name = j.value("/assistant/model_name"_json_pointer, chat_model_name);
 
         enable_dangerous_tools = j.value("/tools/enable_dangerous_tools"_json_pointer, enable_dangerous_tools);
+        if (j.contains("tools") && j["tools"].is_object() && j["tools"].contains("dangerous_tools"))
+        {
+            dangerous_tools = j["tools"]["dangerous_tools"].get<std::vector<std::string>>();
+        } else {
+            // Если ключ отсутствует, для безопасности заполняем его значениями по умолчанию.
+            SPDLOG_WARN("'tools.dangerous_tools' не найден в config.json. Используются значения по умолчанию.");
+            dangerous_tools = {"write_file", "edit_file", "apply_diff", "execute_shell_command"};
+        }
 
         web_search_api_key = j.value("/web_search/api_key"_json_pointer, web_search_api_key);
 
