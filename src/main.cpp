@@ -352,8 +352,8 @@ int main(int argc, char* argv[])
         AssistantRole assistant(config);
 
         // ====== Запуск мониторинга файлов ======
-        FileWatcher watcher(*indexer);
-        watcher.start(projectDir);
+        // FileWatcher watcher(*indexer);
+        // watcher.start(projectDir);
         // ====== Главный цикл приложения ======
         clear_screen();
         
@@ -393,8 +393,8 @@ int main(int argc, char* argv[])
             }
         }
 
-        SPDLOG_INFO("Остановка файлового мониторинга...");
-        watcher.stop();
+        // SPDLOG_INFO("Остановка файлового мониторинга...");
+        // watcher.stop();
         SPDLOG_INFO("Agent завершил работу.");
         clear_screen();
         std::cout << "\n";
