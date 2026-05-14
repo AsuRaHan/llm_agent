@@ -33,17 +33,44 @@ std::string ReadUrlTool::execute(const nlohmann::json& args, ContextIndexer* ind
     SPDLOG_INFO("[Tool:read_url] Чтение URL: '{}'", url_str);
 
     try {
-        httplib::SSLClient cli(url_str);
-        cli.set_follow_location(true); // Следовать за редиректами
-        cli.set_connection_timeout(10);
-        cli.set_read_timeout(20);
+        // --- URL Parsing ---
+        std::regex url_regex(R"(^(https?):\/\/([^:\/\s]+)(:([0-9]+))?(\/.*)?$)");
+        std::smatch url_match;
 
+        if (!std::regex_match(url_str, url_match, url_regex)) {
+            SPDLOG_ERROR("[Tool:read_url] Неверный формат URL: {}", url_str);
+            return "{\"error\": \"Неверный формат URL. Ожидается 'http://' или 'https://'.\"}";
+        }
+
+        std::string scheme = url_match[1];
+        std::string host = url_match[2];
+        std::string port_str = url_match[4];
+        std::string path = url_match[5].matched ? url_match[5].str() : "/";
+
+        // --- Client Creation ---
         // Некоторые сайты блокируют запросы без User-Agent
         httplib::Headers headers = {
             {"User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"}
         };
 
-        auto res = cli.Get("/", headers); // Path is now part of the client constructor
+        httplib::Result res;
+
+        if (scheme == "https") {
+            int port = port_str.empty() ? 443 : std::stoi(port_str);
+            httplib::SSLClient cli(host, port);
+            cli.set_follow_location(true);
+            cli.set_connection_timeout(10);
+            cli.set_read_timeout(20);
+            // cli.set_ca_cert_path("./ca-bundle.crt"); // Example if needed for self-signed certs
+            res = cli.Get(path, headers);
+        } else { // "http"
+            int port = port_str.empty() ? 80 : std::stoi(port_str);
+            httplib::Client cli(host, port);
+            cli.set_follow_location(true);
+            cli.set_connection_timeout(10);
+            cli.set_read_timeout(20);
+            res = cli.Get(path, headers);
+        }
 
         if (!res) {
             auto err = res.error();
@@ -53,7 +80,7 @@ std::string ReadUrlTool::execute(const nlohmann::json& args, ContextIndexer* ind
         }
 
         if (res->status >= 400) {
-            std::string error_msg = "Сервер вернул ошибку при чтении URL. Статус: " + std::to_string(res->status) + ". Ответ: " + res->body;
+            std::string error_msg = "Сервер вернул ошибку при чтении URL. Статус: " + std::to_string(res->status);
             SPDLOG_ERROR("[Tool:read_url] {}", error_msg);
             return "{\"error\": \"" + error_msg + "\"}";
         }
