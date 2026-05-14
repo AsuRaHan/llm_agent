@@ -33,7 +33,7 @@ void Config::create_default(const std::string& filepath) const {
     j["indexing"]["chunk_overlap"] = chunk_overlap;
     j["indexing"]["top_k_results"] = top_k_results;
     j["indexing"]["chunking_strategy"] = "tree-sitter-hybrid";
-    j["indexing"]["ignored_directories"] = { "build", ".git", ".vscode", "CMakeFiles" };
+    j["indexing"]["ignored_directories"] = { "build", ".git", ".vscode", "CMakeFiles", ".shdata" };
     j["indexing"]["ignored_extensions"] = {
         ".exe", ".obj", ".pdb", ".ilk", ".sln", ".vcxproj", ".filters", ".user",
         ".recipe", ".tlog", ".lastbuildstate", ".bin", ".stamp", ".cmake",
@@ -99,7 +99,7 @@ bool Config::load(const std::string& filepath) {
                 ignored_files = j["indexing"]["ignored_files"].get<std::vector<std::string>>();
         }
 
-        SPDLOG_INFO("Конфигурация успешно загружена из '{}'.", filepath);
+        // SPDLOG_INFO("Конфигурация успешно загружена из '{}'.", filepath);
         return true;
 
     } catch (const json::exception& e) {
