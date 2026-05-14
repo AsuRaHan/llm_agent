@@ -34,6 +34,7 @@ std::string AssistantRole::processQuery(const std::string& userQuery, const std:
                                 "    *   `read_file`: чтобы прочитать весь файл, из которого взят фрагмент.\n"
                                 "    *   `web_search`: чтобы найти информацию в интернете (документация, ошибки, общие вопросы).\n"
                                 "    *   `read_url`: чтобы прочитать содержимое веб-страницы по URL (например, из результатов `web_search`).\n"
+                                "    *   `open_url_in_browser`: чтобы открыть URL в браузере пользователя.\n"
                                 "    *   `list_directory`: чтобы изучить структуру проекта.\n"
                                 "    *   `code_search`: чтобы выполнить **новый** семантический поиск по другому запросу.\n"
                                 "    *   `grep_search`: для поиска по точному совпадению или регулярному выражению.\n"
@@ -177,13 +178,13 @@ std::string AssistantRole::processQuery(const std::string& userQuery, const std:
                 });
             }
 
-            // Inform the model about remaining tool calls
+            // Inform the model about remaining tool calls by appending to the last tool message
             int remaining_calls = config.max_tool_calls - (i + 1);
             if (remaining_calls > 0) {
-                messages.push_back({
-                    {"role", "system"},
-                    {"content", "Инструменты выполнены. У тебя осталось " + std::to_string(remaining_calls) + " вызовов."}
-                });
+                if (!messages.empty() && messages.back()["role"] == "tool") {
+                    std::string current_content = messages.back()["content"];
+                    messages.back()["content"] = current_content + "\n\n[SYSTEM_NOTE]: Инструменты выполнены. У тебя осталось " + std::to_string(remaining_calls) + " вызовов.";
+                }
             }
             // Continue to the next iteration of the loop
             continue;

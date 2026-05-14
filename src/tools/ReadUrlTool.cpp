@@ -9,7 +9,7 @@ std::string ReadUrlTool::getName() const {
 }
 
 std::string ReadUrlTool::getDescription() const {
-    return "Загружает и возвращает текстовое содержимое (HTML) по указанному URL. Полезно для чтения статей, документации или GitHub issues, ссылки на которые были найдены с помощью 'web_search'.";
+    return "Загружает и возвращает текстовое содержимое (HTML) веб-страницы по указанному URL. НЕ открывает URL в браузере. Полезно для чтения статей, документации или GitHub issues, ссылки на которые были найдены с помощью 'web_search'.";
 }
 
 nlohmann::json ReadUrlTool::getParameters() const {
@@ -33,17 +33,7 @@ std::string ReadUrlTool::execute(const nlohmann::json& args, ContextIndexer* ind
     SPDLOG_INFO("[Tool:read_url] Чтение URL: '{}'", url_str);
 
     try {
-        // Разбираем URL на хост и путь для httplib
-        std::regex url_regex(R"(^(https?:\/\/[\w\.-]+(?::\d+)?)(.*)$)");
-        std::smatch match;
-        if (!std::regex_match(url_str, match, url_regex)) {
-            return "{\"error\": \"Неверный формат URL.\"}";
-        }
-
-        std::string host_part = match[1].str();
-        std::string path_part = match[2].str().empty() ? "/" : match[2].str();
-
-        httplib::Client cli(host_part);
+        httplib::SSLClient cli(url_str);
         cli.set_follow_location(true); // Следовать за редиректами
         cli.set_connection_timeout(10);
         cli.set_read_timeout(20);
@@ -53,7 +43,7 @@ std::string ReadUrlTool::execute(const nlohmann::json& args, ContextIndexer* ind
             {"User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"}
         };
 
-        auto res = cli.Get(path_part, headers);
+        auto res = cli.Get("/", headers); // Path is now part of the client constructor
 
         if (!res) {
             auto err = res.error();
