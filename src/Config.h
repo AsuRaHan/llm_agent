@@ -34,6 +34,9 @@ struct Config {
     // Tools settings
     bool enable_dangerous_tools = true; // Set to true to enable tools that can modify the filesystem (e.g., WriteFileTool)
 
+    // Web Search settings
+    std::string web_search_api_key = ""; // API key for a search service like Serper.dev
+
     // Logging settings
     std::string log_file_path = "agent.log";
     bool log_to_console = true;
