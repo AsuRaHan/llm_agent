@@ -34,6 +34,7 @@ void Config::create_default(const std::string& filepath) const {
     // j["indexing"]["chunk_size"] = 10000; // Устарело
     // j["indexing"]["chunk_overlap"] = 2000; // Устарело
     j["indexing"]["top_k_results"] = top_k_results;
+    j["indexing"]["initial_index_size"] = initial_index_size;
     j["indexing"]["chunking_strategy"] = "tree-sitter-hybrid";
     j["indexing"]["ignored_directories"] = { "build", ".git", ".vscode", "CMakeFiles", ".shdata" };
     j["indexing"]["ignored_extensions"] = {
@@ -92,6 +93,7 @@ bool Config::load(const std::string& filepath) {
         // chunk_size = j.value("/indexing/chunk_size"_json_pointer, chunk_size); // Устарело
         // chunk_overlap = j.value("/indexing/chunk_overlap"_json_pointer, chunk_overlap); // Устарело
         top_k_results = j.value("/indexing/top_k_results"_json_pointer, top_k_results);
+        initial_index_size = j.value("/indexing/initial_index_size"_json_pointer, initial_index_size);
         chunking_strategy = j.value("/indexing/chunking_strategy"_json_pointer, chunking_strategy);
         
         if (j.contains("indexing") && j["indexing"].is_object()) {

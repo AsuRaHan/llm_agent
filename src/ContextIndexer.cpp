@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <vector>
 #include <regex>
+#include <atomic>
 #include "Logger.h" // Include the new logger header
 #include "Config.h"
 #include "AssistantRole.h"
@@ -65,7 +66,7 @@ void ContextIndexer::loadIndex()
         metaFile >> meta;
 
         embedding_dim = meta.value("embedding_dim", 0);
-        current_max_elements = meta.value("max_elements", 0);
+        current_max_elements.store(meta.value("max_elements", 0));
 
         if (embedding_dim == 0) { // Can be 0 if index was empty
             SPDLOG_INFO("Метаданные не содержат векторов. Индекс будет создан при добавлении данных.");
@@ -107,7 +108,7 @@ void ContextIndexer::loadIndex()
         fileIndex.clear(); // Start with a clean slate if JSON is corrupt
         id_to_chunk_map.clear();
         embedding_dim = 0;
-        current_max_elements = 0;
+        current_max_elements.store(0);
         return;
     }
 
@@ -116,7 +117,7 @@ void ContextIndexer::loadIndex()
         fileIndex.clear();
         id_to_chunk_map.clear();
         embedding_dim = 0;
-        current_max_elements = 0;
+        current_max_elements.store(0);
         return;
     }
 
@@ -151,7 +152,7 @@ void ContextIndexer::saveIndex()
 
     json meta;
     meta["embedding_dim"] = embedding_dim;
-    meta["max_elements"] = current_max_elements;
+    meta["max_elements"] = current_max_elements.load();
 
     json file_index_json;
     for (const auto& [path, record] : fileIndex) {
@@ -442,7 +443,7 @@ void ContextIndexer::addChunk(const std::string& path, const std::string& text, 
     // This is a private method called by public locked methods, so no lock needed here.
     if (embedding.empty()) return;
 
-    // Initialize index if this is the first element
+    // Initialize index if this is the first element. This part is already under a lock.
     if (!index) {
         embedding_dim = embedding.size();
         space = std::make_unique<hnswlib::L2Space>(embedding_dim);
@@ -456,7 +457,7 @@ void ContextIndexer::addChunk(const std::string& path, const std::string& text, 
         return;
     }
 
-    size_t new_id = current_max_elements;
+    size_t new_id = current_max_elements.fetch_add(1);
     // Check if we need to resize the index
     if (new_id >= index->max_elements_) {
         SPDLOG_INFO("Изменил размер индекса HNSW с {} на {}", index->max_elements_, index->max_elements_ * 2);
@@ -466,7 +467,6 @@ void ContextIndexer::addChunk(const std::string& path, const std::string& text, 
     index->addPoint(embedding.data(), new_id);
     id_to_chunk_map[new_id] = {path, location};
     fileIndex[path].chunks.push_back({new_id, location});
-    current_max_elements++;
 }
 
 void ContextIndexer::indexDirectory(const fs::path& directoryPath)
@@ -530,70 +530,54 @@ void ContextIndexer::indexDirectory(const fs::path& directoryPath)
 }
 
 void ContextIndexer::reindexFile(const std::string& path) {
-    std::lock_guard lock(mtx);
-
     fs::path fs_path(path);
     if (!fs::exists(fs_path) || !fs::is_regular_file(fs_path)) {
         removeFileFromIndex(path);
         return;
     }
 
-    // Check if file should be ignored
     if (ignoredExtensions.count(fs_path.extension().string()) ||
         ignoredFiles.count(fs_path.filename().string()))
     {
         return;
     }
 
-    auto lastWriteTime = fs::last_write_time(fs_path);
-    auto it = fileIndex.find(path);
-
-    // If file is not new and not modified, do nothing
-    if (it != fileIndex.end() && it->second.last_write_time == lastWriteTime) {
-        return;
-    }
-
-    // Mark old chunks for deletion if file is being modified
-    if (it != fileIndex.end()) {
-        for (const auto& chunk_data : it->second.chunks) {
-            if (index) index->markDelete(chunk_data.id);
-            id_to_chunk_map.erase(chunk_data.id);
-        }
-        it->second.chunks.clear();
-    }
-
     std::string content = readFileContent(fs_path);
     if (content.empty()) {
-        if (it != fileIndex.end()) fileIndex.erase(it);
+        removeFileFromIndex(path); // removeFileFromIndex handles locking
         return;
     }
-
-    // Update file record
-    fileIndex[path].last_write_time = lastWriteTime;
-    fileIndex[path].chunks.clear();
 
     std::vector<CodeChunk> semanticChunks;
     bool use_semantic = false;
     if ((config.chunking_strategy == "tree-sitter" || config.chunking_strategy == "tree-sitter-hybrid") && codeParser) {
         semanticChunks = codeParser->parse(content, fs_path.extension().string());
-        if (!semanticChunks.empty()) {
-            use_semantic = true;
-        }
+        use_semantic = !semanticChunks.empty();
     }
 
+    struct ChunkToAdd {
+        std::string text;
+        std::vector<float> embedding;
+        ChunkLocation location;
+    };
+    std::vector<ChunkToAdd> chunks_to_add;
+
+    // This part contains network calls and is performed outside the lock
     if (use_semantic) {
         for (size_t i = 0; i < semanticChunks.size(); ++i) {
             const auto& chunk = semanticChunks[i];
             ChunkLocation location = {chunk.start_byte, chunk.length};
             std::string chunkName = path + " [#chunk " + std::to_string(i) + "]";
             std::string text_for_embedding = chunk.text;
-
+            
             if (config.chunking_strategy == "tree-sitter-hybrid" && summarizerAssistant) {
                 std::string summary = summarizerAssistant->generateChunkSummary(chunk.text, chunkName);
                 text_for_embedding = "[SUMMARY]: " + summary + "\n[CODE]:\n" + chunk.text;
             }
             auto emb = embeddingClient.getEmbedding(text_for_embedding, chunkName);
-            if (!emb.empty()) addChunk(path, chunk.text, emb, location);
+            if (!emb.empty()) {
+                chunks_to_add.push_back({chunk.text, std::move(emb), location});
+            }
         }
     } else { // Fallback to fixed size
         auto fixedChunks = fixedSizeChunkText(content, config.embedding_max_text_length, config.embedding_chunk_overlap);
@@ -602,8 +586,28 @@ void ContextIndexer::reindexFile(const std::string& path) {
             std::string chunk_text = content.substr(location.start_byte, location.length);
             std::string chunkName = path + " [#chunk " + std::to_string(i) + "]";
             auto emb = embeddingClient.getEmbedding(chunk_text, chunkName);
-            if (!emb.empty()) addChunk(path, chunk_text, emb, location);
+            if (!emb.empty()) {
+                chunks_to_add.push_back({chunk_text, std::move(emb), location});
+            }
         }
+    }
+
+    // Now, acquire the lock and modify the index state
+    std::lock_guard lock(mtx);
+
+    auto it = fileIndex.find(path);
+    if (it != fileIndex.end()) {
+        for (const auto& chunk_data : it->second.chunks) {
+            if (index) index->markDelete(chunk_data.id);
+            id_to_chunk_map.erase(chunk_data.id);
+        }
+    }
+
+    fileIndex[path].last_write_time = fs::last_write_time(fs_path);
+    fileIndex[path].chunks.clear();
+
+    for (const auto& chunk_data : chunks_to_add) {
+        addChunk(path, chunk_data.text, chunk_data.embedding, chunk_data.location);
     }
 
     if (fileIndex.count(path) && fileIndex.at(path).chunks.empty()) {
