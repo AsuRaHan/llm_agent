@@ -18,6 +18,15 @@ set(BUILD_SHARED_LIBS OFF)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Проверка архитектуры
+if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+    set(ARCHITECTURE "x64")
+else()
+    set(ARCHITECTURE "x86")
+endif()
+
+message(STATUS "Building for architecture: ${ARCHITECTURE}")
+
 include(FetchContent)
 
 # --- Dependencies ---
@@ -151,10 +160,10 @@ if(MSVC)
   target_compile_options(tree_sitter_markdown_lib PRIVATE "/wd4005" "/wd4142")
 endif()
 
-add_executable(Agent 
-      src/main.cpp 
-      src/ContextIndexer.cpp 
-      src/EmbeddingClient.cpp 
+add_executable(Agent
+      src/main.cpp
+      src/ContextIndexer.cpp
+      src/EmbeddingClient.cpp
       src/AssistantRole.cpp
       src/Logger.cpp
       src/CodeParser.cpp

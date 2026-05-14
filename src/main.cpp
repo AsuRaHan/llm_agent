@@ -79,7 +79,7 @@ bool initializeApplication(const std::string& projectDir, Config& outConfig)
     SetConsoleCP(CP_UTF8); // Устанавливаем кодовую страницу для ВВОДА
 #endif
 
-    if (!outConfig.load("config.json")) {
+    if (!outConfig.load(".shdata/config.json")) {
         // Логгер еще не инициализирован, используем cerr
         std::cerr << "CRITICAL: Не удалось загрузить конфигурацию 'config.json'. Завершение работы." << std::endl;
         return false;
@@ -268,7 +268,7 @@ void processUserQuery(const std::string& query, ContextIndexer& indexer,
     auto topResults = indexer.findTopK(query, config.top_k_results);
 
     if (topResults.empty()) {
-        std::cout << "\n⚠️  К сожалению, релевантной информации не найдено.\n";
+        std::cout << "\nК сожалению, релевантной информации не найдено.\n";
         SPDLOG_WARN("По запросу '{}' не найдено релевантной информации.", query);
         return;
     }
@@ -293,7 +293,7 @@ void processUserQuery(const std::string& query, ContextIndexer& indexer,
     }
     
     SPDLOG_INFO("Использую контекст из файлов: {}", sources_str);
-    std::cout << "📄 Контекст из: " << sources_str << "\n\n";
+    std::cout << "Контекст из: " << sources_str << "\n\n";
 
     std::string analysis = assistant.processQuery(query, topResults, indexer);
     
@@ -318,20 +318,20 @@ int main(int argc, char* argv[])
 
         if (!initializeApplication(projectDir, config)) {
             // Конфиг не загружен, используем путь по умолчанию
-            show_last_log_entries("app.log", 30);
+            // show_last_log_entries("agent.log", 30);
             return 1;
         }
 
         // ====== Проверка подключения LLM ======
         if (!checkLLMConnection(config)) {
-            show_last_log_entries(config.log_file_path, 30);
+            // show_last_log_entries(config.log_file_path, 30);
             return 1;
         }
 
         // ====== Индексирование проекта ======
         auto indexer = indexProject(projectDir, config);
         if (!indexer) {
-            show_last_log_entries(config.log_file_path, 30);
+            // show_last_log_entries(config.log_file_path, 30);
             return 1;
         }
 
@@ -350,6 +350,8 @@ int main(int argc, char* argv[])
         FileWatcher watcher(*indexer);
         watcher.start(projectDir);
         // ====== Главный цикл приложения ======
+        clear_screen();
+        
         bool running = true;
         while (running) {
             int choice = showMainMenu();
@@ -398,11 +400,11 @@ int main(int argc, char* argv[])
 
     } catch (const std::exception& e) {
         SPDLOG_CRITICAL("Перехвачено необработанное исключение: {}", e.what());
-        show_last_log_entries("app.log", 30); // config может быть недоступен
+        // show_last_log_entries("agent.log", 30); // config может быть недоступен
         return 1;
     } catch (...) {
         SPDLOG_CRITICAL("Перехвачено неизвестное необработанное исключение!");
-        show_last_log_entries("app.log", 30); // config может быть недоступен
+        // show_last_log_entries("agent.log", 30); // config может быть недоступен
         return 1;
     }
 
