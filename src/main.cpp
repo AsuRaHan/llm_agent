@@ -103,22 +103,6 @@ bool initializeApplication(const std::string& projectDir, Config& outConfig)
     return true;
 }
 
-/// Проверяет подключение к LLM-серверу
-bool checkLLMConnection(const Config& config)
-{
-    try {
-        EmbeddingClient tempClient(config);
-        if (!tempClient.checkConnection()) {
-            SPDLOG_CRITICAL("Не удалось подключиться к серверу LLM. Завершение работы.");
-            return false;
-        }
-        return true;
-    } catch (const std::exception& e) {
-        SPDLOG_CRITICAL("Ошибка при проверке подключения к LLM: {}", e.what());
-        return false;
-    }
-}
-
 /// Индексирует директорию проекта и возвращает заполненный ContextIndexer
 /// Возвращает nullptr при ошибке
 std::unique_ptr<ContextIndexer> indexProject(const std::string& projectDir, const Config& config)
@@ -322,9 +306,16 @@ int main(int argc, char* argv[])
             return 1;
         }
 
-        // ====== Проверка подключения LLM ======
-        if (!checkLLMConnection(config)) {
-            // show_last_log_entries(config.log_file_path, 30);
+        // ====== Проверка совместимости с LLM сервером ======
+        EmbeddingClient conn_checker(config);
+        auto server_props_opt = conn_checker.fetchServerProperties();
+
+        if (!server_props_opt) {
+            SPDLOG_CRITICAL("Не удалось получить свойства с LLM сервера. Проверьте, что сервер запущен и доступен.");
+            return 1;
+        }
+        if (!server_props_opt->embedding_enabled) {
+            SPDLOG_CRITICAL("Сервер LLM запущен без поддержки эмбеддингов (флаг --embedding). Агент не может работать без этой функции. Завершение работы.");
             return 1;
         }
 

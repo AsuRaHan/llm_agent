@@ -75,45 +75,72 @@ std::vector<float> EmbeddingClient::getEmbedding(const std::string& text, const 
     return {}; // Should not be reached if logic is correct
 }
 
-bool EmbeddingClient::checkConnection() const {
-    SPDLOG_INFO("Проверка соединения с сервером LLM на {}:{}...", cli.host(), cli.port());
+bool EmbeddingClient::probeEmbeddingEndpoint() const {
+    SPDLOG_DEBUG("  [EmbeddingClient] Проверка эндпоинта /v1/embeddings...");
+    httplib::Client probe_cli(cli.host(), cli.port());
+    probe_cli.set_connection_timeout(2, 0); // Короткий таймаут для проверки
+
+    // Мы намеренно отправляем невалидный запрос (пустое тело).
+    // 404 означает, что эндпоинт не найден.
+    // Любая другая ошибка (400, 500) означает, что эндпоинт СУЩЕСТВУЕТ, но запрос некорректен,
+    // что и является подтверждением поддержки эмбеддингов.
+    auto res = probe_cli.Post("/v1/embeddings", "{}", "application/json");
+
+    if (res && res->status == 404) {
+        SPDLOG_WARN("  [EmbeddingClient] Проверка не удалась: эндпоинт /v1/embeddings не найден (404).");
+        return false;
+    }
     
-    // Use a temporary client to set a shorter timeout specifically for the health check
+    // Если нет ответа (ошибка соединения) или статус не 404, мы считаем, что эндпоинт существует.
+    SPDLOG_DEBUG("  [EmbeddingClient] Проверка успешна: эндпоинт /v1/embeddings существует.");
+    return true;
+}
+
+std::optional<ServerProperties> EmbeddingClient::fetchServerProperties() const {
+    SPDLOG_INFO("Получение свойств с сервера LLM на {}:{}...", cli.host(), cli.port());
+    
     httplib::Client temp_cli(cli.host(), cli.port());
-    temp_cli.set_connection_timeout(5, 0); // 5 seconds timeout for health check
+    temp_cli.set_connection_timeout(5, 0);
+    temp_cli.set_read_timeout(10, 0); // Таймаут на чтение ответа
 
     httplib::Headers headers;
     if (!config.api_key.empty()) {
         headers.emplace("Authorization", "Bearer " + config.api_key);
     }
 
-    for (int attempt = 1; attempt <= config.retry_count; ++attempt) {
-        // Pass headers to the Get request
-        auto res = temp_cli.Get("/health", headers); // Standard health check endpoint
+    auto res = temp_cli.Get("/props", headers);
 
-        if (res) {
-            if (res->status == 200) {
-                try {
-                    auto json_body = json::parse(res->body);
-                    if (json_body.contains("status") && json_body["status"] == "ok") {
-                        SPDLOG_INFO("Соединение с сервером LLM успешно установлено, статус 'ok'.");
-                        return true;
-                    }
-                    SPDLOG_WARN("Сервер LLM доступен, но статус не 'ok'. Ответ: {}. Попытка {}/{}", res->body, attempt, config.retry_count);
-                } catch (const json::exception& e) {
-                    SPDLOG_WARN("Сервер LLM доступен, но не удалось разобрать ответ /health: {}. Попытка {}/{}", e.what(), attempt, config.retry_count);
-                }
-            } else {
-                SPDLOG_WARN("Сервер LLM доступен, но /health ответил с ошибкой. Статус: {}. Попытка {}/{}", res->status, attempt, config.retry_count);
-            }
-        } else {
-            auto err = res.error();
-            SPDLOG_WARN("Не удалось установить соединение с сервером LLM. Ошибка: {}. Попытка {}/{}", httplib::to_string(err), attempt, config.retry_count);
-        }
-        if (attempt < config.retry_count) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(config.retry_delay_ms));
-        }
+    if (!res) {
+        SPDLOG_CRITICAL("Не удалось подключиться к серверу LLM для получения свойств. Ошибка: {}", httplib::to_string(res.error()));
+        return std::nullopt;
     }
-    SPDLOG_ERROR("Не удалось подтвердить работоспособность сервера LLM после {} попыток.", config.retry_count);
-    return false;
+
+    if (res->status != 200) {
+        SPDLOG_CRITICAL("Сервер LLM ответил ошибкой на запрос /props. Статус: {}.", res->status);
+        return std::nullopt;
+    }
+
+    try {
+        json body = json::parse(res->body);
+        ServerProperties props;
+
+        // Адаптация к новому и старому формату /props
+        props.model_path = body.value("model_path", "unknown");
+        props.chat_template = body.value("chat_template", "");
+        props.context_size = body.value("default_generation_settings", json::object()).value("n_ctx", body.value("context_size", 4096));
+
+        // В новом формате /props нет поля "embedding", поэтому проверяем его наличие или делаем прямой запрос
+        props.embedding_enabled = body.value("embedding", probeEmbeddingEndpoint());
+
+        SPDLOG_INFO("Свойства сервера успешно получены:");
+        SPDLOG_INFO("  - Модель: {}", props.model_path);
+        SPDLOG_INFO("  - Шаблон чата: '{}'", props.chat_template.empty() ? "не указан" : props.chat_template);
+        SPDLOG_INFO("  - Размер контекста: {}", props.context_size);
+        SPDLOG_INFO("  - Поддержка эмбеддингов: {}", props.embedding_enabled ? "Да" : "Нет");
+
+        return props;
+    } catch (const json::exception& e) {
+        SPDLOG_CRITICAL("Не удалось разобрать JSON-ответ от /props: {}", e.what());
+        return std::nullopt;
+    }
 }
