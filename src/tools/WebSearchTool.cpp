@@ -39,7 +39,7 @@ std::string WebSearchTool::execute(const nlohmann::json& args, ContextIndexer* i
     SPDLOG_INFO("[Tool:web_search] Поиск в интернете: '{}'", query);
 
     // Serper.dev requires an HTTPS client. httplib handles this automatically.
-    httplib::Client cli("google.serper.dev");
+    httplib::SSLClient cli("google.serper.dev");
     cli.set_connection_timeout(10);
     cli.set_read_timeout(20);
 
@@ -48,11 +48,12 @@ std::string WebSearchTool::execute(const nlohmann::json& args, ContextIndexer* i
     };
 
     httplib::Headers headers = {
-        {"X-API-KEY", config.web_search_api_key},
-        {"Content-Type", "application/json"}
+        {"X-API-KEY", config.web_search_api_key}
     };
 
-    auto res = cli.Post("/search", headers, body.dump(), "application/json");
+    // Явно указываем Content-Type в вызове Post, чтобы гарантировать правильную отправку тела запроса.
+    std::string body_str = body.dump();
+    auto res = cli.Post("/search", headers, body_str, "application/json");
 
     if (!res) {
         auto err = res.error();

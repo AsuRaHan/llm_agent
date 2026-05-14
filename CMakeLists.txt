@@ -29,6 +29,10 @@ message(STATUS "Building for architecture: ${ARCHITECTURE}")
 
 include(FetchContent)
 
+# Find OpenSSL for HTTPS support in httplib
+find_package(OpenSSL REQUIRED)
+
+
 # --- Dependencies ---
 
 # nlohmann/json
@@ -179,6 +183,7 @@ add_executable(Agent
       src/tools/ApplyDiffTool.cpp
       src/tools/ReadUrlTool.cpp
       src/tools/WebSearchTool.cpp
+      src/tools/OpenUrlTool.cpp
       src/tools/ExecuteShellCommandTool.cpp
       src/tools/GetDateTimeTool.cpp
       src/tools/GetSystemInfoTool.cpp
@@ -198,15 +203,17 @@ target_include_directories(Agent PUBLIC
 # Устанавливаем минимальный уровень логирования spdlog на этапе компиляции.
 # Это позволяет использовать SPDLOG_DEBUG и SPDLOG_TRACE в релизных сборках.
 target_compile_definitions(Agent PRIVATE SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE)
+# Включаем поддержку SSL в cpp-httplib
+target_compile_definitions(Agent PRIVATE CPPHTTPLIB_OPENSSL_SUPPORT)
 
 # Link against dependencies
-target_link_libraries(Agent PRIVATE spdlog::spdlog hnswlib tree-sitter tree_sitter_cpp_lib tree_sitter_markdown_lib)
+target_link_libraries(Agent PRIVATE spdlog::spdlog hnswlib tree-sitter tree_sitter_cpp_lib tree_sitter_markdown_lib OpenSSL::SSL OpenSSL::Crypto)
 
 # --- Platform Specifics ---
 
 if(WIN32)
   # httplib requires ws2_32, wsock32, and crypt32 on Windows
-  target_link_libraries(Agent PRIVATE ws2_32 wsock32 crypt32)
+  target_link_libraries(Agent PRIVATE ws2_32 wsock32 crypt32 Bcrypt)
   # Add defines to avoid conflicts with Windows.h
   target_compile_definitions(Agent PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
 endif()
