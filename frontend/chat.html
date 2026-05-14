@@ -5,12 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Чат с Агентом - Smart Hammer</title>
     <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
     <div class="chat-container">
         <div class="chat-header">
-            <h1>Чат с Агентом</h1>
-            <a href="/" class="back-link">На главную</a>
+            <div class="header-left">
+                <h1>🤖 Чат с Агентом</h1>
+                <span id="connection-status" class="connection-status">● Онлайн</span>
+            </div>
+            <div class="header-right">
+                <a href="/" class="back-link">На главную</a>
+                <button id="clear-chat" class="clear-btn" title="Очистить чат">🗑️</button>
+            </div>
         </div>
         <div id="message-list" class="message-list">
             <!-- Messages will be appended here by JavaScript -->

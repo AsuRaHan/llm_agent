@@ -64,6 +64,13 @@ public:
      */
     std::string getHost() const { return host; }
 
+    // Обработчик входящих сообщений, вызываемый из ApiHandlers
+    // Сделан публичным, чтобы ApiHandlers мог делегировать обработку сообщений.
+    void handleMessage(const std::string& message, const std::function<void(const std::string&)>& send_back);
+
+private:
+
+
 private:
     // Configuration
     const Config& config;
@@ -77,9 +84,6 @@ private:
     
     // Mutex for thread safety
     std::mutex mutex;
-
-    // Handler for incoming messages
-    void handleMessage(const std::string& message, const std::function<void(const std::string&)>& send_back);
 
     // Individual message handlers
     void handleQuery(const nlohmann::json& data, const std::function<void(const std::string&)>& send_back);

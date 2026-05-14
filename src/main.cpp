@@ -411,6 +411,7 @@ int main(int argc, char* argv[])
             std::cout << "\nСервер запущен:\n";
             std::cout << "  • REST API: http://" << config.web_server_host << ":" << config.web_server_port << "/api\n";
             std::cout << "  • Query endpoint: POST /api/query\n";
+            std::cout << "  • WebSocket: ws://" << config.web_server_host << ":" << config.web_server_port << "/ws\n";
             std::cout << "  • Frontend: http://" << config.web_server_host << ":" << config.web_server_port << "/\n";
             std::cout << "  • Indexed files: " << indexer->getFileCount() << "\n";
             std::cout << "  • Embeddings: " << indexer->getEmbeddingsCount() << "\n";
