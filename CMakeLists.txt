@@ -195,6 +195,10 @@ target_include_directories(Agent PUBLIC
   $<BUILD_INTERFACE:${tree_sitter_core_SOURCE_DIR}/lib/include> # Заголовочные файлы Tree-sitter core
 )
 
+# Устанавливаем минимальный уровень логирования spdlog на этапе компиляции.
+# Это позволяет использовать SPDLOG_DEBUG и SPDLOG_TRACE в релизных сборках.
+target_compile_definitions(Agent PRIVATE SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE)
+
 # Link against dependencies
 target_link_libraries(Agent PRIVATE spdlog::spdlog hnswlib tree-sitter tree_sitter_cpp_lib tree_sitter_markdown_lib)
 
