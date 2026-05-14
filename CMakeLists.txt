@@ -184,6 +184,7 @@ add_executable(Agent
       src/tools/ReadUrlTool.cpp
       src/tools/WebSearchTool.cpp
       src/tools/OpenUrlTool.cpp
+      src/tools/GitHubSearchTool.cpp
       src/tools/ExecuteShellCommandTool.cpp
       src/tools/GetDateTimeTool.cpp
       src/tools/GetSystemInfoTool.cpp

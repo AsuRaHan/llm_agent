@@ -14,6 +14,7 @@
 #include "WebSearchTool.h"      // Include the new web search tool
 #include "ReadUrlTool.h"        // Include the new URL reader tool
 #include "OpenUrlTool.h"        // Include the new URL opener tool
+#include "GitHubSearchTool.h"   // Include the new GitHub search tool
 #include "../Config.h" // Needed for the constructor
 
 ToolManager::ToolManager(const Config& config) {
@@ -28,6 +29,7 @@ ToolManager::ToolManager(const Config& config) {
     registerTool(std::make_unique<GetSystemInfoTool>());
     registerTool(std::make_unique<ReadUrlTool>());
     registerTool(std::make_unique<OpenUrlTool>());
+    registerTool(std::make_unique<GitHubSearchTool>());
 
     // Register web search tool only if an API key is provided
     if (!config.web_search_api_key.empty()) {
