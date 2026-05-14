@@ -47,6 +47,7 @@ struct Config {
     // size_t chunk_size = 10000; // Устарело, используется embedding_max_text_length
     // size_t chunk_overlap = 2000; // Устарело, используется embedding_chunk_overlap
     int top_k_results = 5;
+    int initial_index_size = 50000;
     std::string chunking_strategy = "tree-sitter-hybrid"; // "fixed", "tree-sitter", or "tree-sitter-hybrid"
     std::vector<std::string> ignored_directories;
     std::vector<std::string> ignored_extensions;

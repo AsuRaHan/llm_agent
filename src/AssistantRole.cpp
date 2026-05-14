@@ -25,29 +25,32 @@ std::string AssistantRole::processQuery(const std::string& userQuery, const std:
     // 1. Initialize message history
     json messages = json::array();
 
+    std::string system_prompt = "Ты — эксперт-программист и AI-ассистент. Твоя задача — отвечать на вопросы пользователя о кодовой базе.\n"
+                                "У тебя есть лимит на вызов инструментов: " + std::to_string(config.max_tool_calls) + " раз на один запрос.\n\n"
+                                "Твой план действий:\n"
+                                "1.  **Проанализируй контекст.** Тебе предоставлен релевантный контекст, найденный по вопросу пользователя. Внимательно изучи его.\n"
+                                "2.  **Оцени достаточность контекста.** Если предоставленные фрагменты кода полностью отвечают на вопрос, сформируй ответ на их основе.\n"
+                                "3.  **Используй инструменты, если необходимо.** Если контекст неполный, или тебе нужно увидеть файл целиком, чтобы понять общую картину, используй инструменты:\n"
+                                "    *   `read_file`: чтобы прочитать весь файл, из которого взят фрагмент.\n"
+                                "    *   `web_search`: чтобы найти информацию в интернете (документация, ошибки, общие вопросы).\n"
+                                "    *   `read_url`: чтобы прочитать содержимое веб-страницы по URL (например, из результатов `web_search`).\n"
+                                "    *   `list_directory`: чтобы изучить структуру проекта.\n"
+                                "    *   `code_search`: чтобы выполнить **новый** семантический поиск по другому запросу.\n"
+                                "    *   `grep_search`: для поиска по точному совпадению или регулярному выражению.\n"
+                                "    *   `file_glob_search`: для поиска файлов по маске (например, '*.cpp').\n"
+                                "    *   `write_file`: для записи или изменения файлов (используй с осторожностью!).\n"
+                                "    *   `edit_file`: для безопасной, точечной замены блока кода в файле.\n"
+                                "    *   `apply_diff`: для применения патча в формате unified diff к файлу.\n"
+                                "    *   `execute_shell_command`: для выполнения команды в системной оболочке (shell/cmd).\n"
+                                "    *   `get_datetime`: для получения текущей даты и времени в формате UTC.\n"
+                                "    *   `get_system_info`: для получения информации об операционной системе, на которой запущен агент.\n"
+                                "4.  **Думай по шагам.** После каждого шага (вызова инструмента) анализируй полученную информацию и решай, что делать дальше, пока не соберешь достаточно данных для исчерпывающего ответа.\n"
+                                "5.  **Дай точный ответ.** В конце, ссылаясь на собранную информацию, дай пользователю точный и подробный ответ.";
+
     // System Prompt
     messages.push_back({
         {"role", "system"},
-        {"content", "Ты — эксперт-программист и AI-ассистент. Твоя задача — отвечать на вопросы пользователя о кодовой базе.\n"
-                    "Твой план действий:\n"
-                    "1.  **Проанализируй контекст.** Тебе предоставлен релевантный контекст, найденный по вопросу пользователя. Внимательно изучи его.\n"
-                    "2.  **Оцени достаточность контекста.** Если предоставленные фрагменты кода полностью отвечают на вопрос, сформируй ответ на их основе.\n"
-                    "3.  **Используй инструменты, если необходимо.** Если контекст неполный, или тебе нужно увидеть файл целиком, чтобы понять общую картину, используй инструменты:\n"
-                    "    *   `read_file`: чтобы прочитать весь файл, из которого взят фрагмент.\n"
-                    "    *   `web_search`: чтобы найти информацию в интернете (документация, ошибки, общие вопросы).\n"
-                    "    *   `read_url`: чтобы прочитать содержимое веб-страницы по URL (например, из результатов `web_search`).\n"
-                    "    *   `list_directory`: чтобы изучить структуру проекта.\n"
-                    "    *   `code_search`: чтобы выполнить **новый** семантический поиск по другому запросу.\n"
-                    "    *   `grep_search`: для поиска по точному совпадению или регулярному выражению.\n"
-                    "    *   `file_glob_search`: для поиска файлов по маске (например, '*.cpp').\n"
-                    "    *   `write_file`: для записи или изменения файлов (используй с осторожностью!).\n"
-                    "    *   `edit_file`: для безопасной, точечной замены блока кода в файле.\n"
-                    "    *   `apply_diff`: для применения патча в формате unified diff к файлу.\n"
-                    "    *   `execute_shell_command`: для выполнения команды в системной оболочке (shell/cmd).\n"
-                    "    *   `get_datetime`: для получения текущей даты и времени в формате UTC.\n"
-                    "    *   `get_system_info`: для получения информации об операционной системе, на которой запущен агент.\n"
-                    "4.  **Думай по шагам.** После каждого шага (вызова инструмента) анализируй полученную информацию и решай, что делать дальше, пока не соберешь достаточно данных для исчерпывающего ответа.\n"
-                    "5.  **Дай точный ответ.** В конце, ссылаясь на собранную информацию, дай пользователю точный и подробный ответ."}
+        {"content", system_prompt}
     });
 
     // RAG Context
@@ -140,15 +143,28 @@ std::string AssistantRole::processQuery(const std::string& userQuery, const std:
 
             const auto& tool_calls = message["tool_calls"];
             for (const auto& call : tool_calls) {
-                std::string tool_name = call["function"]["name"];
+                const auto& function_call = call["function"];
+                std::string tool_name = function_call["name"];
                 json tool_args;
-                // Handle cases where arguments are a stringified JSON or a direct JSON object
-                if (call["function"]["arguments"].is_string()) {
-                    tool_args = json::parse(call["function"]["arguments"].get<std::string>());
-                } else {
-                    tool_args = call["function"]["arguments"];
-                }
                 std::string tool_id = call["id"];
+
+                try {
+                    // Handle cases where arguments are a stringified JSON or a direct JSON object
+                    if (function_call["arguments"].is_string()) {
+                        tool_args = json::parse(function_call["arguments"].get<std::string>());
+                    } else {
+                        tool_args = function_call["arguments"];
+                    }
+                } catch (const json::exception& e) {
+                    SPDLOG_ERROR("Failed to parse tool arguments for '{}': {}", tool_name, e.what());
+                    std::string error_content = "{\"error\": \"Invalid JSON in arguments: " + std::string(e.what()) + "\"}";
+                    messages.push_back({
+                        {"role", "tool"},
+                        {"tool_call_id", tool_id},
+                        {"content", error_content}
+                    });
+                    continue; // Skip to the next tool call or next agent iteration
+                }
 
                 // Execute the tool
                 std::string result = toolManager->executeTool(tool_name, tool_args, &indexer);
@@ -160,6 +176,15 @@ std::string AssistantRole::processQuery(const std::string& userQuery, const std:
                     {"content", result}
                 });
             }
+
+            // Inform the model about remaining tool calls
+            int remaining_calls = config.max_tool_calls - (i + 1);
+            if (remaining_calls > 0) {
+                messages.push_back({
+                    {"role", "system"},
+                    {"content", "Инструменты выполнены. У тебя осталось " + std::to_string(remaining_calls) + " вызовов."}
+                });
+            }
             // Continue to the next iteration of the loop
             continue;
         }
@@ -169,7 +194,43 @@ std::string AssistantRole::processQuery(const std::string& userQuery, const std:
         return "Ошибка: получен неожиданный формат ответа от модели.";
     }
 
-    return "Ошибка: превышено максимальное количество вызовов инструментов (" + std::to_string(config.max_tool_calls) + ").";
+    SPDLOG_WARN("Превышено максимальное количество вызовов инструментов ({}). Запрос финального ответа от модели.", config.max_tool_calls);
+
+    // Ask the model to summarize and give a final answer based on the conversation so far.
+    messages.push_back({
+        {"role", "system"},
+        {"content", "Ты достиг максимального количества вызовов инструментов. Предоставь пользователю окончательный ответ, основываясь на уже собранной информации."}
+    });
+
+    json final_body = {
+        {"messages", messages},
+        {"model", config.chat_model_name},
+        // No "tools" or "tool_choice" here to force a direct answer
+        {"temperature", 0.1}
+    };
+
+    // Re-create headers for the final call, as the previous one was in the loop's scope.
+    httplib::Headers headers;
+    if (!config.api_key.empty()) {
+        headers.emplace("Authorization", "Bearer " + config.api_key);
+    }
+
+    // Make one last call to the LLM
+    auto final_res = cli.Post("/v1/chat/completions", headers, final_body.dump(), "application/json");
+
+    if (final_res && final_res->status == 200) {
+        try {
+            json final_response_json = json::parse(final_res->body);
+            if (final_response_json.contains("choices") && !final_response_json["choices"].empty()) {
+                return final_response_json["choices"][0]["message"]["content"].get<std::string>();
+            }
+        } catch (const json::exception& e) {
+            SPDLOG_ERROR("Не удалось разобрать финальный JSON-ответ от LLM: {}", e.what());
+        }
+    }
+
+    // Fallback error message if the final call also fails.
+    return "Ошибка: превышено максимальное количество вызовов инструментов (" + std::to_string(config.max_tool_calls) + "), и не удалось сгенерировать итоговый ответ.";
 }
 
 std::string AssistantRole::generateProjectSummaryGreeting(int file_count, int embedding_count) {

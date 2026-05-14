@@ -8,6 +8,7 @@
 #include <chrono>
 #include <memory>
 #include <mutex>
+#include <atomic>
 
 #include "EmbeddingClient.h"
 #include "nlohmann/json.hpp"
@@ -86,6 +87,6 @@ private:
     std::unique_ptr<hnswlib::L2Space> space;
     std::unique_ptr<hnswlib::HierarchicalNSW<float>> index;
     std::unordered_map<size_t, std::pair<std::string, ChunkLocation>> id_to_chunk_map; // map ID -> {filePath, location}
-    size_t current_max_elements = 0;
+    std::atomic<size_t> current_max_elements = 0;
     mutable std::recursive_mutex mtx;
 };
