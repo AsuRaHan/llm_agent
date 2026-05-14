@@ -83,8 +83,8 @@ private:
     const std::string hnswIndexPath = ".shdata/index.bin";
     const std::string metadataDbPath = ".shdata/index_meta.json";
     size_t embedding_dim = 0; // To be determined from the first embedding
-    hnswlib::L2Space* space = nullptr;
-    hnswlib::HierarchicalNSW<float>* index = nullptr;
+    std::unique_ptr<hnswlib::L2Space> space;
+    std::unique_ptr<hnswlib::HierarchicalNSW<float>> index;
     std::unordered_map<size_t, std::pair<std::string, ChunkLocation>> id_to_chunk_map; // map ID -> {filePath, location}
     size_t current_max_elements = 0;
     mutable std::recursive_mutex mtx;

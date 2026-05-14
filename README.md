@@ -83,19 +83,26 @@ cmake --build build --config Release
         "retry_count": 3,
         "retry_delay_ms": 500
     },
-    "embedding": {
-        "model_name": "any",
-        "max_text_length": 1500,
-        "embedding_chunk_overlap": 200
-    },
     "assistant": {
         "model_name": "any",
         "chat_completion_timeout_sec": 300,
-        "max_tool_calls": 5
+        "max_tool_calls": 10
+    },
+    "embedding": {
+        "model_name": "any",
+        "max_text_length": 4096,
+        "embedding_chunk_overlap": 512
+    },
+    "tools": {
+        "enable_dangerous_tools": true
+    },
+    "logging": {
+        "log_file_path": "agent.log",
+        "log_to_console": true,
+        "log_file_level": "trace",
+        "log_console_level": "info"
     },
     "indexing": {
-        "chunk_size": 1000,
-        "chunk_overlap": 200,
         "top_k_results": 5,
         "chunking_strategy": "tree-sitter-hybrid",
         "ignored_directories": [
@@ -121,15 +128,14 @@ cmake --build build --config Release
     *   `retry_count`: Количество повторных попыток при сбое сетевого соединения.
     *   `retry_delay_ms`: Задержка между повторными попытками в миллисекундах.
 *   **`embedding`**: Настройки для генерации эмбеддингов.
-    *   `model_name`: Имя модели для создания эмбеддингов (например, `text-embedding-ada-002`). Если используется локальный `llama.cpp`, можно оставить `"any"`.
-    *   `max_text_length`: Максимальная длина текста (в символах), отправляемого на векторизацию. Текст большей длины будет обрезан.
-    *   `embedding_chunk_overlap`: Нахлест для чанков, которые создаются из слишком больших блоков текста.
+    *   `model_name`: Имя модели для эмбеддингов. Для `llama.cpp` можно оставить `"any"`.
+    *   `max_text_length`: Максимальная длина текста (в символах) для одного чанка при разбиении.
+    *   `embedding_chunk_overlap`: Нахлест для чанков, которые создаются из слишком больших семантических блоков кода.
 *   **`assistant`**: Настройки для чат-комплишенов (генерации ответов).
-    *   `model_name`: Имя модели для генерации ответов (например, `gpt-4-turbo` или `Tesslate/omnicoder-9b-q8_0.gguf`). Если используется локальный `llama.cpp` с одной моделью, можно оставить `"any"`.
+    *   `model_name`: Имя модели для генерации ответов. Для `llama.cpp` можно оставить `"any"`.
     *   `chat_completion_timeout_sec`: Таймаут ожидания ответа от модели в секундах.
     *   `max_tool_calls`: Максимальное количество вызовов инструментов в рамках одного запроса пользователя.
 *   **`indexing`**: Настройки процесса индексации.
-    *   `chunk_size`, `chunk_overlap`: (Устарело, используется `embedding_max_text_length`) Размер чанка и его нахлест.
     *   `top_k_results`: Количество наиболее релевантных чанков, которые будут переданы в LLM для генерации ответа.
     *   `chunking_strategy`: Стратегия разбиения файлов на чанки.
         *   `"fixed"`: Простое разбиение по `chunk_size`.
@@ -171,6 +177,7 @@ set MODEL_PATH=E:\ai_training\models\Tesslate\OmniCoder-9B-GGUF\omnicoder-9b-q8_
     --flash-attn on ^
     --cache-type-k q4_0 ^
     --cache-type-v q4_0 ^
+    --batch-size 2048 ^
     --mlock --embedding --pooling mean
 
 

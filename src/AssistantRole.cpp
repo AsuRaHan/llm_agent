@@ -13,7 +13,9 @@ AssistantRole::AssistantRole(const Config& config)
       cli(config.server_host, config.server_port),
       toolManager(std::make_unique<ToolManager>(config))
 {
-    cli.set_connection_timeout(config.chat_completion_timeout_sec, 0);
+    // Устанавливаем таймауты. Connection - на установку соединения, read - на ожидание ответа.
+    cli.set_connection_timeout(10, 0); // 10 секунд на подключение
+    cli.set_read_timeout(config.chat_completion_timeout_sec, 0); // Таймаут на генерацию ответа моделью
 }
 
 // Destructor must be defined in the .cpp file where ToolManager is a complete type

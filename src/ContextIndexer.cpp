@@ -16,7 +16,7 @@ using json = nlohmann::json;
 namespace fs = std::filesystem;
 
 ContextIndexer::ContextIndexer(const Config& config)
-    : config(config), embeddingClient(config), codeParser(nullptr), summarizerAssistant(nullptr), space(nullptr), index(nullptr)
+    : config(config), embeddingClient(config), codeParser(nullptr), summarizerAssistant(nullptr)
 {
     ignoredDirectories.insert(config.ignored_directories.begin(), config.ignored_directories.end());
     ignoredExtensions.insert(config.ignored_extensions.begin(), config.ignored_extensions.end());
@@ -40,10 +40,7 @@ ContextIndexer::ContextIndexer(const Config& config)
 
 ContextIndexer::~ContextIndexer()
 {
-    // Saving is now done explicitly in main() after indexing to ensure data safety.
-    delete index;
-    delete space;
-    SPDLOG_INFO("ContextIndexer уничтожен.");
+    SPDLOG_INFO("ContextIndexer уничтожен."); // unique_ptr сделает всю работу по очистке
 }
 
 int ContextIndexer::getEmbeddingsCount() const {
@@ -124,10 +121,10 @@ void ContextIndexer::loadIndex()
     }
 
     // Now load the HNSW index
-    space = new hnswlib::L2Space(embedding_dim);
-    index = new hnswlib::HierarchicalNSW<float>(space, current_max_elements, 16, 200, 100, true);
+    space = std::make_unique<hnswlib::L2Space>(embedding_dim);
+    index = std::make_unique<hnswlib::HierarchicalNSW<float>>(space.get(), current_max_elements, 16, 200, 100, true);
     SPDLOG_INFO("Загрузка бинарного индекса из '{}'...", hnswIndexPath);
-    index->loadIndex(hnswIndexPath, space, current_max_elements);
+    index->loadIndex(hnswIndexPath, space.get(), current_max_elements);
     SPDLOG_INFO("Загружено {} векторов из индекса.", index->cur_element_count.load());
 }
 
@@ -448,9 +445,9 @@ void ContextIndexer::addChunk(const std::string& path, const std::string& text, 
     // Initialize index if this is the first element
     if (!index) {
         embedding_dim = embedding.size();
-        space = new hnswlib::L2Space(embedding_dim);
+        space = std::make_unique<hnswlib::L2Space>(embedding_dim);
         // Start with a reasonable max size, allow resizing and replacing deleted elements.
-        index = new hnswlib::HierarchicalNSW<float>(space, 10000, 16, 200, 100, true);
+        index = std::make_unique<hnswlib::HierarchicalNSW<float>>(space.get(), 10000, 16, 200, 100, true);
         SPDLOG_INFO("HNSW index initialized with embedding dimension: {}", embedding_dim);
     }
 

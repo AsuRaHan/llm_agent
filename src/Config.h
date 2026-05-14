@@ -33,9 +33,9 @@ struct Config {
     std::string log_console_level = "trace"; // "trace", "debug", "info", "warn", "error", "critical"
 
     // Indexing settings
-    size_t chunk_size = 10000;
-    size_t chunk_overlap = 2000;
-    int top_k_results = 3;
+    // size_t chunk_size = 10000; // Устарело, используется embedding_max_text_length
+    // size_t chunk_overlap = 2000; // Устарело, используется embedding_chunk_overlap
+    int top_k_results = 5;
     std::string chunking_strategy = "tree-sitter-hybrid"; // "fixed", "tree-sitter", or "tree-sitter-hybrid"
     std::vector<std::string> ignored_directories;
     std::vector<std::string> ignored_extensions;

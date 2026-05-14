@@ -11,7 +11,10 @@ using json = nlohmann::json;
 EmbeddingClient::EmbeddingClient(const Config& config)
     : config(config), cli(config.server_host, config.server_port)
 {
-    cli.set_connection_timeout(config.embedding_timeout_sec, 0);
+    // Устанавливаем таймауты. Connection timeout - на установку соединения, read/write - на операции.
+    // Для эмбеддингов важен read_timeout, так как модель может долго их считать.
+    cli.set_connection_timeout(5, 0); // 5 секунд на подключение
+    cli.set_read_timeout(config.embedding_timeout_sec, 0);
 }
 
 std::vector<float> EmbeddingClient::getEmbedding(const std::string& text, const std::string& filename)

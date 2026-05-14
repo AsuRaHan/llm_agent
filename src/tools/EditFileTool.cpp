@@ -98,9 +98,9 @@ std::string EditFileTool::execute(const nlohmann::json& args, ContextIndexer* in
         if (!line.empty() && line.back() == '\r') line.pop_back();
         old_lines.push_back(line);
     }
-    // LLM может сгенерировать лишний перенос строки в конце, что добавит пустую строку в old_lines.
-    // Удаляем ее, чтобы сделать сравнение более надежным.
-    if (!old_code_block.empty() && old_code_block.back() == '\n' && !old_lines.empty() && old_lines.back().empty()) {
+    // LLM может сгенерировать лишний перенос строки в конце блока, что добавит пустую строку в old_lines.
+    // Удаляем все пустые строки в конце, чтобы сделать сравнение более надежным.
+    while (!old_lines.empty() && old_lines.back().empty()) {
         old_lines.pop_back();
     }
 
@@ -123,8 +123,8 @@ std::string EditFileTool::execute(const nlohmann::json& args, ContextIndexer* in
         if (!line.empty() && line.back() == '\r') line.pop_back();
         new_lines.push_back(line);
     }
-    // Аналогично для нового блока, чтобы избежать добавления лишней пустой строки в конец файла
-    if (!new_code_block.empty() && new_code_block.back() == '\n' && !new_lines.empty() && new_lines.back().empty()) {
+    // Аналогично для нового блока, удаляем пустые строки в конце.
+    while (!new_lines.empty() && new_lines.back().empty()) {
         new_lines.pop_back();
     }
 
