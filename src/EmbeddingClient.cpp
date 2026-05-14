@@ -20,7 +20,7 @@ EmbeddingClient::EmbeddingClient(const Config& config)
 std::vector<float> EmbeddingClient::getEmbedding(const std::string& text, const std::string& filename)
 {
     std::string text_to_embed = text;
-    SPDLOG_DEBUG("  [EmbeddingClient] Generating embedding for '{}' (size: {} chars)...", filename, text_to_embed.length());
+    SPDLOG_DEBUG("Generating embedding for '{}' (size: {} chars)...", filename, text_to_embed.length());
 
     json body = {
         { "input", text_to_embed },
@@ -43,7 +43,7 @@ std::vector<float> EmbeddingClient::getEmbedding(const std::string& text, const 
             break;
         }
         // If res is false, it's a connection error.
-        SPDLOG_WARN("  [EmbeddingClient] Попытка {}/{} для '{}' не удалась. Ошибка соединения: {}. Повтор через {} мс...",
+        SPDLOG_WARN("Попытка {}/{} для '{}' не удалась. Ошибка соединения: {}. Повтор через {} мс...",
                     attempt, config.retry_count, filename, httplib::to_string(res.error()), config.retry_delay_ms);
         std::this_thread::sleep_for(std::chrono::milliseconds(config.retry_delay_ms));
     }
@@ -59,16 +59,16 @@ std::vector<float> EmbeddingClient::getEmbedding(const std::string& text, const 
                 }
             }
         } catch (const json::exception& e) { // Catch any nlohmann::json exception
-            SPDLOG_ERROR("  [EmbeddingClient] Error: Failed to parse JSON response for '{}'. Details: {}", filename, e.what());
+            SPDLOG_ERROR("Error: Failed to parse JSON response for '{}'. Details: {}", filename, e.what());
             return {};
         }
     } else {
         if (res) { // HTTP error
-            SPDLOG_ERROR("  [EmbeddingClient] Error: Failed to get embedding for '{}'. Status: {}", filename, res->status);
+            SPDLOG_ERROR("Error: Failed to get embedding for '{}'. Status: {}", filename, res->status);
             SPDLOG_ERROR("ОТВЕТ СЕРВЕРА: {}", res->body);
         } else { // Connection error
             auto err = res.error();
-            SPDLOG_ERROR("  [EmbeddingClient] Error: Connection failed for '{}'. Details: {}", filename, httplib::to_string(err));
+            SPDLOG_ERROR("Error: Connection failed for '{}'. Details: {}", filename, httplib::to_string(err));
         }
     }
 
@@ -76,7 +76,7 @@ std::vector<float> EmbeddingClient::getEmbedding(const std::string& text, const 
 }
 
 bool EmbeddingClient::probeEmbeddingEndpoint() const {
-    SPDLOG_DEBUG("  [EmbeddingClient] Проверка эндпоинта /v1/embeddings...");
+    SPDLOG_DEBUG("Проверка эндпоинта /v1/embeddings...");
     httplib::Client probe_cli(cli.host(), cli.port());
     probe_cli.set_connection_timeout(2, 0); // Короткий таймаут для проверки
 
@@ -87,12 +87,12 @@ bool EmbeddingClient::probeEmbeddingEndpoint() const {
     auto res = probe_cli.Post("/v1/embeddings", "{}", "application/json");
 
     if (res && res->status == 404) {
-        SPDLOG_WARN("  [EmbeddingClient] Проверка не удалась: эндпоинт /v1/embeddings не найден (404).");
+        SPDLOG_WARN("Проверка не удалась: эндпоинт /v1/embeddings не найден (404).");
         return false;
     }
     
     // Если нет ответа (ошибка соединения) или статус не 404, мы считаем, что эндпоинт существует.
-    SPDLOG_DEBUG("  [EmbeddingClient] Проверка успешна: эндпоинт /v1/embeddings существует.");
+    SPDLOG_DEBUG("Проверка успешна: эндпоинт /v1/embeddings существует.");
     return true;
 }
 

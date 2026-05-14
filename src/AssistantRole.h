@@ -13,6 +13,12 @@ class ToolManager;    // Forward declare for the member
 struct SearchResult;
 struct Config; // Forward declaration
 
+struct AssistantResponse {
+    std::string text;
+    bool is_final = true; // True if this is the final answer, false if it's a follow-up question
+    nlohmann::json conversation_history; // To pass the state back for follow-ups
+};
+
 class AssistantRole {
 public:
     explicit AssistantRole(const Config& config);
@@ -26,7 +32,7 @@ public:
      * @param indexer A reference to the main indexer, allowing tools to perform actions like `code_search`.
      * @return The final, user-facing answer from the assistant.
      */
-    std::string processQuery(const std::string& userQuery, const std::vector<SearchResult>& initialContext, ContextIndexer& indexer);
+    AssistantResponse processQuery(const std::string& userQuery, const std::vector<SearchResult>& initialContext, ContextIndexer& indexer, const nlohmann::json& continuation_history = {});
 
     std::string generateProjectSummaryGreeting(int file_count, int embedding_count);
     std::string generateChunkSummary(const std::string& codeChunk, const std::string& chunkName);

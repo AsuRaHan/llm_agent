@@ -225,14 +225,14 @@ void displayProjectSummary(AssistantRole& assistant, size_t fileCount, size_t em
     std::cout << "  ИНФОРМАЦИЯ О ПРОЕКТЕ\n";
     print_separator('=', 60);
     
-    SPDLOG_INFO("Связь с LLM установлена, получено эмбеддингов: {}", embeddingsCount);
+    SPDLOG_DEBUG("Связь с LLM установлена, получено эмбеддингов: {}", embeddingsCount);
     
     std::string greeting = assistant.generateProjectSummaryGreeting(fileCount, embeddingsCount);
     
     std::cout << "\n" << greeting << "\n\n";
-    std::cout << "Статистика индексирования:\n";
-    std::cout << "  • Обработано файлов: " << fileCount << "\n";
-    std::cout << "  • Создано эмбеддингов: " << embeddingsCount << "\n";
+    // std::cout << "Статистика индексирования:\n";
+    // std::cout << "  • Обработано файлов: " << fileCount << "\n";
+    // std::cout << "  • Создано эмбеддингов: " << embeddingsCount << "\n";
     print_separator('-', 60);
     
     getUTF8Input("Нажмите Enter для возврата в меню... ");
@@ -246,7 +246,7 @@ void processUserQuery(const std::string& query, ContextIndexer& indexer,
         return;
     }
 
-    SPDLOG_INFO("Ищу релевантный контекст в проекте...");
+    SPDLOG_DEBUG("Ищу релевантный контекст в проекте...");
     std::cout << "\n[*] Обработка запроса...\n";
     
     auto topResults = indexer.findTopK(query, config.top_k_results);
@@ -276,19 +276,33 @@ void processUserQuery(const std::string& query, ContextIndexer& indexer,
         sources_str += src;
     }
     
-    SPDLOG_INFO("Использую контекст из файлов: {}", sources_str);
+    SPDLOG_DEBUG("Использую контекст из файлов: {}", sources_str);
     std::cout << "Контекст из: " << sources_str << "\n\n";
 
-    std::string analysis = assistant.processQuery(query, topResults, indexer);
+    AssistantResponse response = assistant.processQuery(query, topResults, indexer);
     
     print_separator('~', 60);
-    std::cout << analysis << "\n";
+    std::cout << response.text << "\n";
     print_separator('~', 60);
     
-    SPDLOG_INFO("Ответ на запрос: {}", analysis);
+    SPDLOG_DEBUG("Ответ на запрос: {}", response.text);
+
+    // --- Conversational Loop ---
+    while (!response.is_final) {
+        std::cout << "\n";
+        std::string follow_up_query = getUTF8Input("> ");
+        if (follow_up_query.empty() || follow_up_query == "exit" || follow_up_query == "выход") {
+            break;
+        }
+        std::cout << "\n[*] Обработка продолжения...\n";
+        response = assistant.processQuery(follow_up_query, {}, indexer, response.conversation_history);
+
+        print_separator('~', 60);
+        std::cout << response.text << "\n";
+        print_separator('~', 60);
+        SPDLOG_DEBUG("Ответ на продолжение: {}", response.text);
+    }
 }
-
-
 // ============================================================================
 // Main Application
 // ============================================================================
@@ -351,14 +365,14 @@ int main(int argc, char* argv[])
                 case 1: {
                     // Задать вопрос о проекте
                     std::cout << "\n";
-                    std::string userQuery = getUTF8Input("Введите ваш вопрос о проекте:\n> ");
-                    SPDLOG_DEBUG("Получен запрос от пользователя: '{}'", userQuery);
+                    std::string userQuery = getUTF8Input("Введите ваш вопрос:\n> ");
+                    // SPDLOG_DEBUG("Получен запрос от пользователя: '{}'", userQuery);
                     if (!userQuery.empty()) {
                         processUserQuery(userQuery, *indexer, assistant, config);
                     } else {
                         std::cout << "\nВведите не пустой вопрос.\n";
                     }
-                    getUTF8Input("\nНажмите Enter для продолжения... ");
+                    // getUTF8Input("\nНажмите Enter для продолжения... ");
                     break;
                 }
                 case 2: {
