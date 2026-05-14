@@ -21,64 +21,69 @@ AssistantRole::AssistantRole(const Config& config)
 // Destructor must be defined in the .cpp file where ToolManager is a complete type
 AssistantRole::~AssistantRole() = default;
 
-std::string AssistantRole::processQuery(const std::string& userQuery, const std::vector<SearchResult>& initialContext, ContextIndexer& indexer) {
+AssistantResponse AssistantRole::processQuery(const std::string& userQuery, const std::vector<SearchResult>& initialContext, ContextIndexer& indexer, const nlohmann::json& continuation_history) {
     // 1. Initialize message history
     json messages = json::array();
 
-    std::string system_prompt = "Ты — эксперт-программист и AI-ассистент. Твоя задача — отвечать на вопросы пользователя о кодовой базе.\n"
+    if (continuation_history.empty()) {
+        // This is a new conversation
+        std::string system_prompt = "Ты — эксперт-программист и AI-ассистент. Твоя задача — отвечать на вопросы пользователя о кодовой базе.\n"
                                 "У тебя есть лимит на вызов инструментов: " + std::to_string(config.max_tool_calls) + " раз на один запрос.\n\n"
                                 "Твой план действий:\n"
                                 "1.  **Проанализируй контекст.** Тебе предоставлен релевантный контекст, найденный по вопросу пользователя. Внимательно изучи его.\n"
                                 "2.  **Оцени достаточность контекста.** Если предоставленные фрагменты кода полностью отвечают на вопрос, сформируй ответ на их основе.\n"
                                 "3.  **Используй инструменты, если необходимо.** Если контекст неполный, или тебе нужно увидеть файл целиком, чтобы понять общую картину, используй инструменты:\n"
-                                "    *   `read_file`: чтобы прочитать весь файл, из которого взят фрагмент.\n"
-                                "    *   `web_search`: чтобы найти информацию в интернете (документация, ошибки, общие вопросы).\n"
-                                "    *   `read_url`: чтобы прочитать содержимое веб-страницы по URL (например, из результатов `web_search`).\n"
-                                "    *   `github_repository_search`: для поиска репозиториев, кода, проблем, коммитов или пользователей на GitHub. Используй параметр 'type' для указания, что именно искать.\n"
-                                "    *   `open_url_in_browser`: чтобы открыть URL в браузере пользователя.\n"
-                                "    *   `list_directory`: чтобы изучить структуру проекта.\n"
-                                "    *   `code_search`: чтобы выполнить **новый** семантический поиск по другому запросу.\n"
-                                "    *   `grep_search`: для поиска по точному совпадению или регулярному выражению.\n"
-                                "    *   `file_glob_search`: для поиска файлов по маске (например, '*.cpp').\n"
-                                "    *   `write_file`: для записи или изменения файлов (используй с осторожностью!).\n"
-                                "    *   `edit_file`: для безопасной, точечной замены блока кода в файле.\n"
-                                "    *   `apply_diff`: для применения патча в формате unified diff к файлу.\n"
-                                "    *   `execute_shell_command`: для выполнения команды в системной оболочке (shell/cmd).\n"
-                                "    *   `get_datetime`: для получения текущей даты и времени в формате UTC.\n"
-                                "    *   `get_system_info`: для получения информации об операционной системе, на которой запущен агент.\n"
+                                // "    *   `read_file`: чтобы прочитать весь файл, из которого взят фрагмент.\n"
+                                // "    *   `web_search`: чтобы найти информацию в интернете (документация, ошибки, общие вопросы).\n"
+                                // "    *   `read_url`: чтобы прочитать содержимое веб-страницы по URL (например, из результатов `web_search`).\n"
+                                // "    *   `github_repository_search`: для поиска репозиториев, кода, проблем, коммитов или пользователей на GitHub. Используй параметр 'type' для указания, что именно искать.\n"
+                                // "    *   `open_url_in_browser`: чтобы открыть URL в браузере пользователя.\n"
+                                // "    *   `list_directory`: чтобы изучить структуру проекта.\n"
+                                // "    *   `code_search`: чтобы выполнить **новый** семантический поиск по другому запросу.\n"
+                                // "    *   `grep_search`: для поиска по точному совпадению или регулярному выражению.\n"
+                                // "    *   `file_glob_search`: для поиска файлов по маске (например, '*.cpp').\n"
+                                // "    *   `write_file`: для записи или изменения файлов (используй с осторожностью!).\n"
+                                // "    *   `edit_file`: для безопасной, точечной замены блока кода в файле.\n"
+                                // "    *   `apply_diff`: для применения патча в формате unified diff к файлу.\n"
+                                // "    *   `execute_shell_command`: для выполнения команды в системной оболочке (shell/cmd).\n"
+                                // "    *   `get_datetime`: для получения текущей даты и времени в формате UTC.\n"
+                                // "    *   `get_system_info`: для получения информации об операционной системе, на которой запущен агент.\n"
                                 "4.  **Думай по шагам.** После каждого шага (вызова инструмента) анализируй полученную информацию и решай, что делать дальше, пока не соберешь достаточно данных для исчерпывающего ответа.\n"
                                 "5.  **Дай точный ответ.** В конце, ссылаясь на собранную информацию, дай пользователю точный и подробный ответ.";
 
-    // System Prompt
-    messages.push_back({
-        {"role", "system"},
-        {"content", system_prompt}
-    });
-
-    // RAG Context
-    if (!initialContext.empty()) {
-        std::stringstream context_ss;
-        context_ss << "Вот релевантный контекст из кодовой базы, который может помочь с ответом:\n\n";
-        for (const auto& result : initialContext) {
-            context_ss << "--- ИЗ ФАЙЛА: " << result.filePath << " ---\n"
-                       << "```\n"
-                       << result.chunkText << "\n"
-                       << "```\n\n";
-        }
         messages.push_back({
-            {"role", "user"},
-            {"content", context_ss.str()}
+            {"role", "system"},
+            {"content", system_prompt}
         });
+
+        // RAG Context
+        if (!initialContext.empty()) {
+            std::stringstream context_ss;
+            context_ss << "Вот релевантный контекст из кодовой базы, который может помочь с ответом:\n\n";
+            for (const auto& result : initialContext) {
+                context_ss << "--- ИЗ ФАЙЛА: " << result.filePath << " ---\n"
+                           << "```\n"
+                           << result.chunkText << "\n"
+                           << "```\n\n";
+            }
+            messages.push_back({
+                {"role", "user"},
+                {"content", context_ss.str()}
+            });
+        }
+    } else {
+        // This is a continuation of a previous conversation
+        messages = continuation_history;
     }
 
-    // Initial User Query
+    // Add the current user query to the history
     messages.push_back({
         {"role", "user"},
         {"content", userQuery}
     });
 
     for (int i = 0; i < config.max_tool_calls; ++i) {
-        SPDLOG_INFO("Итерация {} цикла обработки запроса...", i + 1);
+        SPDLOG_INFO("Итерация {}/{} цикла обработки запроса...", i + 1, config.max_tool_calls);
 
         // 2. Prepare request for LLM
         json body = {
@@ -111,7 +116,7 @@ std::string AssistantRole::processQuery(const std::string& userQuery, const std:
             } else {
                 SPDLOG_ERROR("Ошибка соединения с LLM: {}", httplib::to_string(res.error()));
             }
-            return "Ошибка: не удалось получить ответ от языковой модели.";
+            return {"Ошибка: не удалось получить ответ от языковой модели.", true, {}};
         }
 
         // 4. Process LLM response
@@ -120,12 +125,12 @@ std::string AssistantRole::processQuery(const std::string& userQuery, const std:
             response_json = json::parse(res->body);
         } catch (const json::exception& e) {
             SPDLOG_ERROR("Не удалось разобрать JSON-ответ от LLM: {}", e.what());
-            return "Ошибка: не удалось обработать ответ модели.";
+            return {"Ошибка: не удалось обработать ответ модели.", true, {}};
         }
 
         if (!response_json.contains("choices") || response_json["choices"].empty()) {
             SPDLOG_ERROR("Ответ LLM не содержит 'choices'.");
-            return "Ошибка: получен некорректный ответ от модели.";
+            return {"Ошибка: получен некорректный ответ от модели.", true, {}};
         }
 
         const auto& choice = response_json["choices"][0];
@@ -134,7 +139,17 @@ std::string AssistantRole::processQuery(const std::string& userQuery, const std:
         // Case 1: LLM provides a direct answer
         if (message.contains("content") && message["content"].is_string() && !message["content"].get<std::string>().empty()) {
             SPDLOG_INFO("LLM предоставил прямой ответ. Завершение цикла.");
-            return message["content"].get<std::string>();
+            std::string final_text = message["content"].get<std::string>();
+
+            // Simple heuristic to detect a follow-up question
+            bool is_final = true;
+            if (!final_text.empty() && final_text.back() == '?') {
+                is_final = false;
+            }
+            
+            // Add the final assistant message to the history before returning
+            messages.push_back(message);
+            return {final_text, is_final, messages};
         }
 
         // Case 2: LLM wants to call tools
@@ -193,10 +208,10 @@ std::string AssistantRole::processQuery(const std::string& userQuery, const std:
 
         // Fallback if the response is unexpected (e.g. content is null)
         SPDLOG_ERROR("Неожиданный формат ответа от LLM: {}", choice.dump(2));
-        return "Ошибка: получен неожиданный формат ответа от модели.";
+        return {"Ошибка: получен неожиданный формат ответа от модели.", true, {}};
     }
 
-    SPDLOG_WARN("Превышено максимальное количество вызовов инструментов ({}). Запрос финального ответа от модели.", config.max_tool_calls);
+    SPDLOG_WARN("Превышено максимальное количество вызовов инструментов ({}). Запрос финального ответа.", config.max_tool_calls);
 
     // Ask the model to summarize and give a final answer based on the conversation so far.
     messages.push_back({
@@ -224,7 +239,7 @@ std::string AssistantRole::processQuery(const std::string& userQuery, const std:
         try {
             json final_response_json = json::parse(final_res->body);
             if (final_response_json.contains("choices") && !final_response_json["choices"].empty()) {
-                return final_response_json["choices"][0]["message"]["content"].get<std::string>();
+                return {final_response_json["choices"][0]["message"]["content"].get<std::string>(), true, {}};
             }
         } catch (const json::exception& e) {
             SPDLOG_ERROR("Не удалось разобрать финальный JSON-ответ от LLM: {}", e.what());
@@ -232,7 +247,7 @@ std::string AssistantRole::processQuery(const std::string& userQuery, const std:
     }
 
     // Fallback error message if the final call also fails.
-    return "Ошибка: превышено максимальное количество вызовов инструментов (" + std::to_string(config.max_tool_calls) + "), и не удалось сгенерировать итоговый ответ.";
+    return {"Ошибка: превышено максимальное количество вызовов инструментов (" + std::to_string(config.max_tool_calls) + "), и не удалось сгенерировать итоговый ответ.", true, {}};
 }
 
 std::string AssistantRole::generateProjectSummaryGreeting(int file_count, int embedding_count) {
@@ -277,7 +292,7 @@ std::string AssistantRole::generateProjectSummaryGreeting(int file_count, int em
                 return json_body["choices"][0]["message"]["content"].get<std::string>();
             }
         } catch (const json::exception& e) {
-            SPDLOG_ERROR("[AssistantRole] Не удалось разобрать ответ для приветствия: {}", e.what());
+            SPDLOG_ERROR("Не удалось разобрать ответ для приветствия: {}", e.what());
         }
     }
     
@@ -286,7 +301,7 @@ std::string AssistantRole::generateProjectSummaryGreeting(int file_count, int em
 }
 
 std::string AssistantRole::generateChunkSummary(const std::string& codeChunk, const std::string& chunkName) {
-    SPDLOG_DEBUG("[AssistantRole] Запрос на генерацию саммари для чанка '{}'...", chunkName);
+    SPDLOG_DEBUG("Запрос на генерацию саммари для чанка '{}'...", chunkName);
 
     std::string system_prompt =
         "Твоя задача — создать очень короткое, лаконичное саммари (одно два предложения) для предоставленного фрагмента кода. "
@@ -315,7 +330,7 @@ std::string AssistantRole::generateChunkSummary(const std::string& codeChunk, co
     for (int attempt = 1; attempt <= config.retry_count; ++attempt) {
         res = cli.Post("/v1/chat/completions", headers, body_str, "application/json");
         if (res) break;
-        SPDLOG_WARN("[AssistantRole] Попытка {}/{} для саммари '{}' не удалась. Ошибка соединения: {}. Повтор...",
+        SPDLOG_WARN("Попытка {}/{} для саммари '{}' не удалась. Ошибка соединения: {}. Повтор...",
                     attempt, config.retry_count, chunkName, httplib::to_string(res.error()));
         std::this_thread::sleep_for(std::chrono::milliseconds(config.retry_delay_ms));
     }
@@ -329,14 +344,14 @@ std::string AssistantRole::generateChunkSummary(const std::string& codeChunk, co
                 summary.erase(std::remove(summary.begin(), summary.end(), '\"'), summary.end());
                 summary.erase(std::remove(summary.begin(), summary.end(), '\n'), summary.end());
                 summary.erase(std::remove(summary.begin(), summary.end(), '\r'), summary.end());
-                SPDLOG_DEBUG("[AssistantRole] Саммари для '{}': {}", chunkName, summary);
+                SPDLOG_DEBUG("Саммари для '{}': {}", chunkName, summary);
                 return summary;
             }
         } catch (const json::exception& e) {
-            SPDLOG_ERROR("[AssistantRole] Не удалось разобрать ответ для саммари '{}': {}", chunkName, e.what());
+            SPDLOG_ERROR("Не удалось разобрать ответ для саммари '{}': {}", chunkName, e.what());
         }
     }
 
-    SPDLOG_WARN("[AssistantRole] Не удалось сгенерировать саммари для '{}'. Будет использован пустой текст.", chunkName);
+    SPDLOG_WARN("Не удалось сгенерировать саммари для '{}'. Будет использован пустой текст.", chunkName);
     return ""; // Return empty string on failure
 }

@@ -9,6 +9,34 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#elif defined(__linux__) || defined(__APPLE__)
+#include <sys/utsname.h>
+#include <unistd.h>
+#endif
+
+#ifdef _WIN32
+std::string SH_GetWindowsVersion() {
+    OSVERSIONINFOEX osvi;
+    ZeroMemory(&osvi, sizeof(OSVERSIONINFOEX));
+    osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX);
+    GetVersionEx((OSVERSIONINFO*)&osvi);
+    std::ostringstream oss;
+    oss << osvi.dwMajorVersion << "." << osvi.dwMinorVersion;
+    return oss.str();
+}
+
+std::string SH_GetWindowsArchitecture() {
+    SYSTEM_INFO si;
+    GetNativeSystemInfo(&si);
+    switch (si.wProcessorArchitecture) {
+        case PROCESSOR_ARCHITECTURE_AMD64:
+            return "64-bit";
+        case PROCESSOR_ARCHITECTURE_INTEL:
+            return "32-bit";
+        default:
+            return "Unknown";
+    }
+}
 #endif
 
 std::string ExecuteShellCommandTool::getName() const {
@@ -16,7 +44,37 @@ std::string ExecuteShellCommandTool::getName() const {
 }
 
 std::string ExecuteShellCommandTool::getDescription() const {
-    return "Выполняет команду в системной оболочке (shell/cmd). ВНИМАНИЕ: Это очень опасный инструмент. Он может изменять файлы, выполнять произвольный код и взаимодействовать с операционной системой. Используйте с предельной осторожностью.";
+    std::string os_name, os_version, architecture;
+#ifdef _WIN32
+    os_name = "Windows";
+    os_version = SH_GetWindowsVersion();
+    architecture = SH_GetWindowsArchitecture();
+#elif defined(__linux__)
+    os_name = "Linux";
+    struct utsname buffer;
+    if (uname(&buffer) == 0) {
+        os_version = buffer.release;
+        architecture = buffer.machine;
+    } else {
+        os_version = "Unknown";
+        architecture = "Unknown";
+    }
+#elif defined(__APPLE__) && defined(__MACH__)
+    os_name = "macOS";
+    struct utsname buffer;
+    if (uname(&buffer) == 0) {
+        os_version = buffer.release;
+        architecture = buffer.machine;
+    } else {
+        os_version = "Unknown";
+        architecture = "Unknown";
+    }
+#else
+    os_name = "Unknown";
+    os_version = "Unknown";
+    architecture = "Unknown";
+#endif
+    return "Выполняет команду в системной оболочке. Операционная система в которой ты работаешь: " + os_name + " версия " + os_version + " архитектора " + architecture + " при выполнении команд учитывай это.\nВНИМАНИЕ: Это очень опасный инструмент. Он может изменять файлы, выполнять произвольный код и взаимодействовать с операционной системой. Используйте с предельной осторожностью.";
 }
 
 nlohmann::json ExecuteShellCommandTool::getParameters() const {
@@ -58,7 +116,8 @@ std::string execute_command(const char* cmd) {
 
     // Конвертируем команду из UTF-8 в wide string для CreateProcessW
     // Принудительно переключаем кодовую страницу на UTF-8 (65001) для дочернего процесса
-    std::string command_str = "chcp 65001 > nul && " + std::string(cmd);
+    // Запускаем команду через `cmd.exe /C` для правильной работы PATH и встроенных команд
+    std::string command_str = "cmd.exe /C \"chcp 65001 > nul && " + std::string(cmd) + "\"";
     int wide_len = MultiByteToWideChar(CP_UTF8, 0, command_str.c_str(), -1, NULL, 0);
     if (wide_len == 0) {
         return "{\"error\": \"Не удалось конвертировать команду в wide string.\"}";
