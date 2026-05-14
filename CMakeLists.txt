@@ -172,6 +172,8 @@ add_executable(Agent
       src/Logger.cpp
       src/CodeParser.cpp
       src/Config.cpp
+      src/WebSocketServer.cpp
+      src/ApiHandlers.cpp
       src/tools/ReadFileTool.cpp
       src/tools/ListDirectoryTool.cpp
       src/tools/ToolManager.cpp

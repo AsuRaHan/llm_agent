@@ -31,6 +31,11 @@ void Config::create_default(const std::string& filepath) const {
     j["logging"]["log_file_level"] = log_file_level;
     j["logging"]["log_console_level"] = log_console_level;
 
+    j["web_server"]["host"] = web_server_host;
+    j["web_server"]["port"] = web_server_port;
+    j["web_server"]["enable_web_ui"] = enable_web_ui;
+    j["web_server"]["root_dir"] = web_server_root_dir;
+
     // j["indexing"]["chunk_size"] = 10000; // Устарело
     // j["indexing"]["chunk_overlap"] = 2000; // Устарело
     j["indexing"]["top_k_results"] = top_k_results;
@@ -89,6 +94,11 @@ bool Config::load(const std::string& filepath) {
         log_to_console = j.value("/logging/log_to_console"_json_pointer, log_to_console);
         log_file_level = j.value("/logging/log_file_level"_json_pointer, log_file_level);
         log_console_level = j.value("/logging/log_console_level"_json_pointer, log_console_level);
+        
+        web_server_host = j.value("/web_server/host"_json_pointer, web_server_host);
+        web_server_port = j.value("/web_server/port"_json_pointer, web_server_port);
+        enable_web_ui = j.value("/web_server/enable_web_ui"_json_pointer, enable_web_ui);
+        web_server_root_dir = j.value("/web_server/root_dir"_json_pointer, web_server_root_dir);
 
         // chunk_size = j.value("/indexing/chunk_size"_json_pointer, chunk_size); // Устарело
         // chunk_overlap = j.value("/indexing/chunk_overlap"_json_pointer, chunk_overlap); // Устарело

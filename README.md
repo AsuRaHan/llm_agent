@@ -123,6 +123,11 @@ cmake --build build --config Release
         "log_file_level": "trace",
         "log_console_level": "info"
     },
+    "web_server": {
+        "host": "localhost",
+        "port": 9000,
+        "root_dir": "frontend"
+    },
     "indexing": {
         "top_k_results": 5,
         "initial_index_size": 50000,

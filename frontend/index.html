@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Hammer Agent</title>
+    <style>
+        body { font-family: sans-serif; margin: 2em; background-color: #f4f4f4; color: #333; }
+        h1 { color: #0056b3; }
+        .container { max-width: 800px; margin: 0 auto; background-color: #fff; padding: 2em; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .api-info { background-color: #e9ecef; padding: 1em; border-radius: 4px; margin-top: 1em; }
+        code { background-color: #e0e0e0; padding: 0.2em 0.4em; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Добро пожаловать в Smart Hammer Agent!</h1>
+        <p>Ваш локальный AI-ассистент для анализа кода запущен и готов к работе.</p>
+        <p>Этот интерфейс пока очень прост, но агент активно работает в фоновом режиме.</p>
+
+        <div class="api-info">
+            <h2>Информация об API:</h2>
+            <p><strong>Базовый URL API:</strong> <code id="api-base-url"></code></p>
+            <p><strong>Эндпоинт для запросов:</strong> <code>POST /api/query</code></p>
+            <p><strong>Эндпоинт для статуса:</strong> <code>GET /api/status</code></p>
+            <p><strong>Эндпоинт для информации о проекте:</strong> <code>GET /api/project-info</code></p>
+            <p><strong>Эндпоинт для здоровья:</strong> <code>GET /api/health</code></p>
+            <p><strong>Эндпоинт для конфигурации сервера:</strong> <code>GET /api/server-config</code></p>
+        </div>
+
+        <p>Вы можете взаимодействовать с агентом через его REST API.</p>
+        <p>Для получения дополнительной информации, пожалуйста, обратитесь к документации проекта.</p>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Dynamically set the API base URL
+            const apiBaseUrlElement = document.getElementById('api-base-url');
+            if (apiBaseUrlElement) {
+                apiBaseUrlElement.textContent = window.location.origin + '/api';
+            }
+        });
+    </script>
+</body>
+</html>

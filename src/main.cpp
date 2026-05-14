@@ -5,6 +5,8 @@
 
 #include "ContextIndexer.h"
 #include "AssistantRole.h"
+#include "WebSocketServer.h"
+#include "ApiHandlers.h"
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -313,10 +315,17 @@ int main(int argc, char* argv[])
         // ====== Инициализация ======
         Config config;
         std::string projectDir = (argc > 1) ? argv[1] : ".";
+        bool useConsoleMode = false;
+        
+        // Check for --console flag
+        for (int i = 1; i < argc; ++i) {
+            if (std::string(argv[i]) == "--console") {
+                useConsoleMode = true;
+                break;
+            }
+        }
 
         if (!initializeApplication(projectDir, config)) {
-            // Конфиг не загружен, используем путь по умолчанию
-            // show_last_log_entries("agent.log", 30);
             return 1;
         }
 
@@ -336,7 +345,6 @@ int main(int argc, char* argv[])
         // ====== Индексирование проекта ======
         auto indexer = indexProject(projectDir, config);
         if (!indexer) {
-            // show_last_log_entries(config.log_file_path, 30);
             return 1;
         }
 
@@ -349,59 +357,82 @@ int main(int argc, char* argv[])
         SPDLOG_INFO("Запуск Agent...");
 
         // ====== Создание ассистента ======
-        AssistantRole assistant(config);
+        auto assistant_ptr = std::make_shared<AssistantRole>(config);
 
-        // ====== Запуск мониторинга файлов ======
-        // FileWatcher watcher(*indexer);
-        // watcher.start(projectDir);
-        // ====== Главный цикл приложения ======
-        clear_screen();
-        
-        bool running = true;
-        while (running) {
-            int choice = showMainMenu();
+        // ====== Выбор режима работы ======
+        if (useConsoleMode) {
+            // CONSOLE MODE - исходный интерактивный режим
+            clear_screen();
+            
+            bool running = true;
+            while (running) {
+                int choice = showMainMenu();
 
-            switch (choice) {
-                case 1: {
-                    // Задать вопрос о проекте
-                    std::cout << "\n";
-                    std::string userQuery = getUTF8Input("Введите ваш вопрос:\n> ");
-                    // SPDLOG_DEBUG("Получен запрос от пользователя: '{}'", userQuery);
-                    if (!userQuery.empty()) {
-                        processUserQuery(userQuery, *indexer, assistant, config);
-                    } else {
-                        std::cout << "\nВведите не пустой вопрос.\n";
+                switch (choice) {
+                    case 1: {
+                        std::cout << "\n";
+                        std::string userQuery = getUTF8Input("Введите ваш вопрос:\n> ");
+                        if (!userQuery.empty()) {
+                            processUserQuery(userQuery, *indexer, *assistant_ptr, config);
+                        } else {
+                            std::cout << "\nВведите не пустой вопрос.\n";
+                        }
+                        break;
                     }
-                    // getUTF8Input("\nНажмите Enter для продолжения... ");
-                    break;
-                }
-                case 2: {
-                    // Информация о проекте
-                    displayProjectSummary(assistant, indexer->getFileCount(), indexer->getEmbeddingsCount());
-                    break;
-                }
-                case 3: {
-                    // Справка
-                    showHelp();
-                    break;
-                }
-                case 4: {
-                    // Выход
-                    running = false;
-                    break;
+                    case 2: {
+                        displayProjectSummary(*assistant_ptr, indexer->getFileCount(), indexer->getEmbeddingsCount());
+                        break;
+                    }
+                    case 3: {
+                        showHelp();
+                        break;
+                    }
+                    case 4: {
+                        running = false;
+                        break;
+                    }
                 }
             }
-        }
 
-        // SPDLOG_INFO("Остановка файлового мониторинга...");
-        // watcher.stop();
-        SPDLOG_INFO("Agent завершил работу.");
-        clear_screen();
-        std::cout << "\n";
-        print_separator('=', 60);
-        std::cout << "  До свидания! Спасибо за использование Smart Hammer.\n";
-        print_separator('=', 60);
-        std::cout << "\n";
+            SPDLOG_INFO("Agent завершил работу.");
+            clear_screen();
+            std::cout << "\n";
+            print_separator('=', 60);
+            std::cout << "  До свидания! Спасибо за использование Smart Hammer.\n";
+            print_separator('=', 60);
+            std::cout << "\n";
+        } else {
+            // SERVER MODE - REST API server
+            SPDLOG_INFO("Starting REST API server mode...");
+            std::cout << "\n";
+            print_separator('=', 60);
+            std::cout << "  Smart Hammer - REST API Server\n";
+            print_separator('=', 60);
+            std::cout << "\nСервер запущен:\n";
+            std::cout << "  • REST API: http://" << config.web_server_host << ":" << config.web_server_port << "/api\n";
+            std::cout << "  • Query endpoint: POST /api/query\n";
+            std::cout << "  • Frontend: http://" << config.web_server_host << ":" << config.web_server_port << "/\n";
+            std::cout << "  • Indexed files: " << indexer->getFileCount() << "\n";
+            std::cout << "  • Embeddings: " << indexer->getEmbeddingsCount() << "\n";
+            print_separator('-', 60);
+            std::cout << "\nПрессуйте Ctrl+C для остановки сервера.\n\n";
+
+            auto indexer_ptr = std::shared_ptr<ContextIndexer>(indexer.release());
+            // assistant_ptr is already created
+
+            // Create and initialize API handlers
+            ApiHandlers apiHandlers(config);
+            if (!apiHandlers.initialize(indexer_ptr, assistant_ptr)) {
+                SPDLOG_ERROR("Failed to initialize API handlers");
+                return 1;
+            }
+
+            // Start the server (this blocks)
+            apiHandlers.startServer();
+
+            SPDLOG_INFO("Server stopped.");
+            std::cout << "\nСервер остановлен.\n";
+        }
 
     } catch (const std::exception& e) {
         SPDLOG_CRITICAL("Перехвачено необработанное исключение: {}", e.what());
