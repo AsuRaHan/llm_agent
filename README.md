@@ -112,7 +112,8 @@ cmake --build build --config Release
         "embedding_chunk_overlap": 200
     },
     "tools": {
-        "enable_dangerous_tools": true
+        "enable_dangerous_tools": true,
+        "dangerous_tools": ["write_file", "edit_file", "apply_diff", "execute_shell_command"]
     },
     "web_search": {
         "api_key": "ВАШ_API_КЛЮЧ_SERPER_DEV"
@@ -163,6 +164,8 @@ cmake --build build --config Release
     *   `chat_completion_timeout_sec`: Таймаут ожидания ответа от модели в секундах.
     *   `max_tool_calls`: Максимальное количество вызовов инструментов в рамках одного запроса пользователя.
 *   **`indexing`**: Настройки процесса индексации.
+    *   `enable_dangerous_tools`: Разрешает ли агент использовать инструменты, которые могут изменять файлы или выполнять команды (`write_file`, `execute_shell_command` и т.д.).
+    *   `dangerous_tools`: Список инструментов, которые требуют подтверждения пользователя в Web-интерфейсе перед выполнением.
     *   `top_k_results`: Количество наиболее релевантных чанков, которые будут переданы в LLM для генерации ответа.
     *   `chunking_strategy`: Стратегия разбиения файлов на чанки.
         *   `"fixed"`: Простое разбиение по `chunk_size`.
