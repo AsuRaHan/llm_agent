@@ -6,11 +6,12 @@
 #include <string>
 #include <vector>
 #include <thread>
+#include <optional>
 
 #include <httplib.h>
 #include <nlohmann/json.hpp>
 
-struct Config; // Forward declaration
+#include "Config.h" // Include for ServerProperties and Config
 
 class EmbeddingClient
 {
@@ -24,9 +25,10 @@ public:
      * @return std::vector<float> The embedding vector.
      */
     std::vector<float> getEmbedding(const std::string& text, const std::string& filename);
-    bool checkConnection() const;
+    std::optional<ServerProperties> fetchServerProperties() const;
 
 private:
     const Config& config;
     httplib::Client cli;
+    bool probeEmbeddingEndpoint() const;
 };

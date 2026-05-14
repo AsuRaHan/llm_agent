@@ -4,6 +4,14 @@
 #include <vector>
 #include <nlohmann/json.hpp>
 
+// Holds properties discovered from the LLM server
+struct ServerProperties {
+    bool embedding_enabled = false;
+    int context_size = 4096;
+    std::string model_path;
+    std::string chat_template;
+};
+
 struct Config {
     // Server settings
     std::string server_host = "localhost";
