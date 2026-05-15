@@ -62,6 +62,9 @@ public:
     void reindexFile(const std::string& path);
     void removeFileFromIndex(const std::string& path);
 
+    // Мьютекс для синхронизации доступа к файлам и индексу между FileWatcher и ToolManager
+    mutable std::recursive_mutex mtx;
+
 private:
     std::string readFileContent(const fs::path& path);
     std::string readChunkContent(const std::string& path, const ChunkLocation& location);
@@ -88,5 +91,4 @@ private:
     std::unique_ptr<hnswlib::HierarchicalNSW<float>> index;
     std::unordered_map<size_t, std::pair<std::string, ChunkLocation>> id_to_chunk_map; // map ID -> {filePath, location}
     std::atomic<size_t> current_max_elements = 0;
-    mutable std::recursive_mutex mtx;
 };
