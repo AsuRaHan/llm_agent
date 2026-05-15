@@ -31,65 +31,92 @@ AssistantResponse AssistantRole::processQuery(
 ) {
     // 1. Initialize message history
     json messages = json::array();
+    bool is_continuation_after_confirmation = !continuation_history.empty() && userQuery.empty();
 
-    if (continuation_history.is_array() && continuation_history.empty()) {
-        // This is a new conversation, add the system prompt.
-        std::string system_prompt = "Ты — эксперт-программист и AI-ассистент. Твоя задача — отвечать на вопросы пользователя о кодовой базе.\n"
+    if (is_continuation_after_confirmation) {
+        // This is a continuation call after a dangerous tool was confirmed.
+        // The tool call is in the history. We need to execute it before calling the LLM again.
+        messages = continuation_history;
+        const auto& last_message = messages.back();
+
+        if (last_message.value("role", "") == "assistant" && last_message.contains("tool_calls")) {
+            SPDLOG_INFO("Продолжение после подтверждения. Выполнение отложенного инструмента...");
+            const auto& tool_calls = last_message["tool_calls"];
+
+            for (const auto& call : tool_calls) {
+                const auto& function_call = call["function"];
+                std::string tool_name = function_call["name"];
+                json tool_args;
+                const std::string& tool_id = call["id"];
+
+                try {
+                    // Handle cases where arguments are a stringified JSON or a direct JSON object
+                    if (function_call["arguments"].is_string()) {
+                        tool_args = json::parse(function_call["arguments"].get<std::string>());
+                    } else {
+                        tool_args = function_call["arguments"];
+                    }
+                } catch (const json::exception& e) {
+                    SPDLOG_ERROR("Failed to parse tool arguments for '{}': {}", tool_name, e.what());
+                    std::string error_content = "{\"error\": \"Invalid JSON in arguments: " + std::string(e.what()) + "\"}";
+                    messages.push_back({
+                        {"role", "tool"},
+                        {"tool_call_id", tool_id},
+                        {"content", error_content}
+                    });
+                    continue; // Skip to the next tool call
+                }
+
+                // Execute the tool
+                if (send_thought) {
+                    send_thought("Выполняю подтвержденный инструмент: " + tool_name + "...");
+                }
+                std::string result = toolManager->executeTool(tool_name, tool_args, &indexer);
+
+                // Add the tool's result to the history
+                messages.push_back({
+                    {"role", "tool"},
+                    {"tool_call_id", tool_id},
+                    {"content", result}
+                });
+            }
+        }
+        // If it's a continuation, the user query and context are already in the history.
+        // We don't add them again.
+    } else {
+        // This is a new query or a simple follow-up.
+        if (continuation_history.is_array() && continuation_history.empty()) {
+            std::string system_prompt = "Ты — эксперт-программист и AI-ассистент. Твоя задача — отвечать на вопросы пользователя о кодовой базе.\n"
                                     "У тебя есть лимит на вызов инструментов: " + std::to_string(config.max_tool_calls) + " раз на один запрос.\n\n"
                                     "Твой план действий:\n"
                                     "1.  **Проанализируй контекст.** Тебе предоставлен релевантный контекст, найденный по вопросу пользователя. Внимательно изучи его.\n"
                                     "2.  **Оцени достаточность контекста.** Если предоставленные фрагменты кода полностью отвечают на вопрос, сформируй ответ на их основе.\n"
                                     "3.  **Используй инструменты, если необходимо.** Если контекст неполный, или тебе нужно увидеть файл целиком, чтобы понять общую картину, используй инструменты:\n"
-                                    // "    *   `read_file`: чтобы прочитать весь файл, из которого взят фрагмент.\n"
-                                    // "    *   `web_search`: чтобы найти информацию в интернете (документация, ошибки, общие вопросы).\n"
-                                    // "    *   `read_url`: чтобы прочитать содержимое веб-страницы по URL (например, из результатов `web_search`).\n"
-                                    // "    *   `github_repository_search`: для поиска репозиториев, кода, проблем, коммитов или пользователей на GitHub. Используй параметр 'type' для указания, что именно искать.\n"
-                                    // "    *   `open_url_in_browser`: чтобы открыть URL в браузере пользователя.\n"
-                                    // "    *   `list_directory`: чтобы изучить структуру проекта.\n"
-                                    // "    *   `code_search`: чтобы выполнить **новый** семантический поиск по другому запросу.\n"
-                                    // "    *   `grep_search`: для поиска по точному совпадению или регулярному выражению.\n"
-                                    // "    *   `file_glob_search`: для поиска файлов по маске (например, '*.cpp').\n"
-                                    // "    *   `write_file`: для записи или изменения файлов (используй с осторожностью!).\n"
-                                    // "    *   `edit_file`: для безопасной, точечной замены блока кода в файле.\n"
-                                    // "    *   `apply_diff`: для применения патча в формате unified diff к файлу.\n"
-                                    // "    *   `execute_shell_command`: для выполнения команды в системной оболочке (shell/cmd).\n"
-                                    // "    *   `get_datetime`: для получения текущей даты и времени в формате UTC.\n"
-                                    // "    *   `get_system_info`: для получения информации об операционной системе, на которой запущен агент.\n"
                                     "4.  **Думай по шагам.** После каждого шага (вызова инструмента) анализируй полученную информацию и решай, что делать дальше, пока не соберешь достаточно данных для исчерпывающего ответа.\n"
                                     "5.  **Дай точный ответ.** В конце, ссылаясь на собранную информацию, дай пользователю точный и подробный ответ.";
 
-        messages.push_back({
-            {"role", "system"},
-            {"content", system_prompt}
-        });
-    } else {
-        // This is a continuation of a previous conversation
-        messages = continuation_history;
-    }
-
-    // RAG Context: Add relevant context for the CURRENT query.
-    // This ensures the agent has fresh context for every user message, not just the first one.
-    if (!initialContext.empty()) {
-        std::stringstream context_ss;
-        context_ss << "Вот релевантный контекст из кодовой базы, который может помочь с ответом:\n\n";
-        for (const auto& result : initialContext) {
-            context_ss << "--- ИЗ ФАЙЛА: " << result.filePath << " ---\n"
-                       << "```\n"
-                       << result.chunkText << "\n"
-                       << "```\n\n";
+            messages.push_back({{"role", "system"}, {"content", system_prompt}});
+        } else {
+            messages = continuation_history;
         }
-        messages.push_back({
-            {"role", "user"}, // Using 'user' role makes the context more prominent for the model.
-            {"content", context_ss.str()}
-        });
-    }
 
-    // Add the current user query to the history
-    if (!userQuery.empty()) {
-        messages.push_back({
-            {"role", "user"},
-            {"content", userQuery}
-        });
+        // RAG Context: Add relevant context for the CURRENT query.
+        if (!initialContext.empty()) {
+            std::stringstream context_ss;
+            context_ss << "Вот релевантный контекст из кодовой базы, который может помочь с ответом:\n\n";
+            for (const auto& result : initialContext) {
+                context_ss << "--- ИЗ ФАЙЛА: " << result.filePath << " ---\n"
+                           << "```\n"
+                           << result.chunkText << "\n"
+                           << "```\n\n";
+            }
+            messages.push_back({{"role", "user"}, {"content", context_ss.str()}});
+        }
+
+        // Add the current user query to the history
+        if (!userQuery.empty()) {
+            messages.push_back({{"role", "user"}, {"content", userQuery}});
+        }
     }
 
     // Count tool calls already in history to respect the limit across continuations
