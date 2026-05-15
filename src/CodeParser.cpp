@@ -55,6 +55,7 @@ void CodeParser::registerLanguage(const std::vector<std::string>& extensions, TS
 }
 
 std::vector<CodeChunk> CodeParser::parse(const std::string& sourceCode, const std::string& fileExtension) {
+    SPDLOG_DEBUG("Попытка парсинга файла с расширением '{}' с помощью Tree-sitter...", fileExtension);
     auto it = languageMap.find(fileExtension);
     if (it == languageMap.end()) {
         SPDLOG_WARN("Для расширения '{}' не найден парсер Tree-sitter. Будет использовано разбиение по умолчанию.", fileExtension);
@@ -69,18 +70,24 @@ std::vector<CodeChunk> CodeParser::parse(const std::string& sourceCode, const st
         return {};
     }
 
+    SPDLOG_DEBUG("Язык установлен. Начинаю построение синтаксического дерева...");
     // Build a syntax tree
     TSTree* tree = ts_parser_parse_string(parser, NULL, sourceCode.c_str(), sourceCode.length());
+    SPDLOG_DEBUG("Построение синтаксического дерева завершено.");
     if (tree == nullptr) {
         SPDLOG_ERROR("Не удалось построить синтаксическое дерево для файла.");
+        ts_parser_reset(parser); // Сбрасываем парсер после ошибки
         return {};
     }
 
+    SPDLOG_DEBUG("Указатель на дерево (tree) валиден. Получаю корневой узел...");
     // Get the root node of the syntax tree
     TSNode root_node = ts_tree_root_node(tree);
+    SPDLOG_DEBUG("Корневой узел успешно получен. Начинаю обход дерева...");
 
-    std::vector<CodeChunk> chunks;
-    extractChunks(sourceCode, root_node, chunks, language);
+    std::vector<CodeChunk> chunks;    
+    // Начальный вызов рекурсивной функции с глубиной 0
+    extractChunks(sourceCode, root_node, chunks, language, 0);
 
     // Free the syntax tree
     ts_tree_delete(tree);
@@ -88,10 +95,26 @@ std::vector<CodeChunk> CodeParser::parse(const std::string& sourceCode, const st
     return chunks;
 }
 
-void CodeParser::extractChunks(const std::string& sourceCode, TSNode tsNode, std::vector<CodeChunk>& chunks, TSLanguage* language) {
-    const char* type = ts_node_type(tsNode);
-    std::string nodeType(type);
-    std::string lang_name = ts_language_name(language);
+void CodeParser::extractChunks(const std::string& sourceCode, TSNode tsNode, std::vector<CodeChunk>& chunks, TSLanguage* language, int depth) {
+    const int MAX_RECURSION_DEPTH = 256; // Защита от переполнения стека
+    if (depth > MAX_RECURSION_DEPTH) {
+        SPDLOG_WARN("Достигнута максимальная глубина рекурсии ({}) при парсинге узла '{}'. Обход этой ветки дерева прекращен.", MAX_RECURSION_DEPTH, ts_node_type(tsNode));
+        return;
+    }
+
+    // --- ЗАЩИТА ОТ NULLPTR (по рекомендации Copilot) ---
+    // Проверяем, не является ли узел "нулевым", что может привести к nullptr
+    if (ts_node_is_null(tsNode)) {
+        return;
+    }
+
+    // Безопасно получаем тип узла и имя языка, проверяя на nullptr перед созданием std::string
+    const char* type_cstr = ts_node_type(tsNode);
+    std::string nodeType = (type_cstr != nullptr) ? std::string(type_cstr) : "";
+
+    const char* lang_cstr = ts_language_name(language);
+    std::string lang_name = (lang_cstr != nullptr) ? std::string(lang_cstr) : "";
+    // --- КОНЕЦ ЗАЩИТЫ ---
 
     bool is_chunk_candidate = false;
 
@@ -111,37 +134,23 @@ void CodeParser::extractChunks(const std::string& sourceCode, TSNode tsNode, std
             is_chunk_candidate = true;
         }
     } else if (lang_name == "css") {
-        // For CSS, consider rules, selectors, and declarations as logical chunks
-        if (nodeType == "rule" || 
-            nodeType == "stylesheet" || 
-            nodeType == "at_rule" ||
-            nodeType == "declaration" ||
-            nodeType == "selector_list") {
+        // Для CSS в качестве чанков используем наборы правил и at-правила.
+        if (nodeType == "rule_set" || nodeType == "at_rule") {
             is_chunk_candidate = true;
         }
     } else if (lang_name == "html") {
-        // For HTML, consider tags, attributes, and structural elements as logical chunks
-        if (nodeType == "tag" || 
-            nodeType == "attribute" ||
-            nodeType == "doctype" ||
-            nodeType == "comment" ||
-            nodeType == "text" ||
-            nodeType == "script" ||
-            nodeType == "style" ||
-            nodeType == "element") {
+        // Для HTML в качестве чанков используем основные элементы, скрипты, стили и комментарии.
+        if (nodeType == "element" || nodeType == "script_element" || 
+            nodeType == "style_element" || nodeType == "comment") {
             is_chunk_candidate = true;
         }
     } else if (lang_name == "javascript") {
-        // For JavaScript, consider functions, classes, modules, and expressions as logical chunks
+        // Для JavaScript в качестве чанков используем объявления верхнего уровня и определения методов.
         if (nodeType == "function_declaration" || 
             nodeType == "class_declaration" ||
-            nodeType == "module_declaration" ||
-            nodeType == "arrow_function" ||
+            nodeType == "lexical_declaration" || // let, const
+            nodeType == "variable_declaration" || // var
             nodeType == "method_definition" ||
-            nodeType == "variable_declarator" ||
-            nodeType == "object_expression" ||
-            nodeType == "array_expression" ||
-            nodeType == "call_expression" ||
             nodeType == "import_statement" ||
             nodeType == "export_statement") {
             is_chunk_candidate = true;
@@ -202,7 +211,7 @@ void CodeParser::extractChunks(const std::string& sourceCode, TSNode tsNode, std
     for (uint32_t i = 0; i < child_count; ++i) {
         TSNode child_node = ts_node_child(tsNode, i);
         if (ts_node_is_named(child_node)) { // We only want to recurse on named children
-            extractChunks(sourceCode, child_node, chunks, language); // Pass language
+            extractChunks(sourceCode, child_node, chunks, language, depth + 1); // Рекурсивный вызов с увеличением глубины
         }
     }
 }

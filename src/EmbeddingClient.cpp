@@ -54,25 +54,25 @@ std::vector<float> EmbeddingClient::getEmbedding(const std::string& text, const 
             // Assuming the structure is { "data": [ { "embedding": [ ... ] } ] }
             if (json_body.contains("data") && json_body["data"].is_array() && !json_body["data"].empty()) {
                 const auto& first_item = json_body["data"][0];
-                if (first_item.contains("embedding")) {
+                if (first_item.contains("embedding") && first_item["embedding"].is_array()) {
                     return first_item["embedding"].get<std::vector<float>>();
                 }
             }
+            // If we reach here, the structure is valid JSON but not what we expected. Log it.
+            SPDLOG_ERROR("Error: Unexpected JSON structure in embedding response for '{}'. Body: {}", filename, res->body);
         } catch (const json::exception& e) { // Catch any nlohmann::json exception
             SPDLOG_ERROR("Error: Failed to parse JSON response for '{}'. Details: {}", filename, e.what());
-            return {};
         }
     } else {
         if (res) { // HTTP error
-            SPDLOG_ERROR("Error: Failed to get embedding for '{}'. Status: {}", filename, res->status);
-            SPDLOG_ERROR("ОТВЕТ СЕРВЕРА: {}", res->body);
+            SPDLOG_ERROR("Error: Failed to get embedding for '{}'. Status: {}. Body: {}", filename, res->status, res->body);
         } else { // Connection error
             auto err = res.error();
             SPDLOG_ERROR("Error: Connection failed for '{}'. Details: {}", filename, httplib::to_string(err));
         }
     }
 
-    return {}; // Should not be reached if logic is correct
+    return {}; // Return empty vector on any failure
 }
 
 bool EmbeddingClient::probeEmbeddingEndpoint() const {
@@ -81,18 +81,22 @@ bool EmbeddingClient::probeEmbeddingEndpoint() const {
     probe_cli.set_connection_timeout(2, 0); // Короткий таймаут для проверки
 
     // Мы намеренно отправляем невалидный запрос (пустое тело).
-    // 404 означает, что эндпоинт не найден.
-    // Любая другая ошибка (400, 500) означает, что эндпоинт СУЩЕСТВУЕТ, но запрос некорректен,
-    // что и является подтверждением поддержки эмбеддингов.
+    // Ожидаемый ответ от существующего эндпоинта - это ошибка клиента (4xx) или сервера (5xx),
+    // но не ошибка "Not Found" (404).
     auto res = probe_cli.Post("/v1/embeddings", "{}", "application/json");
 
-    if (res && res->status == 404) {
-        SPDLOG_WARN("Проверка не удалась: эндпоинт /v1/embeddings не найден (404).");
+    if (!res) {
+        SPDLOG_WARN("Проверка не удалась: не удалось подключиться к эндпоинту /v1/embeddings. Ошибка: {}", httplib::to_string(res.error()));
+        return false;
+    }
+
+    if (res->status == 404) {
+        SPDLOG_WARN("Проверка не удалась: эндпоинт /v1/embeddings не найден (сервер вернул 404).");
         return false;
     }
     
-    // Если нет ответа (ошибка соединения) или статус не 404, мы считаем, что эндпоинт существует.
-    SPDLOG_DEBUG("Проверка успешна: эндпоинт /v1/embeddings существует.");
+    // Любой другой статус (например, 400, 401, 422, 500) подтверждает, что эндпоинт существует.
+    SPDLOG_DEBUG("Проверка успешна: эндпоинт /v1/embeddings существует (сервер ответил статусом {}).", res->status);
     return true;
 }
 

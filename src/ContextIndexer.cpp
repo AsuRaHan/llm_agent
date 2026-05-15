@@ -259,12 +259,6 @@ std::vector<ChunkLocation> ContextIndexer::fixedSizeChunkText(const std::string&
 
 std::vector<SearchResult> ContextIndexer::findTopK(const std::string& queryText, int k)
 {
-    std::lock_guard lock(mtx);
-    if (!index || getEmbeddingsCount() == 0) {
-        SPDLOG_WARN("Индекс пуст. Поиск невозможен.");
-        return {};
-    }
-
     std::vector<float> queryEmbedding = embeddingClient.getEmbedding(queryText, "query");
     if (queryEmbedding.empty()) {
         SPDLOG_WARN("Не удалось сгенерировать эмбеддинг для запроса. Поиск невозможен.");
@@ -274,6 +268,13 @@ std::vector<SearchResult> ContextIndexer::findTopK(const std::string& queryText,
         SPDLOG_ERROR("Размерность эмбеддинга запроса ({}) не совпадает с размерностью индекса ({}).", queryEmbedding.size(), embedding_dim);
         return {};
     }
+
+    std::lock_guard lock(mtx);
+    if (!index || getEmbeddingsCount() == 0) {
+        SPDLOG_WARN("Индекс пуст. Поиск невозможен.");
+        return {};
+    }
+
 
     // Perform k-NN search
     auto result = index->searchKnn(queryEmbedding.data(), k);
@@ -471,62 +472,68 @@ void ContextIndexer::addChunk(const std::string& path, const std::string& text, 
 
 void ContextIndexer::indexDirectory(const fs::path& directoryPath)
 {
-    std::lock_guard lock(mtx);
-    SPDLOG_INFO("Начало индексирования каталога: {}", directoryPath.string());
-    auto iterator = fs::recursive_directory_iterator(directoryPath);
+    SPDLOG_INFO("Начало сканирования каталога: {}", directoryPath.string());
 
+    // --- Фаза 1: Сканирование диска и определение изменений (минимальная блокировка) ---
     std::unordered_set<std::string> files_on_disk;
+    std::vector<std::string> files_to_reindex;
+    std::vector<std::string> files_to_remove;
+    int newFiles = 0, updatedFiles = 0;
 
-    int updatedFiles = 0;
-    int newFiles = 0;
-
-    for (const auto& entry : iterator)
-    {
-        if (entry.is_directory() && ignoredDirectories.count(entry.path().filename().string()))
-        {
-            iterator.disable_recursion_pending();
-            continue;
-        }
-
-        if (entry.is_regular_file())
-        {
-            const auto& path = entry.path();
-            if (ignoredExtensions.count(path.extension().string()) ||
-                ignoredFiles.count(path.filename().string()) ||
-                path.filename() == metadataDbPath ||
-                path.filename() == hnswIndexPath)
-            {
+    // Сначала сканируем все файлы на диске (блокировка не нужна)
+    try {
+        for (auto it = fs::recursive_directory_iterator(directoryPath); it != fs::recursive_directory_iterator(); ++it) {
+            const auto& entry = *it;
+            if (entry.is_directory() && ignoredDirectories.count(entry.path().filename().string())) {
+                it.disable_recursion_pending();
                 continue;
             }
-            
-            auto canonicalPath = fs::weakly_canonical(path).string();
-            std::replace(canonicalPath.begin(), canonicalPath.end(), '\\', '/');
-            files_on_disk.insert(canonicalPath);
+            if (entry.is_regular_file()) {
+                const auto& path = entry.path();
+                if (ignoredExtensions.count(path.extension().string()) || ignoredFiles.count(path.filename().string()) ||
+                    path.filename() == metadataDbPath || path.filename() == hnswIndexPath) {
+                    continue;
+                }
+                auto canonicalPath = fs::weakly_canonical(path).string();
+                std::replace(canonicalPath.begin(), canonicalPath.end(), '\\', '/');
+                files_on_disk.insert(canonicalPath);
+            }
+        }
+    } catch (const fs::filesystem_error& e) {
+        SPDLOG_ERROR("Ошибка при сканировании директории {}: {}", directoryPath.string(), e.what());
+        return;
+    }
 
-            auto lastWriteTime = fs::last_write_time(path);
-
-            auto it = fileIndex.find(canonicalPath);
+    // Теперь захватываем короткую блокировку для сравнения с текущим состоянием индекса
+    {
+        std::lock_guard lock(mtx);
+        for (const auto& path_str : files_on_disk) {
+            auto lastWriteTime = fs::last_write_time(fs::path(path_str));
+            auto it = fileIndex.find(path_str);
             bool isNew = (it == fileIndex.end());
             bool isModified = !isNew && (it->second.last_write_time != lastWriteTime);
-
             if (isNew || isModified) {
-                reindexFile(canonicalPath);
+                files_to_reindex.push_back(path_str);
                 if (isNew) newFiles++; else updatedFiles++;
             }
         }
-    }
-
-    // Find and process deleted files
-    int deletedFiles = 0;
-    for (const auto& [path, record] : fileIndex) {
-        if (files_on_disk.find(path) == files_on_disk.end()) {
-            removeFileFromIndex(path);
-            deletedFiles++;
+        for (const auto& [path, record] : fileIndex) {
+            if (files_on_disk.find(path) == files_on_disk.end()) {
+                files_to_remove.push_back(path);
+            }
         }
     }
 
+    // --- Фаза 2: Обработка изменений (без глобальной блокировки, методы блокируются внутри) ---
+    for (const auto& path : files_to_reindex) {
+        reindexFile(path); // Этот метод выполняет сетевой ввод-вывод, а затем блокируется внутри для обновления
+    }
+    for (const auto& path : files_to_remove) {
+        removeFileFromIndex(path); // Этот метод блокируется внутри
+    }
+
     SPDLOG_INFO("Завершено индексирование. Новых файлов: {}, Изменённых файлов: {}, Удалено файлов: {}",
-                newFiles, updatedFiles, deletedFiles);
+                newFiles, updatedFiles, files_to_remove.size());
 }
 
 void ContextIndexer::reindexFile(const std::string& path) {

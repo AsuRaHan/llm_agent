@@ -43,5 +43,5 @@ private:
     void registerLanguage(const std::vector<std::string>& extensions, TSLanguage* language);
     
 // Helper to recursively extract nodes, now passes TSLanguage* for language-specific chunking
-    void extractChunks(const std::string& sourceCode, TSNode tsNode, std::vector<CodeChunk>& chunks, TSLanguage* language);
+    void extractChunks(const std::string& sourceCode, TSNode tsNode, std::vector<CodeChunk>& chunks, TSLanguage* language, int depth);
 };
