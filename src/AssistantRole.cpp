@@ -114,8 +114,20 @@ AssistantResponse AssistantRole::processQuery(
         // We don't add them again.
     } else {
         // This is a new query or a simple follow-up.
-        if (continuation_history.is_array() && continuation_history.empty()) {
-            std::string system_prompt = "Ты — эксперт-программист и AI-ассистент. Твоя задача — отвечать на вопросы пользователя о кодовой базе.\n"
+        json messages_for_llm = json::array();
+
+        // 1. Find the original system prompt content, if it exists.
+        std::string system_prompt_content;
+        auto system_msg_it = std::find_if(continuation_history.begin(), continuation_history.end(), [](const json& msg){
+            return msg.value("role", "") == "system";
+        });
+
+        if (system_msg_it != continuation_history.end()) {
+            // Use existing system prompt
+            system_prompt_content = system_msg_it->value("content", "");
+        } else {
+            // Create a new one if it's the start of a conversation
+            system_prompt_content = "Ты — эксперт-программист и AI-ассистент. Твоя задача — отвечать на вопросы пользователя о кодовой базе.\n"
                                     "У тебя есть лимит на вызов инструментов: " + std::to_string(config.max_tool_calls) + " раз на один запрос.\n\n"
                                     "Твой план действий:\n"
                                     "1.  **Проанализируй контекст.** Тебе предоставлен релевантный контекст, найденный по вопросу пользователя. Внимательно изучи его.\n"
@@ -123,29 +135,29 @@ AssistantResponse AssistantRole::processQuery(
                                     "3.  **Используй инструменты, если необходимо.** Если контекст неполный, или тебе нужно увидеть файл целиком, чтобы понять общую картину, используй инструменты:\n"
                                     "4.  **Думай по шагам.** После каждого шага (вызова инструмента) анализируй полученную информацию и решай, что делать дальше, пока не соберешь достаточно данных для исчерпывающего ответа.\n"
                                     "5.  **Дай точный ответ.** В конце, ссылаясь на собранную информацию, дай пользователю точный и подробный ответ.";
-
-            messages.push_back({{"role", "system"}, {"content", system_prompt}});
-        } else {
-            messages = continuation_history;
         }
 
-        // RAG Context: Add relevant context for the CURRENT query.
+        // 2. Append the new RAG context to the system prompt content
         if (!initialContext.empty()) {
             std::stringstream context_ss;
-            context_ss << "Вот релевантный контекст из кодовой базы, который может помочь с ответом:\n\n";
+            context_ss << "\n\n---\n# Дополнительный релевантный контекст для текущего запроса:\n";
             for (const auto& result : initialContext) {
                 context_ss << "--- ИЗ ФАЙЛА: " << result.filePath << " ---\n"
                            << "```\n"
                            << result.chunkText << "\n"
                            << "```\n\n";
             }
-            messages.push_back({{"role", "user"}, {"content", context_ss.str()}});
+            system_prompt_content += context_ss.str();
         }
 
-        // Add the current user query to the history
-        if (!userQuery.empty()) {
-            messages.push_back({{"role", "user"}, {"content", userQuery}});
+        // 3. Build the final message list for the LLM
+        messages_for_llm.push_back({{"role", "system"}, {"content", system_prompt_content}});
+        for (const auto& msg : continuation_history) {
+            if (msg.value("role", "") != "system") {
+                messages_for_llm.push_back(msg);
+            }
         }
+        messages = messages_for_llm;
     }
 
     // Count tool calls already in history to respect the limit across continuations

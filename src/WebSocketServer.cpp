@@ -189,17 +189,6 @@ void WebSocketServer::processAgentLogic(std::shared_ptr<UserSession> session, co
         // --- ЛОГИКА ВЫПОЛНЕНИЯ ПЛАНА ---
         if (session->status == AgentStatus::EXECUTING_PLAN) {
             // Сбор RAG-контекста выполняется только один раз в самом начале плана
-            if (session->current_plan_step == 0 && session->history.back()["role"] == "user") {
-                auto context = indexer.findTopK(session->original_user_query, config.top_k_results);
-                if (!context.empty()) {
-                    std::stringstream context_ss;
-                    context_ss << "Вот релевантный контекст из кодовой базы, который может помочь с выполнением всего плана:\n\n";
-                    for (const auto& result : context) {
-                        context_ss << "--- ИЗ ФАЙЛА: " << result.filePath << " ---\n" << "```\n" << result.chunkText << "\n" << "```\n\n";
-                    }
-                    session->history.push_back({{"role", "user"}, {"content", context_ss.str()}});
-                }
-            }
 
             // Итерируемся по шагам плана
             while (session->current_plan_step < (int)session->plan_steps.size()) {
@@ -209,14 +198,18 @@ void WebSocketServer::processAgentLogic(std::shared_ptr<UserSession> session, co
                 SPDLOG_INFO("Сессия {}: выполнение шага {}/{} плана: {}", sessionId, current_step_idx + 1, session->plan_steps.size(), task);
                 sendMessage(ws_handle, {{"type", "plan_update"}, {"data", {{"current_step", current_step_idx}, {"steps", session->plan_steps}}}});
 
+                // Для первого шага ищем RAG-контекст по оригинальному запросу. Для последующих - не ищем.
+                auto context = (current_step_idx == 0) ? indexer.findTopK(session->original_user_query, config.top_k_results) : std::vector<SearchResult>();
+
                 // ВАЖНО: Мы пушим ноту шага в историю ТОЛЬКО если мы не продолжаем работу после подтверждения опасного инструмента.
                 // Если мы вернулись из handleConfirmation, вызов инструмента уже сидит на вершине истории, и пушить туда системную ноту нельзя.
                 if (queryText != "CONTINUE_AFTER_TOOL") {
                     session->history.push_back({{"role", "user"}, {"content", "[SYSTEM_NOTE]: Текущий шаг плана: \"" + task + "\". Используй инструменты для его реализации. По окончании шага переходи к следующему."}});
                 }
 
-                // Вызываем ассистента. queryText передаем пустой, так как вся цепочка и инструкции сидят в session->history
-                AssistantResponse response = assistant.processQuery("", {}, indexer, session->history, send_thought);
+                // Вызываем ассистента. userQuery пустой, так как вся цепочка и инструкции сидят в session->history.
+                // Контекст передаем только для первого шага.
+                AssistantResponse response = assistant.processQuery("", context, indexer, session->history, send_thought);
                 session->history = response.conversation_history;
 
                 // Если шаг плана завершился с ошибкой, прерываем выполнение всего плана
