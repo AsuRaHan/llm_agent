@@ -31,6 +31,11 @@ private:
     void handleQuery(const nlohmann::json& msg, std::shared_ptr<SafeWsHandle> ws_handle);
     void handleConfirmation(const nlohmann::json& msg, std::shared_ptr<SafeWsHandle> ws_handle);
     void handleClearHistory(const nlohmann::json& msg, std::shared_ptr<SafeWsHandle> ws_handle);
+    void handlePlanConfirmation(const nlohmann::json& msg, std::shared_ptr<SafeWsHandle> ws_handle);
+    void handleErrorRecoveryConfirmation(const nlohmann::json& msg, std::shared_ptr<SafeWsHandle> ws_handle);
+
+    void processPlanGeneration(std::shared_ptr<UserSession> session, const std::string& queryText, std::shared_ptr<SafeWsHandle> ws_handle);
+
     void sendMessage(std::shared_ptr<SafeWsHandle> ws_handle, const nlohmann::json& payload);
 
     const Config& config;

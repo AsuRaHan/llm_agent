@@ -1,10 +1,12 @@
 #include "AssistantRole.h"
+#include "UserSession.h"
 #include "Logger.h"
 #include "Config.h"
 #include <thread>
 #include <chrono>
 #include <sstream>
 #include <algorithm>
+#include <regex>
 #include <iterator>
 
 using json = nlohmann::json;
@@ -56,7 +58,7 @@ AssistantResponse AssistantRole::processQuery(
                     } else {
                         tool_args = function_call["arguments"];
                     }
-                } catch (const json::exception& e) {
+        } catch (const json::exception& e) { // Ошибка парсинга аргументов инструмента
                     SPDLOG_ERROR("Failed to parse tool arguments for '{}': {}", tool_name, e.what());
                     std::string error_content = "{\"error\": \"Invalid JSON in arguments: " + std::string(e.what()) + "\"}";
                     messages.push_back({
@@ -64,7 +66,14 @@ AssistantResponse AssistantRole::processQuery(
                         {"tool_call_id", tool_id},
                         {"content", error_content}
                     });
-                    continue; // Skip to the next tool call
+            return {
+                .text = "",
+                .is_final = true,
+                .conversation_history = messages,
+                .step_failed = true,
+                .error_message = "Не удалось разобрать аргументы для инструмента '" + tool_name + "': " + e.what(),
+                .recovery_options = {"retry", "skip"}
+            };
                 }
 
                 // Execute the tool
@@ -72,6 +81,26 @@ AssistantResponse AssistantRole::processQuery(
                     send_thought("Выполняю подтвержденный инструмент: " + tool_name + "...");
                 }
                 std::string result = toolManager->executeTool(tool_name, tool_args, &indexer);
+
+        // Проверяем, вернул ли инструмент ошибку в формате {"error": "..."}
+        try {
+            json result_json = json::parse(result);
+            if (result_json.contains("error")) {
+                SPDLOG_ERROR("Инструмент '{}' завершился с ошибкой: {}", tool_name, result_json["error"].get<std::string>());
+                messages.push_back({{"role", "tool"}, {"tool_call_id", tool_id}, {"content", result}});
+                return {
+                    .text = "",
+                    .is_final = true,
+                    .conversation_history = messages,
+                    .step_failed = true,
+                    .error_message = "Инструмент '" + tool_name + "' завершился с ошибкой: " + result_json["error"].get<std::string>(),
+                    .recovery_options = {"retry", "skip"}
+                };
+            }
+        } catch (const json::exception& e) {
+            // Если результат не является JSON или не содержит "error", это не ошибка инструмента в данном формате.
+            // Продолжаем обработку как обычный результат.
+        }
 
                 // Add the tool's result to the history
                 messages.push_back({
@@ -160,7 +189,14 @@ AssistantResponse AssistantRole::processQuery(
             } else {
                 SPDLOG_ERROR("Ошибка соединения с LLM: {}", httplib::to_string(res.error()));
             }
-            return {"Ошибка: не удалось получить ответ от языковой модели.", true, {}};
+            return {
+                .text = "",
+                .is_final = true,
+                .conversation_history = messages,
+                .step_failed = true,
+                .error_message = "Не удалось получить ответ от языковой модели (ошибка соединения или таймаут).",
+                .recovery_options = {"retry"}
+            };
         }
 
         // 4. Process LLM response
@@ -168,13 +204,27 @@ AssistantResponse AssistantRole::processQuery(
         try {
             response_json = json::parse(res->body);
         } catch (const json::exception& e) {
-            SPDLOG_ERROR("Не удалось разобрать JSON-ответ от LLM: {}", e.what());
-            return {"Ошибка: не удалось обработать ответ модели.", true, {}};
+            SPDLOG_ERROR("Не удалось разобрать JSON-ответ от LLM: {}. Тело: {}", e.what(), res->body);
+            return {
+                .text = "",
+                .is_final = true,
+                .conversation_history = messages,
+                .step_failed = true,
+                .error_message = "Не удалось обработать ответ модели (некорректный JSON): " + std::string(e.what()),
+                .recovery_options = {"retry"}
+            };
         }
 
         if (!response_json.contains("choices") || response_json["choices"].empty()) {
-            SPDLOG_ERROR("Ответ LLM не содержит 'choices'.");
-            return {"Ошибка: получен некорректный ответ от модели.", true, {}};
+            SPDLOG_ERROR("Ответ LLM не содержит 'choices'. Тело: {}", res->body);
+            return {
+                .text = "",
+                .is_final = true,
+                .conversation_history = messages,
+                .step_failed = true,
+                .error_message = "Получен некорректный ответ от модели (отсутствует поле 'choices').",
+                .recovery_options = {"retry"}
+            };
         }
 
         const auto& choice = response_json["choices"][0];
@@ -196,7 +246,11 @@ AssistantResponse AssistantRole::processQuery(
                 is_final = false;
             }
             
-            return {final_text, is_final, messages, false, nullptr, ""};
+            return {
+                .text = final_text, 
+                .is_final = is_final, 
+                .conversation_history = messages
+            };
         }
 
         // Case 2: LLM wants to call tools
@@ -220,11 +274,12 @@ AssistantResponse AssistantRole::processQuery(
                     std::string prompt = "Я собираюсь использовать инструмент '" + tool_name + "'. Разрешить выполнение?";
                     
                     return {
-                        /*text=*/prompt,
-                        /*is_final=*/false, // The conversation is not over
-                        /*conversation_history=*/messages,
-                        /*requires_confirmation=*/true,
-                        /*pending_tool_call=*/call
+                        .text = prompt,
+                        .is_final = false,
+                        .conversation_history = messages,
+                        .requires_confirmation = true,
+                        .pending_tool_call = call,
+                        .plan_completed = true
                     };
                 }
 
@@ -235,7 +290,7 @@ AssistantResponse AssistantRole::processQuery(
                     } else {
                         tool_args = function_call["arguments"];
                     }
-                } catch (const json::exception& e) {
+                } catch (const json::exception& e) { // Ошибка парсинга аргументов инструмента
                     SPDLOG_ERROR("Failed to parse tool arguments for '{}': {}", tool_name, e.what());
                     std::string error_content = "{\"error\": \"Invalid JSON in arguments: " + std::string(e.what()) + "\"}";
                     messages.push_back({
@@ -243,7 +298,14 @@ AssistantResponse AssistantRole::processQuery(
                         {"tool_call_id", tool_id},
                         {"content", error_content}
                     });
-                    continue; // Skip to the next tool call or next agent iteration
+                    return {
+                        .text = "",
+                        .is_final = true,
+                        .conversation_history = messages,
+                        .step_failed = true,
+                        .error_message = "Не удалось разобрать аргументы для инструмента '" + tool_name + "': " + e.what(),
+                        .recovery_options = {"retry", "skip"}
+                    };
                 }
 
                 // Execute the tool
@@ -251,6 +313,26 @@ AssistantResponse AssistantRole::processQuery(
                     send_thought("Выполняю инструмент: " + tool_name + "...");
                 }
                 std::string result = toolManager->executeTool(tool_name, tool_args, &indexer);
+
+                // Проверяем, вернул ли инструмент ошибку в формате {"error": "..."}
+                try {
+                    json result_json = json::parse(result);
+                    if (result_json.contains("error")) {
+                        SPDLOG_ERROR("Инструмент '{}' завершился с ошибкой: {}", tool_name, result_json["error"].get<std::string>());
+                        messages.push_back({{"role", "tool"}, {"tool_call_id", tool_id}, {"content", result}});
+                        return {
+                            .text = "",
+                            .is_final = true,
+                            .conversation_history = messages,
+                            .step_failed = true,
+                            .error_message = "Инструмент '" + tool_name + "' завершился с ошибкой: " + result_json["error"].get<std::string>(),
+                            .recovery_options = {"retry", "skip"}
+                        };
+                    }
+                } catch (const json::exception& e) {
+                    // Если результат не является JSON или не содержит "error", это не ошибка инструмента в данном формате.
+                    // Продолжаем обработку как обычный результат.
+                }
 
                 // Add the tool's result to the history
                 messages.push_back({
@@ -274,7 +356,14 @@ AssistantResponse AssistantRole::processQuery(
 
         // Fallback if the response is unexpected (e.g. content is null)
         SPDLOG_ERROR("Неожиданный формат ответа от LLM: {}", choice.dump(2));
-        return {"Ошибка: получен неожиданный формат ответа от модели.", true, {}};
+        return {
+            .text = "",
+            .is_final = true,
+            .conversation_history = messages,
+            .step_failed = true,
+            .error_message = "Получен неожиданный формат ответа от модели (не текст и не вызов инструмента).",
+            .recovery_options = {"retry"}
+        };
     }
 
     SPDLOG_WARN("Превышено максимальное количество вызовов инструментов ({}). Запрос финального ответа.", config.max_tool_calls);
@@ -306,14 +395,25 @@ AssistantResponse AssistantRole::processQuery(
             if (final_response_json.contains("choices") && !final_response_json["choices"].empty()) {
                 std::string final_text = final_response_json["choices"][0]["message"]["content"];
                 messages.push_back({{"role", "assistant"}, {"content", final_text}});
-                return {final_text, true, messages};
+                return {
+                    .text = final_text, 
+                    .is_final = true, 
+                    .conversation_history = messages
+                };
             }
         } catch (const json::exception& e) {
             SPDLOG_ERROR("Не удалось разобрать финальный JSON-ответ от LLM: {}", e.what());
         }
     }
 
-    return {"Ошибка: не удалось сгенерировать итоговый ответ после превышения лимита вызовов инструментов.", true, messages};
+    return {
+        .text = "",
+        .is_final = true,
+        .conversation_history = messages,
+        .step_failed = true,
+        .error_message = "Превышен лимит вызовов инструментов (" + std::to_string(config.max_tool_calls) + ").",
+        .recovery_options = {"re-plan"}
+    };
 }
 
 std::string AssistantRole::generateProjectSummaryGreeting(int file_count, int embedding_count) {
@@ -420,4 +520,98 @@ std::string AssistantRole::generateChunkSummary(const std::string& codeChunk, co
 
     SPDLOG_WARN("Не удалось сгенерировать саммари для '{}'. Будет использован пустой текст.", chunkName);
     return ""; // Return empty string on failure
+}
+
+nlohmann::json AssistantRole::parsePlanFromMarkdown(const std::string& text) {
+    // Regex to find a JSON object within markdown code fences (```json ... ``` or ``` ... ```)
+    std::regex re("```(?:json)?\\s*(\\{[\\s\\S]*\\})\\s*```");
+    std::smatch match;
+
+    if (std::regex_search(text, match, re) && match.size() > 1) {
+        try {
+            // The captured JSON string is in match[1]
+            return json::parse(match[1].str());
+        } catch (const json::exception& e) {
+            SPDLOG_ERROR("Не удалось разобрать JSON из markdown-блока: {}", e.what());
+        }
+    }
+    
+    // Fallback for raw JSON that might have been returned with surrounding text, but not in a code block
+    size_t first_brace = text.find('{');
+    size_t last_brace = text.rfind('}');
+    if (first_brace != std::string::npos && last_brace != std::string::npos && last_brace > first_brace) {
+        try {
+            return json::parse(text.substr(first_brace, last_brace - first_brace + 1));
+        } catch (const json::exception& e) {
+            // Ignore if this also fails, we'll return null
+        }
+    }
+
+    return nullptr; // Return null json object on failure
+}
+
+nlohmann::json AssistantRole::generatePlan(const std::string& user_query) {
+    SPDLOG_INFO("Генерация плана для запроса: '{}'", user_query);
+
+    std::string system_prompt_text =
+        "Ты — AI-архитектор Smart Hammer. Твоя задача — разбить задачу пользователя на "
+        "минимальные атомарные шаги. Каждый шаг должен выполняться за один-два вызова инструментов.\n"
+        "Выдай ответ СТРОГО в формате JSON-объекта с ключом 'plan', который содержит массив строк. "
+        "Не добавляй никакого другого текста или markdown-разметки.\n"
+        "Пример: {\"plan\": [\"Изучить структуру файла CodeParser.cpp\", \"Найти утечки памяти\", \"Применить diff-патч\"]}";
+
+    json messages = {
+        {{"role", "system"}, {"content", system_prompt_text}},
+        {{"role", "user"}, {"content", "Задача: " + user_query}}
+    };
+
+    json body = {
+        {"messages", messages},
+        {"model", config.chat_model_name},
+        {"temperature", 0.0}, // We want a deterministic plan
+        // Request JSON output format from the model
+        {"response_format", { {"type", "json_object"} }}
+    };
+
+    httplib::Headers headers;
+    if (!config.api_key.empty()) {
+        headers.emplace("Authorization", "Bearer " + config.api_key);
+    }
+    std::string body_str = body.dump(-1, ' ', false, json::error_handler_t::replace);
+
+    httplib::Result res;
+    for (int attempt = 1; attempt <= config.retry_count; ++attempt) {
+        res = cli.Post("/v1/chat/completions", headers, body_str, "application/json");
+        if (res) break;
+        SPDLOG_ERROR("Попытка {} из {} для генерации плана не удалась. Ошибка соединения: {}. Повтор...",
+                    attempt, config.retry_count, httplib::to_string(res.error()));
+        std::this_thread::sleep_for(std::chrono::milliseconds(config.retry_delay_ms));
+    }
+
+    if (!res || res->status != 200) {
+        if (res) {
+            SPDLOG_ERROR("Ошибка от LLM при генерации плана. Статус: {}. Тело: {}", res->status, res->body);
+        } else {
+            SPDLOG_ERROR("Ошибка соединения с LLM при генерации плана: {}", httplib::to_string(res.error()));
+        }
+        return json::array({"Ошибка: не удалось сгенерировать план."});
+    }
+
+    std::string content;
+    try {
+        json response_json = json::parse(res->body);
+        content = response_json["choices"][0]["message"]["content"];
+    } catch (const json::exception& e) {
+        SPDLOG_ERROR("Не удалось разобрать основной JSON-ответ от LLM: {}", e.what());
+        return json::array({"Ошибка: модель вернула некорректный JSON."});
+    }
+
+    json plan_json = parsePlanFromMarkdown(content);
+    if (plan_json.is_object() && plan_json.contains("plan") && plan_json["plan"].is_array()) {
+        SPDLOG_INFO("План успешно сгенерирован и разобран.");
+        return plan_json["plan"];
+    }
+
+    SPDLOG_ERROR("Не удалось извлечь корректный план из ответа LLM. Ответ: {}", content);
+    return json::array({"Ошибка: модель вернула некорректный формат плана."});
 }

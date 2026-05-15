@@ -1,25 +1,32 @@
 #pragma once
 
-#include "Config.h"
-#include "ContextIndexer.h" // For SearchResult
-#include "tools/ToolManager.h"
-#include <httplib.h>
-#include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
-#include <memory>
 #include <functional>
+#include <memory>
+#include <nlohmann/json.hpp>
+
+#include "httplib.h"
+#include "ContextIndexer.h"
+#include "ToolManager.h"
+
+// Forward-declaration
+class Config;
 
 struct AssistantResponse {
     std::string text;
-    bool is_final = true;
+    bool is_final;
     nlohmann::json conversation_history;
-
-    // Fields for pending action confirmation
     bool requires_confirmation = false;
     nlohmann::json pending_tool_call = nullptr;
-    std::string confirmation_prompt;
+    bool plan_completed = true;
+    bool step_failed = false; // true, если в процессе выполнения шага произошла ошибка
+
+    // Поля для обработки ошибок
+    std::string error_message = ""; // Детальное сообщение об ошибке
+    std::vector<std::string> recovery_options; // Предлагаемые варианты восстановления (retry, skip, re-plan)
 };
+
 
 class AssistantRole {
 public:
@@ -30,16 +37,19 @@ public:
         const std::string& userQuery,
         const std::vector<SearchResult>& initialContext,
         ContextIndexer& indexer,
-        const nlohmann::json& continuation_history = nlohmann::json::array(),
-        const std::function<void(const std::string&)>& send_thought = nullptr
+        const nlohmann::json& continuation_history,
+        const std::function<void(const std::string&)>& send_thought
     );
+
+    nlohmann::json generatePlan(const std::string& user_query);
 
     std::string generateProjectSummaryGreeting(int file_count, int embedding_count);
     std::string generateChunkSummary(const std::string& codeChunk, const std::string& chunkName);
 
 private:
+    nlohmann::json parsePlanFromMarkdown(const std::string& text);
+
     const Config& config;
     httplib::Client cli;
-public: // TODO: Refactor this. Server should not directly access assistant's members.
     std::unique_ptr<ToolManager> toolManager;
 };
