@@ -7,6 +7,17 @@
 
 namespace fs = std::filesystem;
 
+// Helper to trim whitespace from both ends of a string
+static std::string trim(const std::string& s) {
+    const char* whitespace = " \t\n\r\f\v";
+    size_t first = s.find_first_not_of(whitespace);
+    if (std::string::npos == first) {
+        return ""; // All whitespace
+    }
+    size_t last = s.find_last_not_of(whitespace);
+    return s.substr(first, (last - first + 1));
+}
+
 std::string EditFileTool::getName() const {
     return "edit_file";
 }
@@ -109,8 +120,8 @@ std::string EditFileTool::execute(const nlohmann::json& args, ContextIndexer* in
         return "{\"error\": \"Безопасная замена не удалась. 'old_code_block' выходит за пределы файла.\"}";
     }
     for (size_t i = 0; i < old_lines.size(); ++i) {
-        if (lines[start_line - 1 + i] != old_lines[i]) {
-            std::string error_msg = "Безопасная замена не удалась. 'old_code_block' не совпадает с содержимым файла в строке " + std::to_string(start_line + i) + ".";
+        if (trim(lines[start_line - 1 + i]) != trim(old_lines[i])) {
+            std::string error_msg = "Безопасная замена не удалась. 'old_code_block' не совпадает с содержимым файла в строке " + std::to_string(start_line + i) + ". Ожидалось: '" + lines[start_line - 1 + i] + "', получено в блоке: '" + old_lines[i] + "'.";
             SPDLOG_WARN(error_msg);
             return "{\"error\": \"" + error_msg + "\"}";
         }

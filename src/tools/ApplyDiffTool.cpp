@@ -8,6 +8,17 @@
 
 namespace fs = std::filesystem;
 
+// Helper to trim whitespace from both ends of a string
+static std::string trim(const std::string& s) {
+    const char* whitespace = " \t\n\r\f\v";
+    size_t first = s.find_first_not_of(whitespace);
+    if (std::string::npos == first) {
+        return ""; // All whitespace
+    }
+    size_t last = s.find_last_not_of(whitespace);
+    return s.substr(first, (last - first + 1));
+}
+
 // Helper to handle CRLF and LF line endings while reading
 static std::vector<std::string> read_lines_from_stream(std::istream& stream) {
     std::vector<std::string> lines;
@@ -119,11 +130,19 @@ std::string ApplyDiffTool::execute(const nlohmann::json& args, ContextIndexer* i
                 }
 
                 if (type == ' ') {
-                    if (original_lines[original_line_idx] != content) return "{\"error\": \"Патч не применяется. Контекстная строка не совпадает в строке " + std::to_string(original_line_idx + 1) + ".\"}";
+                    if (trim(original_lines[original_line_idx]) != trim(content)) {
+                        std::string error_msg = "Патч не применяется. Контекстная строка не совпадает в строке " + std::to_string(original_line_idx + 1) + ". Ожидалось: '" + original_lines[original_line_idx] + "', получено в патче: '" + content + "'.";
+                        SPDLOG_WARN(error_msg);
+                        return "{\"error\": \"" + error_msg + "\"}";
+                    }
                     new_file_lines.push_back(original_lines[original_line_idx]);
                     original_line_idx++;
                 } else if (type == '-') {
-                    if (original_lines[original_line_idx] != content) return "{\"error\": \"Патч не применяется. Удаляемая строка не совпадает в строке " + std::to_string(original_line_idx + 1) + ".\"}";
+                    if (trim(original_lines[original_line_idx]) != trim(content)) {
+                        std::string error_msg = "Патч не применяется. Удаляемая строка не совпадает в строке " + std::to_string(original_line_idx + 1) + ". Ожидалось: '" + original_lines[original_line_idx] + "', получено в патче: '" + content + "'.";
+                        SPDLOG_WARN(error_msg);
+                        return "{\"error\": \"" + error_msg + "\"}";
+                    }
                     original_line_idx++;
                 } else if (type == '+') {
                     new_file_lines.push_back(content);
