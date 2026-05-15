@@ -1,55 +1,49 @@
 #include "ApiHandlers.h"
-#include "WebSocketServer.h"
 #include "Logger.h"
+#include <fstream>
+#include <sstream>
 
-ApiHandlers::ApiHandlers(const Config& config)
+ApiHandlers::ApiHandlers(const Config& config, AssistantRole& assistant, ContextIndexer& indexer)
     : config(config),
-      httpServer(std::make_unique<httplib::Server>()),
-      wsServer(std::make_unique<WebSocketServer>(config))
-{}
-
-ApiHandlers::~ApiHandlers() {
-    stopServer();
+      assistant(assistant),
+      indexer(indexer),
+      sessionManager(),
+      webSocketServer(config, assistant, indexer, sessionManager)
+{
+    setupRoutes();
 }
 
-bool ApiHandlers::initialize(std::shared_ptr<ContextIndexer> indexer, std::shared_ptr<AssistantRole> assistant) {
-    if (!httpServer) {
-        SPDLOG_CRITICAL("HTTP server is not initialized.");
-        return false;
-    }
-
-    if (!wsServer->initialize(indexer, assistant)) {
-        SPDLOG_CRITICAL("Failed to initialize WebSocket server.");
-        return false;
-    }
-
-    // --- WebSocket Endpoint ---
-    httpServer->WebSocket("/ws", [this](const httplib::Request& /*req*/, httplib::ws::WebSocket& ws) {
-        wsServer->handleConnection(ws);
+void ApiHandlers::setupRoutes() {
+    svr.WebSocket("/ws", [this](const httplib::Request& req, httplib::ws::WebSocket& ws) {
+        webSocketServer.handleConnection(req, ws);
     });
 
-    // --- Static File Serving for Frontend ---
-    auto& web_config = config.web_server_root_dir;
-    if (!web_config.empty() && std::filesystem::exists(web_config)) {
-        if (httpServer->set_mount_point("/", web_config.c_str())) {
-            SPDLOG_INFO("Serving frontend files from '{}'", web_config);
+    auto base_dir = config.web_server_root_dir;
+    if (!svr.set_mount_point("/", base_dir)) {
+        SPDLOG_ERROR("Указанная директория frontend '{}' не существует.", base_dir);
+    }
+    
+    svr.set_error_handler([base_dir](const httplib::Request&, httplib::Response &res) {
+        std::ifstream file(base_dir + "/404.html");
+        if (file) {
+            std::stringstream buffer;
+            buffer << file.rdbuf();
+            res.set_content(buffer.str(), "text/html");
         } else {
-            SPDLOG_ERROR("Failed to set mount point for frontend files at '{}'", web_config);
+            res.set_content("Not Found", "text/plain");
         }
-    } else {
-        SPDLOG_WARN("Frontend root directory '{}' not found or not set. Frontend will not be served.", web_config);
-    }
+        res.status = 404;
+    });
 
-    return true;
+    SPDLOG_INFO("HTTP маршруты настроены. Статика раздается из '{}'.", base_dir);
 }
 
-void ApiHandlers::startServer() {
-    SPDLOG_INFO("Starting HTTP/WebSocket server on {}:{}", config.web_server_host, config.web_server_port);
-    httpServer->listen(config.web_server_host.c_str(), config.web_server_port);
+void ApiHandlers::start() {
+    SPDLOG_INFO("Запуск веб-сервера на {}:{}", config.web_server_host, config.web_server_port);
+    svr.listen(config.web_server_host.c_str(), config.web_server_port);
+    SPDLOG_INFO("Веб-сервер остановлен.");
 }
 
-void ApiHandlers::stopServer() {
-    if (httpServer && httpServer->is_running()) {
-        httpServer->stop();
-    }
+void ApiHandlers::stop() {
+    svr.stop();
 }

@@ -410,26 +410,21 @@ int main(int argc, char* argv[])
             print_separator('=', 60);
             std::cout << "\nСервер запущен:\n";
             std::cout << "  • REST API: http://" << config.web_server_host << ":" << config.web_server_port << "/api\n";
-            std::cout << "  • Query endpoint: POST /api/query\n";
             std::cout << "  • WebSocket: ws://" << config.web_server_host << ":" << config.web_server_port << "/ws\n";
             std::cout << "  • Frontend: http://" << config.web_server_host << ":" << config.web_server_port << "/\n";
             std::cout << "  • Indexed files: " << indexer->getFileCount() << "\n";
             std::cout << "  • Embeddings: " << indexer->getEmbeddingsCount() << "\n";
             print_separator('-', 60);
-            std::cout << "\nПрессуйте Ctrl+C для остановки сервера.\n\n";
+            std::cout << "\nНажмите Ctrl+C для остановки сервера.\n\n";
 
-            auto indexer_ptr = std::shared_ptr<ContextIndexer>(indexer.release());
-            // assistant_ptr is already created
+            // assistant_ptr - это shared_ptr, indexer - это unique_ptr.
+            // ApiHandlers принимает ссылки на эти объекты.
 
             // Create and initialize API handlers
-            ApiHandlers apiHandlers(config);
-            if (!apiHandlers.initialize(indexer_ptr, assistant_ptr)) {
-                SPDLOG_ERROR("Failed to initialize API handlers");
-                return 1;
-            }
+            ApiHandlers apiHandlers(config, *assistant_ptr, *indexer);
 
             // Start the server (this blocks)
-            apiHandlers.startServer();
+            apiHandlers.start();
 
             SPDLOG_INFO("Server stopped.");
             std::cout << "\nСервер остановлен.\n";

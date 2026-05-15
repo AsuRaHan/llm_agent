@@ -187,6 +187,8 @@ set_source_files_properties(
 
 add_executable(Agent
       src/main.cpp
+      src/ApiHandlers.cpp
+      src/SessionManager.cpp
       src/ContextIndexer.cpp
       src/EmbeddingClient.cpp
       src/AssistantRole.cpp
@@ -194,8 +196,9 @@ add_executable(Agent
       src/CodeParser.cpp
       src/Config.cpp
       src/WebSocketServer.cpp
-      src/ApiHandlers.cpp
+      src/ThreadPool.cpp
       src/tools/ReadFileTool.cpp
+      src/SessionManager.cpp
       src/tools/ListDirectoryTool.cpp
       src/tools/ToolManager.cpp
       src/tools/CodeSearchTool.cpp
