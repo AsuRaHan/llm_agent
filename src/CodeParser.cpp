@@ -11,8 +11,9 @@ extern "C" {
 // Forward declare the function to get the C++ language grammar
 extern "C" TSLanguage* tree_sitter_cpp();
 extern "C" TSLanguage* tree_sitter_markdown();
-// Forward declare functions for new grammars
-
+extern "C" TSLanguage* tree_sitter_css();
+extern "C" TSLanguage* tree_sitter_html();
+extern "C" TSLanguage* tree_sitter_javascript();
 
 CodeParser::CodeParser(const Config& config) 
     : config(config) {
@@ -30,7 +31,14 @@ void CodeParser::initializeLanguages() {
     SPDLOG_INFO("Инициализация языковых парсеров Tree-sitter...");
     // Register C++
     registerLanguage({".cpp", ".hpp", ".h", ".cxx", ".hxx", ".cc", ".hh"}, tree_sitter_cpp());
+    // Register CSS
+    registerLanguage({".css", ".scss", ".sass"}, tree_sitter_css());
+    // Register Markdown
     registerLanguage({".md"}, tree_sitter_markdown());
+    // Register HTML
+    registerLanguage({".html", ".htm", ".xhtml"}, tree_sitter_html());
+    // Register JavaScript
+    registerLanguage({".js", ".jsx", ".mjs", ".cjs"}, tree_sitter_javascript());
     // Future languages will be registered here, e.g.:
     // registerLanguage({".py"}, tree_sitter_python());
 }
@@ -100,6 +108,42 @@ void CodeParser::extractChunks(const std::string& sourceCode, TSNode tsNode, std
         if (nodeType == "atx_heading" || nodeType == "setext_heading" || 
             nodeType == "fenced_code_block" || nodeType == "paragraph" ||
             nodeType == "list_item") { // Also consider list items as chunks
+            is_chunk_candidate = true;
+        }
+    } else if (lang_name == "css") {
+        // For CSS, consider rules, selectors, and declarations as logical chunks
+        if (nodeType == "rule" || 
+            nodeType == "stylesheet" || 
+            nodeType == "at_rule" ||
+            nodeType == "declaration" ||
+            nodeType == "selector_list") {
+            is_chunk_candidate = true;
+        }
+    } else if (lang_name == "html") {
+        // For HTML, consider tags, attributes, and structural elements as logical chunks
+        if (nodeType == "tag" || 
+            nodeType == "attribute" ||
+            nodeType == "doctype" ||
+            nodeType == "comment" ||
+            nodeType == "text" ||
+            nodeType == "script" ||
+            nodeType == "style" ||
+            nodeType == "element") {
+            is_chunk_candidate = true;
+        }
+    } else if (lang_name == "javascript") {
+        // For JavaScript, consider functions, classes, modules, and expressions as logical chunks
+        if (nodeType == "function_declaration" || 
+            nodeType == "class_declaration" ||
+            nodeType == "module_declaration" ||
+            nodeType == "arrow_function" ||
+            nodeType == "method_definition" ||
+            nodeType == "variable_declarator" ||
+            nodeType == "object_expression" ||
+            nodeType == "array_expression" ||
+            nodeType == "call_expression" ||
+            nodeType == "import_statement" ||
+            nodeType == "export_statement") {
             is_chunk_candidate = true;
         }
     }
