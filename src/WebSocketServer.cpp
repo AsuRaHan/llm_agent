@@ -433,8 +433,9 @@ void WebSocketServer::handleErrorRecoveryConfirmation(const nlohmann::json& msg,
 
 void WebSocketServer::handlePlanConfirmation(const nlohmann::json& msg, std::shared_ptr<SafeWsHandle> ws_handle) {
     std::string sessionId = msg.value("session_id", "");
-    bool confirmed = msg.value("data", nlohmann::json::object()).value("confirmed", false);
-
+    const auto& data = msg.value("data", nlohmann::json::object());
+    bool confirmed = data.value("confirmed", false);
+    
     if (sessionId.empty()) return;
 
     auto session = sessionManager.getSession(sessionId);
@@ -445,11 +446,27 @@ void WebSocketServer::handlePlanConfirmation(const nlohmann::json& msg, std::sha
     }
 
     if (confirmed) {
-        SPDLOG_INFO("Пользователь утвердил план для сессии {}", sessionId);
+        // Проверяем, прислал ли клиент отредактированный список шагов
+        if (data.contains("steps") && data["steps"].is_array()) {
+            session->plan_steps = data["steps"];
+            SPDLOG_INFO("Пользователь утвердил и отредактировал план для сессии {}", sessionId);
+        } else {
+            SPDLOG_INFO("Пользователь утвердил план для сессии {}", sessionId);
+        }
+
+        // Проверяем, не оказался ли план пустым после редактирования
+        if (session->plan_steps.empty()) {
+            SPDLOG_WARN("Пользователь утвердил пустой план для сессии {}. План отменен.", sessionId);
+            session->status = AgentStatus::IDLE;
+            session->current_plan_step = -1;
+            session->original_user_query = "";
+            sendMessage(ws_handle, {{"type", "query_response"}, {"data", {{"answer", "План пуст. Задачи для выполнения отсутствуют."}}}});
+            return;
+        }
+
         session->status = AgentStatus::EXECUTING_PLAN;
         session->current_plan_step = 0;
 
-        // Kick off the execution loop by calling processAgentLogic with an empty query.
         threadPool.enqueue([this, session, ws_handle] {
             processAgentLogic(session, "", ws_handle);
         });
