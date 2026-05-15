@@ -80,7 +80,7 @@ FetchContent_MakeAvailable(hnswlib)
 FetchContent_Declare(
   tree_sitter_core
   GIT_REPOSITORY https://github.com/tree-sitter/tree-sitter.git
-  GIT_TAG        master # As requested
+  GIT_TAG        master # Pin to the latest stable version to ensure ABI compatibility with grammars
   GIT_SHALLOW TRUE
   FETCHCONTENT_QUIET OFF
 )
@@ -152,63 +152,38 @@ set(tree_sitter_javascript_grammar_SOURCE_DIR ${tree_s_js_gram_SOURCE_DIR})
 # FetchContent_Populate(tree_s_cmake_gram)
 # set(tree_sitter_cmake_grammar_SOURCE_DIR ${tree_s_cmake_gram_SOURCE_DIR})
 
-# Create static library from tree-sitter-cpp
-add_library(tree_sitter_cpp_lib STATIC
+# Явно указываем, что все файлы грамматик - это чистый Си, чтобы избежать конфликтов при линковке в C++ проекте.
+set_source_files_properties(
   ${tree_sitter_cpp_grammar_SOURCE_DIR}/src/parser.c
   ${tree_sitter_cpp_grammar_SOURCE_DIR}/src/scanner.c
+  PROPERTIES LANGUAGE C
 )
-target_include_directories(tree_sitter_cpp_lib PUBLIC
-  ${tree_sitter_cpp_grammar_SOURCE_DIR}/src
-)
-
-# Create static library from tree-sitter-css
-add_library(tree_sitter_css_lib STATIC
+set_source_files_properties(
   ${tree_sitter_css_grammar_SOURCE_DIR}/src/parser.c
   ${tree_sitter_css_grammar_SOURCE_DIR}/src/scanner.c
+  PROPERTIES LANGUAGE C
 )
-target_include_directories(tree_sitter_css_lib PUBLIC
-  ${tree_sitter_css_grammar_SOURCE_DIR}/src
-)
-
-# Create static library from tree-sitter-markdown
-add_library(tree_sitter_markdown_lib STATIC
-  ${tree_sitter_markdown_grammar_SOURCE_DIR}/tree-sitter-markdown/src/parser.c
-  ${tree_sitter_markdown_grammar_SOURCE_DIR}/tree-sitter-markdown/src/scanner.c
-)
-target_include_directories(tree_sitter_markdown_lib PUBLIC
-  ${tree_sitter_markdown_grammar_SOURCE_DIR}/tree-sitter-markdown/src
-)
-
-# Create static library from tree-sitter-html
-add_library(tree_sitter_html_lib STATIC
-  ${tree_sitter_html_grammar_SOURCE_DIR}/src/parser.c
-  ${tree_sitter_html_grammar_SOURCE_DIR}/src/scanner.c
-)
-target_include_directories(tree_sitter_html_lib PUBLIC
-  ${tree_sitter_html_grammar_SOURCE_DIR}/src
-)
-
-# Create static library from tree-sitter-javascript
-add_library(tree_sitter_javascript_lib STATIC
-  ${tree_sitter_javascript_grammar_SOURCE_DIR}/src/parser.c
-  ${tree_sitter_javascript_grammar_SOURCE_DIR}/src/scanner.c
-)
-target_include_directories(tree_sitter_javascript_lib PUBLIC
-  ${tree_sitter_javascript_grammar_SOURCE_DIR}/src
-)
-
-# Явно указываем, что это файлы на чистом Си
 set_source_files_properties(
   ${tree_sitter_markdown_grammar_SOURCE_DIR}/tree-sitter-markdown/src/parser.c
   ${tree_sitter_markdown_grammar_SOURCE_DIR}/tree-sitter-markdown/src/scanner.c
   PROPERTIES LANGUAGE C
 )
+set_source_files_properties(
+  ${tree_sitter_html_grammar_SOURCE_DIR}/src/parser.c
+  ${tree_sitter_html_grammar_SOURCE_DIR}/src/scanner.c
+  PROPERTIES LANGUAGE C
+)
+set_source_files_properties(
+  ${tree_sitter_javascript_grammar_SOURCE_DIR}/src/parser.c
+  ${tree_sitter_javascript_grammar_SOURCE_DIR}/src/scanner.c
+  PROPERTIES LANGUAGE C
+)
 
 # Переопределяем видимость символов для статической библиотеки маркдауна, 
 # чтобы предотвратить конфликты одинаковых имен функций с другими сканерами на этапе линковки
-if(MSVC)
-  target_compile_options(tree_sitter_markdown_lib PRIVATE "/wd4005" "/wd4142")
-endif()
+# if(MSVC)
+#   target_compile_options(tree_sitter_markdown_lib PRIVATE "/wd4005" "/wd4142")
+# endif()
 
 add_executable(Agent
       src/main.cpp
@@ -237,6 +212,17 @@ add_executable(Agent
       src/tools/GetDateTimeTool.cpp
       src/tools/GetSystemInfoTool.cpp
       src/FileWatcher.cpp
+      # Добавляем исходники грамматик напрямую в исполняемый файл
+      ${tree_sitter_cpp_grammar_SOURCE_DIR}/src/parser.c
+      ${tree_sitter_cpp_grammar_SOURCE_DIR}/src/scanner.c
+      ${tree_sitter_css_grammar_SOURCE_DIR}/src/parser.c
+      ${tree_sitter_css_grammar_SOURCE_DIR}/src/scanner.c
+      ${tree_sitter_markdown_grammar_SOURCE_DIR}/tree-sitter-markdown/src/parser.c
+      ${tree_sitter_markdown_grammar_SOURCE_DIR}/tree-sitter-markdown/src/scanner.c
+      ${tree_sitter_html_grammar_SOURCE_DIR}/src/parser.c
+      ${tree_sitter_html_grammar_SOURCE_DIR}/src/scanner.c
+      ${tree_sitter_javascript_grammar_SOURCE_DIR}/src/parser.c
+      ${tree_sitter_javascript_grammar_SOURCE_DIR}/src/scanner.c
       )
 
 target_include_directories(Agent PUBLIC
@@ -247,6 +233,12 @@ target_include_directories(Agent PUBLIC
   $<BUILD_INTERFACE:${spdlog_SOURCE_DIR}/include>
   $<BUILD_INTERFACE:${hnswlib_SOURCE_DIR}>
   $<BUILD_INTERFACE:${tree_sitter_core_SOURCE_DIR}/lib/include> # Заголовочные файлы Tree-sitter core
+  # Добавляем пути к заголовочным файлам грамматик
+  ${tree_sitter_cpp_grammar_SOURCE_DIR}/src
+  ${tree_sitter_css_grammar_SOURCE_DIR}/src
+  ${tree_sitter_markdown_grammar_SOURCE_DIR}/tree-sitter-markdown/src
+  ${tree_sitter_html_grammar_SOURCE_DIR}/src
+  ${tree_sitter_javascript_grammar_SOURCE_DIR}/src
 )
 
 # Устанавливаем минимальный уровень логирования spdlog на этапе компиляции.
@@ -256,7 +248,7 @@ target_compile_definitions(Agent PRIVATE SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE)
 target_compile_definitions(Agent PRIVATE CPPHTTPLIB_OPENSSL_SUPPORT)
 
 # Link against dependencies
-target_link_libraries(Agent PRIVATE spdlog::spdlog hnswlib tree-sitter tree_sitter_cpp_lib tree_sitter_css_lib tree_sitter_markdown_lib tree_sitter_html_lib tree_sitter_javascript_lib OpenSSL::SSL OpenSSL::Crypto)
+target_link_libraries(Agent PRIVATE spdlog::spdlog hnswlib tree-sitter OpenSSL::SSL OpenSSL::Crypto)
 
 # --- Platform Specifics ---
 
@@ -266,4 +258,3 @@ if(WIN32)
   # Add defines to avoid conflicts with Windows.h
   target_compile_definitions(Agent PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
 endif()
-
