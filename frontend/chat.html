@@ -4,33 +4,34 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Чат с Агентом - Smart Hammer</title>
-    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/css/style.css">
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
-<body>
-    <div class="chat-container">
+<body class="bg-gray-900">
+    <div class="chat-container max-w-7xl mx-auto">
         <div class="chat-header">
             <div class="header-left">
                 <h1>🤖 Чат с Агентом</h1>
-                <span id="connection-status" class="connection-status">● Онлайн</span>
+                <span id="connection-status" class="connection-status">Подключение...</span>
             </div>
             <div class="header-right">
                 <a href="/" class="back-link">На главную</a>
-                <button id="clear-chat" class="clear-btn" title="Очистить чат">🗑️</button>
+                <button id="clear-history-button" class="clear-btn" title="Очистить чат">🗑️</button>
             </div>
         </div>
-        <div id="message-list" class="message-list">
+        <div id="message-list" class="message-list custom-scrollbar">
             <!-- Сообщения будут загружены с сервера -->
         </div>
         <div id="typing-indicator" class="typing-indicator" style="display: none;">
             <span></span><span></span><span></span>
         </div>
-        <form id="chat-form" class="chat-form">
-            <input type="text" id="message-input" placeholder="Введите ваш вопрос..." autocomplete="off" required>
-            <button type="submit">Отправить</button>
-        </form>
+        <div class="chat-form">
+            <textarea id="message-input" placeholder="Введите ваш вопрос... (Shift+Enter для новой строки)" rows="1" class="custom-scrollbar"></textarea>
+            <button id="send-button" type="submit">Отправить</button>
+        </div>
     </div>
 
-    <script src="chat.js"></script>
+    <script src="/js/chat.js"></script>
 </body>
 </html>

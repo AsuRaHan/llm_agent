@@ -133,7 +133,7 @@ cmake --build build --config Release
         "ignored_directories": [
             "build", ".git", ".vscode", "CMakeFiles", ".shdata"
         ],
-        "ignored_extensions": [
+        "ignored_extensions": [ ".ico",
             ".exe", ".obj", ".pdb", ".ilk", ".sln", ".vcxproj", ".filters", ".user",
             ".recipe", ".tlog", ".lastbuildstate", ".bin", ".stamp", ".cmake",
             ".json", ".log"

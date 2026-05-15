@@ -1,64 +1,49 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Smart Hammer Agent</title>
-    <style>
-        body { font-family: sans-serif; margin: 2em; background-color: #f4f4f4; color: #333; }
-        h1 { color: #0056b3; }
-        .container { max-width: 800px; margin: 2em auto; background-color: #fff; padding: 2em; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .api-info { background-color: #e9ecef; padding: 1em; border-radius: 4px; margin-top: 1em; }
-        code { background-color: #e0e0e0; padding: 0.2em 0.4em; border-radius: 3px; }
-        .chat-link-container {
-            text-align: center;
-            margin: 2em 0;
-        }
-        .chat-button {
-            display: inline-block;
-            padding: 12px 24px;
-            background-color: #007bff;
-            color: white;
-            text-decoration: none;
-            border-radius: 5px;
-            font-size: 1.1em;
-            font-weight: bold;
-            transition: background-color 0.3s;
-        }
-        .chat-button:hover {
-            background-color: #0056b3;
-        }
-    </style>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/css/style.css">
 </head>
-<body>
-    <div class="container">
-        <h1>Добро пожаловать в Smart Hammer Agent!</h1>
-        <p>Ваш локальный AI-ассистент для анализа кода запущен и готов к работе.</p>
+<body class="bg-gray-900 text-gray-300 flex items-center justify-center min-h-screen font-sans">
+    <div class="container max-w-4xl w-full mx-auto bg-gray-800 p-8 rounded-lg shadow-2xl border border-gray-700">
+        <h1 class="text-4xl font-bold text-center text-cyan-400 mb-2">Добро пожаловать в Smart Hammer!</h1>
+        <p class="text-center text-gray-400 mb-8">Ваш локальный AI-ассистент для анализа кода запущен и готов к работе.</p>
         
-        <div class="chat-link-container">
-            <a href="chat.html" class="chat-button">Перейти в чат с агентом</a>
+        <div class="flex justify-center gap-4 my-8">
+            <a href="/chat.html" class="px-6 py-3 bg-cyan-600 text-white font-bold rounded-lg shadow-md hover:bg-cyan-700 transition-colors duration-300">
+                🚀 Перейти в чат
+            </a>
+            <a href="/doc.html" class="px-6 py-3 bg-gray-700 text-white font-bold rounded-lg shadow-md hover:bg-gray-600 transition-colors duration-300">
+                📖 Документация
+            </a>
         </div>
 
-        <div class="api-info">
-            <h2>Информация об API:</h2>
-            <p><strong>Базовый URL API:</strong> <code id="api-base-url"></code></p>
-            <p><strong>Эндпоинт для запросов:</strong> <code>POST /api/query</code></p>
-            <p><strong>Эндпоинт для статуса:</strong> <code>GET /api/status</code></p>
-            <p><strong>Эндпоинт для информации о проекте:</strong> <code>GET /api/project-info</code></p>
-            <p><strong>Эндпоинт для здоровья:</strong> <code>GET /api/health</code></p>
-            <p><strong>Эндпоинт для конфигурации сервера:</strong> <code>GET /api/server-config</code></p>
+        <div class="bg-gray-900 border border-gray-700 rounded-lg p-6 mt-10">
+            <h2 class="text-2xl font-semibold text-gray-200 mb-4">Информация о сервере</h2>
+            <div class="space-y-2 text-gray-400">
+                <p>
+                    <strong>WebSocket URL:</strong> 
+                    <code id="ws-url" class="bg-gray-700 text-cyan-300 px-2 py-1 rounded"></code>
+                </p>
+                <p>
+                    <strong>Frontend:</strong> 
+                    <code id="fe-url" class="bg-gray-700 text-cyan-300 px-2 py-1 rounded"></code>
+                </p>
+            </div>
         </div>
-
-        <p>Вы можете взаимодействовать с агентом через его REST API.</p>
-        <p>Для получения дополнительной информации, пожалуйста, обратитесь к документации проекта.</p>
     </div>
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            // Dynamically set the API base URL
-            const apiBaseUrlElement = document.getElementById('api-base-url');
-            if (apiBaseUrlElement) {
-                apiBaseUrlElement.textContent = window.location.origin + '/api';
+            const wsUrlElement = document.getElementById('ws-url');
+            const feUrlElement = document.getElementById('fe-url');
+            if (wsUrlElement && feUrlElement) {
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                wsUrlElement.textContent = `${protocol}//${window.location.hostname}:9000/ws`;
+                feUrlElement.textContent = window.location.origin;
             }
         });
     </script>
