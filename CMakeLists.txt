@@ -233,6 +233,7 @@ target_include_directories(Agent PUBLIC
   $<BUILD_INTERFACE:${httplib_SOURCE_DIR}>
   # Add src directory to includes to find headers in subdirectories like `tools`
   ${CMAKE_CURRENT_SOURCE_DIR}/src
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/tools
   $<BUILD_INTERFACE:${spdlog_SOURCE_DIR}/include>
   $<BUILD_INTERFACE:${hnswlib_SOURCE_DIR}>
   $<BUILD_INTERFACE:${tree_sitter_core_SOURCE_DIR}/lib/include> # Заголовочные файлы Tree-sitter core

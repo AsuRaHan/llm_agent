@@ -6,7 +6,6 @@
 #include "ContextIndexer.h"
 #include "AssistantRole.h"
 #include "WebSocketServer.h"
-#include "ApiHandlers.h"
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -19,53 +18,9 @@
 #include "Logger.h"
 #include "Config.h"
 #include "FileWatcher.h"
+#include "ApiHandlers.h" // Предполагается, что этот файл существует и корректен
 
 namespace fs = std::filesystem;
-
-// ============================================================================
-// Utility Functions
-// ============================================================================
-
-void show_last_log_entries(const std::string& filePath, int linesToShow = 15)
-{
-    std::ifstream file(filePath);
-    if (!file.is_open()) {
-        return;
-    }
-
-    std::deque<std::string> lastLines;
-    std::string line;
-
-    while (std::getline(file, line)) {
-        lastLines.push_back(line);
-        if (lastLines.size() > linesToShow) {
-            lastLines.pop_front();
-        }
-    }
-
-    std::cout << "\n--- Последние " << lastLines.size() << " записей логов ---" << std::endl;
-    for (const auto& l : lastLines) {
-        std::cout << l << std::endl;
-    }
-    std::cout << "--------------------------\n" << std::endl;
-}
-
-void clear_screen()
-{
-#ifdef _WIN32
-    system("cls");
-#else
-    system("clear");
-#endif
-}
-
-void print_separator(char ch = '=', int width = 80)
-{
-    for (int i = 0; i < width; ++i) {
-        std::cout << ch;
-    }
-    std::cout << std::endl;
-}
 
 // ============================================================================
 // Initialization Functions
@@ -126,186 +81,6 @@ std::unique_ptr<ContextIndexer> indexProject(const std::string& projectDir, cons
 }
 
 // ============================================================================
-// Interface Functions
-// ============================================================================
-
-/// Получает кроссплатформенный ввод с подсказкой
-std::string getUTF8Input(const std::string& prompt)
-{
-    std::cout << prompt;
-    std::cout.flush();
-    
-#ifdef _WIN32
-    // Используем Windows-специфичный API для надежного ввода UTF-8,
-    // так как std::cin может некорректно работать с кодировками в консоли Windows.
-    HANDLE hInput = GetStdHandle(STD_INPUT_HANDLE);
-    if (hInput == INVALID_HANDLE_VALUE) {
-        return "";
-    }
-
-    wchar_t buffer[1024];
-    DWORD charsRead = 0;
-    if (ReadConsoleW(hInput, buffer, sizeof(buffer)/sizeof(wchar_t) - 1, &charsRead, NULL)) {
-        // Обрезаем символы новой строки в конце
-        if (charsRead > 0 && buffer[charsRead - 1] == L'\n') {
-            charsRead--;
-        }
-        if (charsRead > 0 && buffer[charsRead - 1] == L'\r') {
-            charsRead--;
-        }
-        buffer[charsRead] = L'\0';
-
-        // Конвертируем wide string (UTF-16) в UTF-8
-        int utf8_len = WideCharToMultiByte(CP_UTF8, 0, buffer, -1, NULL, 0, NULL, NULL);
-        if (utf8_len > 0) {
-            std::string utf8_str(utf8_len - 1, 0); // -1 для исключения null-терминатора
-            WideCharToMultiByte(CP_UTF8, 0, buffer, -1, &utf8_str[0], utf8_len, NULL, NULL);
-            return utf8_str;
-        }
-    }
-    return "";
-#else
-    // Стандартная реализация для платформ, отличных от Windows
-    std::string input;
-    if (std::getline(std::cin, input)) {
-        return input;
-    }
-    return "";
-#endif
-}
-
-/// Выводит главное меню и возвращает выбор пользователя (1-4)
-int showMainMenu()
-{
-    std::cout << "\n";
-    print_separator('=', 60);
-    std::cout << "  ГЛАВНОЕ МЕНЮ\n";
-    print_separator('=', 60);
-    std::cout << "  1. Задать вопрос о проекте\n";
-    std::cout << "  2. Информация о проекте\n";
-    std::cout << "  3. Справка\n";
-    std::cout << "  4. Выход\n";
-    print_separator('-', 60);
-    
-    while (true) {
-        std::string choice = getUTF8Input("Выберите опцию (1-4): ");
-        
-        if (choice.length() == 1 && choice[0] >= '1' && choice[0] <= '4') {
-            return choice[0] - '0';
-        }
-        
-        std::cout << "Ошибка: введите число от 1 до 4.\n";
-    }
-}
-
-/// Выводит справку
-void showHelp()
-{
-    clear_screen();
-    print_separator('=', 60);
-    std::cout << "  СПРАВКА\n";
-    print_separator('=', 60);
-    std::cout << "\nЭто консольное приложение - локальный AI-ассистент для анализа кода.\n";
-    std::cout << "\nВозможности:\n";
-    std::cout << "  • Индексирование кодовой базы с помощью Tree-sitter\n";
-    std::cout << "  • Поиск релевантного контекста через HNSW\n";
-    std::cout << "  • Ответы на вопросы о проекте через локальный LLM\n";
-    std::cout << "\nОпции меню:\n";
-    std::cout << "  1 - Введите вопрос, и агент найдет релевантный код\n";
-    std::cout << "  2 - Просмотрите информацию об индексировании проекта\n";
-    std::cout << "  3 - Эта справка\n";
-    std::cout << "  4 - Завершить работу\n";
-    std::cout << "\n";
-    getUTF8Input("Нажмите Enter для возврата в меню... ");
-}
-
-/// Выводит приветствие и информацию о проекте
-void displayProjectSummary(AssistantRole& assistant, size_t fileCount, size_t embeddingsCount)
-{
-    clear_screen();
-    print_separator('=', 60);
-    std::cout << "  ИНФОРМАЦИЯ О ПРОЕКТЕ\n";
-    print_separator('=', 60);
-    
-    SPDLOG_DEBUG("Связь с LLM установлена, получено эмбеддингов: {}", embeddingsCount);
-    
-    std::string greeting = assistant.generateProjectSummaryGreeting(fileCount, embeddingsCount);
-    
-    std::cout << "\n" << greeting << "\n\n";
-    // std::cout << "Статистика индексирования:\n";
-    // std::cout << "  • Обработано файлов: " << fileCount << "\n";
-    // std::cout << "  • Создано эмбеддингов: " << embeddingsCount << "\n";
-    print_separator('-', 60);
-    
-    getUTF8Input("Нажмите Enter для возврата в меню... ");
-}
-
-/// Обрабатывает вопрос пользователя
-void processUserQuery(const std::string& query, ContextIndexer& indexer, 
-                      AssistantRole& assistant, const Config& config)
-{
-    if (query.empty()) {
-        return;
-    }
-
-    SPDLOG_DEBUG("Ищу релевантный контекст в проекте...");
-    std::cout << "\n[*] Обработка запроса...\n";
-    
-    auto topResults = indexer.findTopK(query, config.top_k_results);
-
-    if (topResults.empty()) {
-        std::cout << "\nК сожалению, релевантной информации не найдено.\n";
-        SPDLOG_WARN("По запросу '{}' не найдено релевантной информации.", query);
-        return;
-    }
-
-    SPDLOG_DEBUG("Топ-{} релевантных чанков, переданных в контекст:", topResults.size());
-    for (size_t i = 0; i < topResults.size(); ++i) {
-        const auto& res = topResults[i];
-        std::string text_preview = res.chunkText.substr(0, 100);
-        text_preview.erase(std::remove(text_preview.begin(), text_preview.end(), '\n'), text_preview.end());
-        SPDLOG_DEBUG("  - Чанк #{}: score={:.3f}, file='{}'", i + 1, res.score, res.filePath);
-    }
-
-    // Сбор уникальных источников
-    std::string sources_str;
-    std::unordered_set<std::string> unique_sources;
-    for (const auto& res : topResults) {
-        unique_sources.insert(fs::path(res.filePath).filename().string());
-    }
-    for (const auto& src : unique_sources) {
-        if (!sources_str.empty()) sources_str += ", ";
-        sources_str += src;
-    }
-    
-    SPDLOG_DEBUG("Использую контекст из файлов: {}", sources_str);
-    std::cout << "Контекст из: " << sources_str << "\n\n";
-
-    AssistantResponse response = assistant.processQuery(query, topResults, indexer);
-    
-    print_separator('~', 60);
-    std::cout << response.text << "\n";
-    print_separator('~', 60);
-    
-    SPDLOG_DEBUG("Ответ на запрос: {}", response.text);
-
-    // --- Conversational Loop ---
-    while (!response.is_final) {
-        std::cout << "\n";
-        std::string follow_up_query = getUTF8Input("> ");
-        if (follow_up_query.empty() || follow_up_query == "exit" || follow_up_query == "выход") {
-            break;
-        }
-        std::cout << "\n[*] Обработка продолжения...\n";
-        response = assistant.processQuery(follow_up_query, {}, indexer, response.conversation_history);
-
-        print_separator('~', 60);
-        std::cout << response.text << "\n";
-        print_separator('~', 60);
-        SPDLOG_DEBUG("Ответ на продолжение: {}", response.text);
-    }
-}
-// ============================================================================
 // Main Application
 // ============================================================================
 
@@ -315,12 +90,10 @@ int main(int argc, char* argv[])
         // ====== Инициализация ======
         Config config;
         std::string projectDir = (argc > 1) ? argv[1] : ".";
-        bool useConsoleMode = false;
         
-        // Check for --console flag
+        // Флаг --console больше не используется, но мы его проверяем, чтобы не сломать старые скрипты запуска
         for (int i = 1; i < argc; ++i) {
             if (std::string(argv[i]) == "--console") {
-                useConsoleMode = true;
                 break;
             }
         }
@@ -356,87 +129,47 @@ int main(int argc, char* argv[])
 
         SPDLOG_INFO("Запуск Agent...");
 
+        // ====== Запуск FileWatcher для автоматической переиндексации ======
+        // FileWatcher будет работать в фоновом потоке и автоматически
+        // вызывать методы переиндексации у indexer при изменениях.
+        FileWatcher fileWatcher(*indexer);
+        fileWatcher.start(projectDir);
+
         // ====== Создание ассистента ======
-        auto assistant_ptr = std::make_shared<AssistantRole>(config);
+        auto assistant = std::make_shared<AssistantRole>(config);
 
-        // ====== Выбор режима работы ======
-        if (useConsoleMode) {
-            // CONSOLE MODE - исходный интерактивный режим
-            clear_screen();
-            
-            bool running = true;
-            while (running) {
-                int choice = showMainMenu();
+        // ====== Запуск в режиме веб-сервера ======
+        SPDLOG_INFO("Запуск в режиме веб-сервера...");
+        std::cout << "\n";
+        std::cout << "================================================================================\n";
+        std::cout << "  Smart Hammer - Web Server Mode\n";
+        std::cout << "================================================================================\n";
+        std::cout << "\nСервер запущен:\n";
+        std::cout << "  • WebSocket: ws://" << config.web_server_host << ":" << config.web_server_port << "/ws\n";
+        std::cout << "  • Frontend:  http://" << config.web_server_host << ":" << config.web_server_port << "/\n";
+        std::cout << "  • Indexed files: " << indexer->getFileCount() << "\n";
+        std::cout << "  • Embeddings:    " << indexer->getEmbeddingsCount() << "\n";
+        std::cout << "--------------------------------------------------------------------------------\n";
+        std::cout << "\nНажмите Ctrl+C для остановки сервера.\n\n";
 
-                switch (choice) {
-                    case 1: {
-                        std::cout << "\n";
-                        std::string userQuery = getUTF8Input("Введите ваш вопрос:\n> ");
-                        if (!userQuery.empty()) {
-                            processUserQuery(userQuery, *indexer, *assistant_ptr, config);
-                        } else {
-                            std::cout << "\nВведите не пустой вопрос.\n";
-                        }
-                        break;
-                    }
-                    case 2: {
-                        displayProjectSummary(*assistant_ptr, indexer->getFileCount(), indexer->getEmbeddingsCount());
-                        break;
-                    }
-                    case 3: {
-                        showHelp();
-                        break;
-                    }
-                    case 4: {
-                        running = false;
-                        break;
-                    }
-                }
-            }
+        // Создание и инициализация обработчиков API.
+        // ApiHandlers будет владеть сервером и управлять жизненным циклом WebSocketServer.
+        ApiHandlers apiHandlers(config, *assistant, *indexer);
 
-            SPDLOG_INFO("Agent завершил работу.");
-            clear_screen();
-            std::cout << "\n";
-            print_separator('=', 60);
-            std::cout << "  До свидания! Спасибо за использование Smart Hammer.\n";
-            print_separator('=', 60);
-            std::cout << "\n";
-        } else {
-            // SERVER MODE - REST API server
-            SPDLOG_INFO("Starting REST API server mode...");
-            std::cout << "\n";
-            print_separator('=', 60);
-            std::cout << "  Smart Hammer - REST API Server\n";
-            print_separator('=', 60);
-            std::cout << "\nСервер запущен:\n";
-            std::cout << "  • REST API: http://" << config.web_server_host << ":" << config.web_server_port << "/api\n";
-            std::cout << "  • WebSocket: ws://" << config.web_server_host << ":" << config.web_server_port << "/ws\n";
-            std::cout << "  • Frontend: http://" << config.web_server_host << ":" << config.web_server_port << "/\n";
-            std::cout << "  • Indexed files: " << indexer->getFileCount() << "\n";
-            std::cout << "  • Embeddings: " << indexer->getEmbeddingsCount() << "\n";
-            print_separator('-', 60);
-            std::cout << "\nНажмите Ctrl+C для остановки сервера.\n\n";
+        // Запуск сервера (этот вызов блокирует выполнение)
+        apiHandlers.start();
 
-            // assistant_ptr - это shared_ptr, indexer - это unique_ptr.
-            // ApiHandlers принимает ссылки на эти объекты.
+        SPDLOG_INFO("Server stopped.");
+        std::cout << "\nСервер остановлен.\n";
 
-            // Create and initialize API handlers
-            ApiHandlers apiHandlers(config, *assistant_ptr, *indexer);
-
-            // Start the server (this blocks)
-            apiHandlers.start();
-
-            SPDLOG_INFO("Server stopped.");
-            std::cout << "\nСервер остановлен.\n";
-        }
+        // Останавливаем FileWatcher для корректного завершения
+        fileWatcher.stop();
 
     } catch (const std::exception& e) {
         SPDLOG_CRITICAL("Перехвачено необработанное исключение: {}", e.what());
-        // show_last_log_entries("agent.log", 30); // config может быть недоступен
         return 1;
     } catch (...) {
         SPDLOG_CRITICAL("Перехвачено неизвестное необработанное исключение!");
-        // show_last_log_entries("agent.log", 30); // config может быть недоступен
         return 1;
     }
 
