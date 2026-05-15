@@ -142,7 +142,7 @@ int main(int argc, char* argv[])
         SPDLOG_INFO("Запуск в режиме веб-сервера...");
         std::cout << "\n";
         std::cout << "================================================================================\n";
-        std::cout << "  Smart Hammer - Web Server Mode\n";
+        std::cout << "                    Smart Hammer - Web Server Mode\n";
         std::cout << "================================================================================\n";
         std::cout << "\nСервер запущен:\n";
         std::cout << "  • WebSocket: ws://" << config.web_server_host << ":" << config.web_server_port << "/ws\n";

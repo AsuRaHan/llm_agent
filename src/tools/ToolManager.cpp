@@ -1,5 +1,7 @@
 #include "ToolManager.h"
 #include "ReadFileTool.h" // Include the first tool
+#include "../ContextIndexer.h" // Для доступа к мьютексу
+#include <mutex> // Для std::lock_guard
 #include "ListDirectoryTool.h" // Include the new tool
 #include "CodeSearchTool.h" // Include the code search tool
 #include "Logger.h"
@@ -72,14 +74,23 @@ nlohmann::json ToolManager::getToolsSpecification() const {
 std::string ToolManager::executeTool(const std::string& name, const nlohmann::json& args, ContextIndexer* indexer) {
     auto it = tools.find(name);
     if (it != tools.end()) {
-        SPDLOG_INFO("Executing tool '{}' with args: {}", name, args.dump());
+        SPDLOG_INFO("Выполнение инструмента '{}' с аргументами: {}", name, args.dump());
         try {
+            if (!indexer) {
+                SPDLOG_ERROR("ToolManager::executeTool вызван с null indexer. Невозможно обеспечить потокобезопасность.");
+                return "{\"error\": \"Внутренняя ошибка: Indexer недоступен для выполнения инструмента.\"}";
+            }
+
+            // Централизованная блокировка для предотвращения гонки с FileWatcher
+            std::lock_guard lock(indexer->mtx); // Используем CTAD для std::recursive_mutex
+            SPDLOG_TRACE("ToolManager: Мьютекс доступа к файлам заблокирован для инструмента '{}'.", name);
+
             return it->second->execute(args, indexer);
         } catch (const std::exception& e) {
-            SPDLOG_ERROR("Exception while executing tool '{}': {}", name, e.what());
-            return "Error: Exception occurred during tool execution: " + std::string(e.what());
+            SPDLOG_ERROR("Исключение при выполнении инструмента '{}': {}", name, e.what());
+            return "{\"error\": \"Исключение при выполнении инструмента: " + std::string(e.what()) + "\"}";
         }
     }
-    SPDLOG_ERROR("Attempted to execute unknown tool: {}", name);
-    return "Error: Tool '" + name + "' not found.";
+    SPDLOG_ERROR("Попытка выполнить неизвестный инструмент: {}", name);
+    return "{\"error\": \"Инструмент '" + name + "' не найден.\"}";
 }
