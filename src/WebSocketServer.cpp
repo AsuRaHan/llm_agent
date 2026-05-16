@@ -298,16 +298,23 @@ void WebSocketServer::handleQuery(const nlohmann::json& msg, std::shared_ptr<Saf
 
     // Лингвистическая эвристика на запуск автономного планирования
     const std::vector<std::string> plan_keywords = {"исправь", "реализуй", "перепиши", "добавь", "удали", "рефактор", "оптимизируй", "создай", "fix", "implement", "rewrite", "add", "refactor"};
-    bool needs_plan = false;
-    std::string lower_query = queryText;
-    std::transform(lower_query.begin(), lower_query.end(), lower_query.begin(),
-        [](unsigned char c){ return std::tolower(c); });
+    bool needs_plan = msg.value("data", nlohmann::json::object()).value("force_plan", false);
+    
+    if (!needs_plan) {
+        std::string lower_query = queryText;
+        std::transform(lower_query.begin(), lower_query.end(), lower_query.begin(),
+            [](unsigned char c){ return std::tolower(c); });
 
-    for (const auto& keyword : plan_keywords) {
-        if (lower_query.find(keyword) == 0) {
-            needs_plan = true;
-            break;
+        for (const auto& keyword : plan_keywords) {
+            // Ищем ключевое слово в любой части строки (не только в начале)
+            if (lower_query.find(keyword) != std::string::npos) {
+                needs_plan = true;
+                SPDLOG_DEBUG("Обнаружено ключевое слово '{}' в запросе. Запуск планирования.", keyword);
+                break;
+            }
         }
+    } else {
+        SPDLOG_INFO("Пользователь явно запросил планирование (force_plan=true).");
     }
 
     session->history.push_back({{"role", "user"}, {"content", queryText}});
