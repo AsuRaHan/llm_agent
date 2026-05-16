@@ -5,6 +5,7 @@
 #include <chrono>
 #include <vector>
 #include <algorithm>
+#include "nlohmann/json.hpp"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -16,7 +17,8 @@
 
 namespace fs = std::filesystem;
 
-FileWatcher::FileWatcher(ContextIndexer& indexer) : indexer(indexer) {}
+FileWatcher::FileWatcher(ContextIndexer& indexer) 
+    : indexer(indexer), running(false), is_frozen(false), index_is_dirty(false) {}
 
 FileWatcher::~FileWatcher() {
     stop();
@@ -54,6 +56,10 @@ void FileWatcher::unfreeze() {
 
 bool FileWatcher::isFrozen() const {
     return is_frozen.load();
+}
+
+void FileWatcher::setBroadcastCallback(std::function<void(const nlohmann::json&)> cb) {
+    broadcast_callback = std::move(cb);
 }
 
 void FileWatcher::run() {
@@ -101,6 +107,20 @@ void FileWatcher::run() {
 
         if (waitStatus == WAIT_OBJECT_0) {
             if (GetOverlappedResult(hDir, &overlapped, &bytesReturned, FALSE)) {
+                // Если FileWatcher "заморожен", мы просто игнорируем событие и ждем дальше.
+                if (is_frozen.load()) {
+                    ResetEvent(overlapped.hEvent);
+                    continue;
+                }
+
+                // Отправляем статус "индексация" в UI в начале обработки пачки изменений
+                if (broadcast_callback) {
+                    broadcast_callback({
+                        {"type", "file_watcher_status"},
+                        {"data", {{"status", "indexing"}}}
+                    });
+                }
+
                 FILE_NOTIFY_INFORMATION* pNotify = (FILE_NOTIFY_INFORMATION*)buffer.data();
                 while (pNotify) {
                     wchar_t filename_w[MAX_PATH];
@@ -141,6 +161,14 @@ void FileWatcher::run() {
             SPDLOG_INFO("[FileWatcher] Сохранение накопленных изменений индекса...");
             indexer.saveIndex();
             index_is_dirty = false;
+
+            // Отправляем статус "бездействие" после сохранения
+            if (broadcast_callback) {
+                broadcast_callback({
+                    {"type", "file_watcher_status"},
+                    {"data", {{"status", "idle"}}}
+                });
+            }
         }
     }
 
@@ -149,6 +177,13 @@ void FileWatcher::run() {
         SPDLOG_INFO("[FileWatcher] Сохранение финальных изменений индекса перед завершением потока...");
         indexer.saveIndex();
         index_is_dirty = false;
+        // Отправляем статус "бездействие" после финального сохранения
+        if (broadcast_callback) {
+            broadcast_callback({
+                {"type", "file_watcher_status"},
+                {"data", {{"status", "idle"}}}
+            });
+        }
     }
 
     CloseHandle(hDir);

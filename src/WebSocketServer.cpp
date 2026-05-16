@@ -4,6 +4,7 @@
 #include "UserSession.h"
 #include "Config.h"
 #include <functional>
+#include <unordered_map>
 #include <sstream>
 #include <algorithm>
 
@@ -50,9 +51,19 @@ void WebSocketServer::handleConnection(const httplib::Request& req, httplib::ws:
         ws_handle->ws = &ws;
     }
 
+    // Добавляем клиента в общий список для broadcast-рассылок
+    {
+        std::lock_guard<std::mutex> lock(clients_mutex);
+        clients[&ws] = ws_handle;
+    }
+
     // Используем RAII для гарантированной очистки указателя на ws
     auto cleanup = detail::scope_exit([&] {
         SPDLOG_INFO("Завершение обработки WebSocket соединения.");
+        {
+            std::lock_guard<std::mutex> lock(clients_mutex);
+            clients.erase(&ws);
+        }
         std::lock_guard<std::mutex> lock(ws_handle->mtx);
         ws_handle->ws = nullptr;
     });
@@ -95,6 +106,8 @@ void WebSocketServer::handleMessage(const std::string& raw_message, std::shared_
             handleErrorRecoveryConfirmation(msg, ws_handle);
         } else if (type == "clear_history") {
             handleClearHistory(msg, ws_handle);
+        } else if (type == "control_file_watcher") {
+            handleControlFileWatcher(msg);
         } else {
             SPDLOG_WARN("Получен неизвестный тип сообщения: {}", type);
             sendMessage(ws_handle, {
@@ -203,7 +216,7 @@ void WebSocketServer::processAgentLogic(std::shared_ptr<UserSession> session, co
 
                 // ВАЖНО: Мы пушим ноту шага в историю ТОЛЬКО если мы не продолжаем работу после подтверждения опасного инструмента.
                 // Если мы вернулись из handleConfirmation, вызов инструмента уже сидит на вершине истории, и пушить туда системную ноту нельзя.
-                if (queryText != "CONTINUE_AFTER_TOOL") {
+                if (queryText != "CONTINUE_AFTER_TOOL" && queryText != "RETRY_STEP") {
                     session->history.push_back({{"role", "user"}, {"content", "[SYSTEM_NOTE]: Текущий шаг плана: \"" + task + "\". Используй инструменты для его реализации. По окончании шага переходи к следующему."}});
                 }
 
@@ -402,7 +415,7 @@ void WebSocketServer::handleErrorRecoveryConfirmation(const nlohmann::json& msg,
         session->status = AgentStatus::EXECUTING_PLAN;
         // The current_plan_step is not incremented. We just re-run the logic for the same step.
         threadPool.enqueue([this, session, ws_handle] {
-            processAgentLogic(session, "", ws_handle);
+            processAgentLogic(session, "RETRY_STEP", ws_handle);
         });
     } else if (option == "skip") {
         SPDLOG_INFO("Пользователь выбрал 'skip' для сессии {}. Переход к следующему шагу.", sessionId);
@@ -480,6 +493,20 @@ void WebSocketServer::handlePlanConfirmation(const nlohmann::json& msg, std::sha
     }
 }
 
+void WebSocketServer::handleControlFileWatcher(const nlohmann::json& msg) {
+    if (file_watcher_control_callback) {
+        std::string command = msg.value("data", nlohmann::json::object()).value("command", "");
+        if (!command.empty()) {
+            SPDLOG_INFO("Получена команда для FileWatcher: {}", command);
+            file_watcher_control_callback(command);
+        }
+    }
+}
+
+void WebSocketServer::setFileWatcherControlCallback(std::function<void(const std::string&)> cb) {
+    file_watcher_control_callback = std::move(cb);
+}
+
 void WebSocketServer::handleClearHistory(const nlohmann::json& msg, std::shared_ptr<SafeWsHandle> ws_handle) {
     (void)ws_handle; 
     std::string sessionId = msg.value("session_id", "");
@@ -500,5 +527,13 @@ void WebSocketServer::sendMessage(std::shared_ptr<SafeWsHandle> ws_handle, const
         ws_handle->ws->send(payload_str);
     } catch (const std::exception& e) {
         SPDLOG_ERROR("Не удалось отправить сообщение: {}", e.what());
+    }
+}
+
+void WebSocketServer::broadcast(const nlohmann::json& payload) {
+    std::lock_guard<std::mutex> lock(clients_mutex);
+    SPDLOG_DEBUG("Рассылка сообщения {} клиентам.", clients.size());
+    for (auto const& [ws_ptr, ws_handle] : clients) {
+        sendMessage(ws_handle, payload);
     }
 }

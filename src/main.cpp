@@ -16,7 +16,6 @@
 #include <algorithm>
 #include <filesystem>
 #include "Logger.h"
-#include "Config.h"
 #include "FileWatcher.h"
 #include "ApiHandlers.h"
 
@@ -157,11 +156,6 @@ int main(int argc, char* argv[])
 
         SPDLOG_INFO("Запуск Agent...");
 
-        // ====== Запуск FileWatcher для автоматической переиндексации ======
-        // FileWatcher будет работать в фоновом потоке и автоматически
-        // вызывать методы переиндексации у indexer при изменениях.
-        FileWatcher fileWatcher(*indexer);
-        fileWatcher.start(projectDir);
 
         // ====== Создание ассистента ======
         auto assistant = std::make_shared<AssistantRole>(config);
@@ -192,13 +186,10 @@ int main(int argc, char* argv[])
         ApiHandlers apiHandlers(config, *assistant, *indexer);
 
         // Запуск сервера (этот вызов блокирует выполнение)
-        apiHandlers.start();
+        apiHandlers.start(projectDir);
 
         SPDLOG_INFO("Server stopped.");
         std::cout << "\nСервер остановлен.\n";
-
-        // Останавливаем FileWatcher для корректного завершения
-        fileWatcher.stop();
 
     } catch (const std::exception& e) {
         SPDLOG_CRITICAL("Перехвачено необработанное исключение: {}", e.what());

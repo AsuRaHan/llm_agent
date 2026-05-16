@@ -1,13 +1,20 @@
 document.addEventListener('DOMContentLoaded', () => {
     const messageList = document.getElementById('message-list');
+    const chatForm = document.getElementById('chat-form');
     const messageInput = document.getElementById('message-input');
     const sendButton = document.getElementById('send-button');
     const clearHistoryButton = document.getElementById('clear-history-button');
-    const typingIndicator = document.getElementById('typing-indicator');
     const connectionStatus = document.getElementById('connection-status');
+    const fileWatcherStatus = document.getElementById('file-watcher-status');
+    const freezeWatcherButton = document.getElementById('freeze-watcher-button');
+    // Новый блок для мыслей
+    const thoughtContainer = document.getElementById('agent-thought-container');
+    const thoughtText = document.getElementById('agent-thought-text');
 
     let socket;
     let sessionId = localStorage.getItem('sessionId');
+    let isWatcherFrozen = false;
+
     if (!sessionId) {
         sessionId = 'sess_' + Math.random().toString(36).substr(2, 9);
         localStorage.setItem('sessionId', sessionId);
@@ -62,6 +69,19 @@ document.addEventListener('DOMContentLoaded', () => {
         return tempDiv.innerHTML;
     }
 
+    // Вспомогательные функции для показа/скрытия мыслей
+    function showAgentThought(message) {
+        thoughtText.textContent = message || 'Агент думает...';
+        thoughtContainer.classList.remove('hidden');
+        chatForm.classList.add('hidden');
+    }
+
+    function hideAgentThought() {
+        thoughtContainer.classList.add('hidden');
+        chatForm.classList.remove('hidden');
+        messageInput.focus();
+    }
+
     function connect() {
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsHost = window.location.hostname;
@@ -81,35 +101,44 @@ document.addEventListener('DOMContentLoaded', () => {
 
             switch (msg.type) {
                 case 'session_state':
+                    hideAgentThought();
                     handleSessionState(msg.data);
                     break;
                 case 'query_response':
-                    const oldProgress = document.getElementById('active-plan-progress');
-                    if (oldProgress) oldProgress.removeAttribute('id');
-
+                    hideAgentThought();
                     addMessage(msg.data.answer, 'agent');
-                    setChatInputEnabled(true);
                     break;
                 case 'agent_thought':
-                    addThoughtMessage(msg.data.message);
+                    showAgentThought(msg.data.message);
                     break;
                 case 'action_required':
+                    hideAgentThought();
                     addConfirmationWidget(msg.data.message, msg.data.tool_call);
                     break;
                 case 'plan_generated':
+                    hideAgentThought();
                     addPlanConfirmationWidget(msg.data.steps);
                     break;
                 case 'plan_update':
+                    // Во время выполнения плана блок мыслей и так должен быть виден
                     updatePlanProgress(msg.data.current_step, msg.data.steps);
                     break;
                 case 'plan_error':
+                    hideAgentThought();
                     addErrorRecoveryWidget(msg.data.error_message, msg.data.recovery_options);
                     break;
                 case 'error':
+                    hideAgentThought();
                     addMessage(`Ошибка: ${msg.data.message}`, 'error');
-                    setChatInputEnabled(true);
                     break;
                 case 'pong':
+                    break;
+                case 'file_watcher_status':
+                    if (msg.data.status === 'indexing') {
+                        fileWatcherStatus.classList.remove('hidden');
+                    } else { // 'idle' or other
+                        fileWatcherStatus.classList.add('hidden');
+                    }
                     break;
                 default:
                     console.warn('Unknown message type:', msg.type);
@@ -131,17 +160,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function setChatInputEnabled(enabled) {
+        // Эта функция теперь в основном управляется hide/showAgentThought
         messageInput.disabled = !enabled;
         sendButton.disabled = !enabled;
-        typingIndicator.style.display = enabled ? 'none' : 'flex';
-        if (enabled) {
-            messageInput.placeholder = "Спросите что-нибудь о проекте...";
-            messageInput.focus();
-        } else {
-            messageInput.placeholder = "Агент думает...";
-        }
     }
-
     function addMessage(text, sender) {
         const messageElement = document.createElement('div');
         messageElement.classList.add('message', sender);
@@ -156,112 +178,70 @@ document.addEventListener('DOMContentLoaded', () => {
         messageList.scrollTop = messageList.scrollHeight;
     }
 
-    function addThoughtMessage(text) {
-        const thoughtElement = document.createElement('div');
-        thoughtElement.classList.add('message', 'thought');
-        const contentElement = document.createElement('div');
-        contentElement.classList.add('message-content', 'italic', 'text-gray-400', 'text-sm');
-        contentElement.textContent = `🤔 Мысль агента: ${text}`;
-        thoughtElement.appendChild(contentElement);
-        messageList.appendChild(thoughtElement);
-        messageList.scrollTop = messageList.scrollHeight;
-    }
-
     function addConfirmationWidget(promptText, toolCall) {
-        const widgetElement = document.createElement('div');
-        widgetElement.classList.add('message', 'agent');
-        const contentElement = document.createElement('div');
-        contentElement.className = 'message-content border-l-4 border-amber-500 bg-gray-800/40 p-4';
-        
-        contentElement.innerHTML = `
-            <p class="font-bold text-amber-400">⚠️ Запрос на подтверждение действия:</p>
-            <p class="my-2">${escapeHTML(promptText)}</p>
-            <pre class="bg-gray-950 p-3 rounded font-mono text-xs text-gray-300 overflow-x-auto">${escapeHTML(JSON.stringify(toolCall.function, null, 2))}</pre>
-        `;
-        
-        const buttonContainer = document.createElement('div');
-        buttonContainer.className = 'confirm-buttons flex gap-3 mt-4';
+        const template = document.getElementById('confirmation-widget-template');
+        const widgetFragment = template.content.cloneNode(true);
+        const widgetElement = widgetFragment.querySelector('.message');
 
-        const yesButton = document.createElement('button');
-        yesButton.className = 'px-4 py-2 rounded-md text-white bg-green-600 hover:bg-green-700 font-bold cursor-pointer';
-        yesButton.textContent = 'Да, разрешить';
+        widgetElement.querySelector('[data-role="prompt-text"]').textContent = promptText;
+        widgetElement.querySelector('[data-role="tool-call-json"]').textContent = JSON.stringify(toolCall.function, null, 2);
+
+        const yesButton = widgetElement.querySelector('[data-role="yes-button"]');
         yesButton.onclick = () => {
             socket.send(JSON.stringify({ type: 'confirm_action', session_id: sessionId, data: { confirmed: true } }));
-            setChatInputEnabled(false);
             widgetElement.remove();
+            showAgentThought('Выполняю подтвержденное действие...');
         };
 
-        const noButton = document.createElement('button');
-        noButton.className = 'px-4 py-2 rounded-md text-white bg-red-600 hover:bg-red-700 cursor-pointer';
-        noButton.textContent = 'Отклонить';
+        const noButton = widgetElement.querySelector('[data-role="no-button"]');
         noButton.onclick = () => {
             socket.send(JSON.stringify({ type: 'confirm_action', session_id: sessionId, data: { confirmed: false } }));
             widgetElement.remove();
         };
 
-        buttonContainer.appendChild(yesButton);
-        buttonContainer.appendChild(noButton);
-        contentElement.appendChild(buttonContainer);
-        widgetElement.appendChild(contentElement);
         messageList.appendChild(widgetElement);
         messageList.scrollTop = messageList.scrollHeight;
-        setChatInputEnabled(false);
     }
 
     function addPlanConfirmationWidget(steps) {
-        const widgetElement = document.createElement('div');
-        widgetElement.classList.add('message', 'agent');
-        const contentElement = document.createElement('div');
-        contentElement.className = 'message-content border-l-4 border-cyan-500 bg-gray-800/30 p-4';
+        const template = document.getElementById('plan-confirmation-widget-template');
+        const widgetFragment = template.content.cloneNode(true);
+        const widgetElement = widgetFragment.querySelector('.message');
+        const planList = widgetElement.querySelector('[data-role="plan-editor-list"]');
+        const stepTemplate = document.getElementById('plan-step-item-template');
 
-        let htmlContent = `<p><strong>📋 Составлен пошаговый план действий. Вы можете отредактировать его перед запуском:</strong></p>`;
-        htmlContent += `<ol id="plan-editor-list" class="ml-5 pl-2 space-y-2 mt-2">`;
-        steps.forEach((step, index) => {
-            htmlContent += `
-                <li data-step-id="${index}" class="flex items-center gap-2">
-                    <div contenteditable="true" class="plan-step-text flex-grow p-1.5 border border-dashed border-gray-600 rounded bg-gray-900/60 focus:outline-none focus:border-cyan-400 text-sm text-gray-200">${escapeHTML(step)}</div>
-                    <button class="btn-remove-step flex-shrink-0 bg-red-700 text-white rounded-full w-6 h-6 font-bold flex items-center justify-center hover:bg-red-600 cursor-pointer">-</button>
-                </li>`;
+        const createStepElement = (stepText) => {
+            const stepFragment = stepTemplate.content.cloneNode(true);
+            const stepLi = stepFragment.querySelector('li');
+            const textDiv = stepLi.querySelector('.plan-step-text');
+            textDiv.textContent = stepText;
+
+            stepLi.querySelector('.btn-remove-step').onclick = () => stepLi.remove();
+            
+            return stepLi;
+        };
+
+        steps.forEach(step => {
+            planList.appendChild(createStepElement(step));
         });
-        htmlContent += `</ol>`;
-        htmlContent += `<button id="btn-add-step" class="ml-7 mt-3 px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs cursor-pointer">+ Добавить шаг</button>`;
-        
-        htmlContent += `
-            <div class="confirm-buttons flex gap-3 mt-5">
-                <button class="btn-approve-plan px-4 py-2 rounded-md text-white bg-green-600 hover:bg-green-700 font-bold cursor-pointer">🚀 Утвердить и запустить</button>
-                <button class="btn-reject-plan px-4 py-2 rounded-md text-white bg-red-600 hover:bg-red-700 cursor-pointer">Отмена</button>
-            </div>`;
-        
-        contentElement.innerHTML = htmlContent;
-        widgetElement.appendChild(contentElement);
+
+        // --- DRAG-AND-DROP ---
+        new Sortable(planList, {
+            animation: 150,
+            handle: '.drag-handle', // Ограничиваем перетаскивание за "ручку"
+            ghostClass: 'sortable-ghost' // Класс для элемента-призрака
+        });
+
         messageList.appendChild(widgetElement);
         messageList.scrollTop = messageList.scrollHeight;
 
-        setChatInputEnabled(false);
-        messageInput.placeholder = "Ожидается утверждение плана действий...";
-
-        const planList = widgetElement.querySelector('#plan-editor-list');
-
-        planList.addEventListener('click', (e) => {
-            if (e.target && e.target.classList.contains('btn-remove-step')) {
-                e.target.closest('li').remove();
-            }
+        widgetElement.querySelector('[data-role="add-step-button"]').addEventListener('click', () => {
+            const newStep = createStepElement('Новый шаг плана...');
+            planList.appendChild(newStep);
+            newStep.querySelector('.plan-step-text').focus();
         });
 
-        widgetElement.querySelector('#btn-add-step').addEventListener('click', () => {
-            const newStepIndex = planList.children.length;
-            const newLi = document.createElement('li');
-            newLi.setAttribute('data-step-id', newStepIndex);
-            newLi.className = 'flex items-center gap-2';
-            newLi.innerHTML = `
-                <div contenteditable="true" class="plan-step-text flex-grow p-1.5 border border-dashed border-gray-600 rounded bg-gray-900/60 focus:outline-none focus:border-cyan-400 text-sm text-gray-200">Новый шаг плана...</div>
-                <button class="btn-remove-step flex-shrink-0 bg-red-700 text-white rounded-full w-6 h-6 font-bold flex items-center justify-center hover:bg-red-600 cursor-pointer">-</button>
-            `;
-            planList.appendChild(newLi);
-            newLi.querySelector('.plan-step-text').focus();
-        });
-
-        widgetElement.querySelector('.btn-approve-plan').addEventListener('click', () => {
+        widgetElement.querySelector('[data-role="approve-plan-button"]').addEventListener('click', () => {
             const editedSteps = [];
             const stepElements = widgetElement.querySelectorAll('.plan-step-text');
             stepElements.forEach(el => {
@@ -269,13 +249,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 if(txt) editedSteps.push(txt);
             });
 
-            widgetElement.querySelector('.confirm-buttons')?.remove();
-            widgetElement.querySelector('#btn-add-step')?.remove();
-            stepElements.forEach(el => el.setAttribute('contenteditable', 'false'));
-            widgetElement.querySelectorAll('.btn-remove-step').forEach(btn => btn.remove());
-
-            typingIndicator.style.display = 'flex';
-            messageInput.placeholder = "Выполнение плана автономным агентом...";
+            widgetElement.remove();
+            showAgentThought('Приступаю к выполнению плана...');
             
             socket.send(JSON.stringify({
                 type: 'confirm_plan',
@@ -287,10 +262,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }));
         });
 
-        widgetElement.querySelector('.btn-reject-plan').addEventListener('click', () => {
-            widgetElement.querySelector('.confirm-buttons')?.remove();
+        widgetElement.querySelector('[data-role="reject-plan-button"]').addEventListener('click', () => {
+            widgetElement.remove();
             addMessage('Вы отклонили план. Вы можете скорректировать задачу или задать другой вопрос.', 'agent');
-            setChatInputEnabled(true);
             
             socket.send(JSON.stringify({
                 type: 'confirm_plan',
@@ -306,12 +280,13 @@ document.addEventListener('DOMContentLoaded', () => {
             progressElement = document.createElement('div');
             progressElement.id = 'active-plan-progress';
             progressElement.classList.add('message', 'agent');
+            const template = document.getElementById('plan-progress-widget-template');
+            progressElement.appendChild(template.content.cloneNode(true));
             messageList.appendChild(progressElement);
         }
 
-        let htmlContent = `<div class="message-content border-l-4 border-green-500 bg-gray-800/40 p-4 rounded-r-lg">`;
-        htmlContent += `<p class="mt-0 text-green-400 font-bold flex items-center gap-2"><span>⚡</span> Выполнение автономной кампании:</p>`;
-        htmlContent += `<ul class="list-none p-0 m-0 space-y-2.5 mt-2">`;
+        const progressList = progressElement.querySelector('[data-role="progress-list"]');
+        progressList.innerHTML = ''; // Очищаем предыдущее состояние
         
         steps.forEach((step, index) => {
             let icon = '⏳'; 
@@ -322,29 +297,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 style = 'color: #10b981; text-decoration: line-through; opacity: 0.5; font-size: 0.95em;';
             } else if (index === currentStepIndex) {
                 icon = '⚙️'; 
-                style = 'color: #38bdf8; font-weight: bold; background: rgba(56, 189, 248, 0.08); padding: 4px 8px; rounded: 4px; display: inline-block; width: 100%;';
+                style = 'color: #38bdf8; font-weight: bold; background: rgba(56, 189, 248, 0.08); padding: 4px 8px; border-radius: 4px; display: inline-block; width: 100%;';
             }
             
-            htmlContent += `<li style="${style}" class="flex items-start gap-2"><span>${icon}</span> <span>${escapeHTML(step)}</span></li>`;
+            const li = document.createElement('li');
+            li.style.cssText = style;
+            li.className = 'flex items-start gap-2';
+            li.innerHTML = `<span>${icon}</span> <span>${escapeHTML(step)}</span>`;
+            progressList.appendChild(li);
         });
         
-        htmlContent += `</ul></div>`;
-        progressElement.innerHTML = htmlContent;
         messageList.scrollTop = messageList.scrollHeight;
     }
 
     function addErrorRecoveryWidget(errorMessage, recoveryOptions) {
-        const widgetElement = document.createElement('div');
-        widgetElement.classList.add('message', 'agent');
-        const contentElement = document.createElement('div');
-        contentElement.className = 'message-content border-l-4 border-red-500 bg-gray-800/30 p-4';
+        const template = document.getElementById('error-recovery-widget-template');
+        const widgetFragment = template.content.cloneNode(true);
+        const widgetElement = widgetFragment.querySelector('.message');
 
-        let htmlContent = `<p class="font-bold text-red-400 flex items-center gap-1"><span>❗️</span> Ошибка выполнения кампании:</p>`;
-        htmlContent += `<pre class="bg-gray-950 p-3 my-2 rounded font-mono text-xs text-red-300 overflow-x-auto whitespace-pre-wrap">${escapeHTML(errorMessage)}</pre>`;
-        htmlContent += `<p class="text-sm my-2">Выберите стратегию восстановления для агента:</p>`;
-        
-        const buttonContainer = document.createElement('div');
-        buttonContainer.className = 'confirm-buttons flex flex-wrap gap-2.5 mt-3';
+        widgetElement.querySelector('[data-role="error-message"]').textContent = errorMessage;
+        const buttonContainer = widgetElement.querySelector('[data-role="button-container"]');
 
         const optionMap = {
             'retry': '🔄 Повторить шаг',
@@ -353,11 +325,9 @@ document.addEventListener('DOMContentLoaded', () => {
             'abort': '🛑 Остановить всё'
         };
 
-        if (!recoveryOptions.includes('abort')) {
-            recoveryOptions.push('abort');
-        }
+        const finalOptions = recoveryOptions.includes('abort') ? recoveryOptions : [...recoveryOptions, 'abort'];
 
-        recoveryOptions.forEach(option => {
+        finalOptions.forEach(option => {
             const button = document.createElement('button');
             button.className = 'px-3 py-1.5 rounded text-white text-xs font-bold cursor-pointer transition-colors';
             button.textContent = optionMap[option] || option;
@@ -377,21 +347,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     session_id: sessionId,
                     data: { option: button.dataset.option }
                 }));
-                widgetElement.remove(); 
-                setChatInputEnabled(false);
-                messageInput.placeholder = "Агент обрабатывает решение...";
+                widgetElement.remove();
+                showAgentThought('Обрабатываю решение по ошибке...');
             });
             buttonContainer.appendChild(button);
         });
 
-        contentElement.innerHTML = htmlContent;
-        contentElement.appendChild(buttonContainer);
-        widgetElement.appendChild(contentElement);
         messageList.appendChild(widgetElement);
         messageList.scrollTop = messageList.scrollHeight;
-
-        setChatInputEnabled(false);
-        messageInput.placeholder = "Ожидается решение по ошибке...";
     }
 
     function handleSessionState(data) {
@@ -412,7 +375,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (data.status === 'AWAITING_CONFIRMATION') {
             addConfirmationWidget(data.confirmation_data.message, data.confirmation_data.tool_call);
         } else {
-            setChatInputEnabled(true);
+            hideAgentThought();
         }
     }
 
@@ -421,7 +384,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (text && socket && socket.readyState === WebSocket.OPEN) {
             addMessage(text, 'user');
             messageInput.value = '';
-            setChatInputEnabled(false);
+            messageInput.style.height = 'auto'; // Сброс высоты
 
             const message = {
                 type: 'query',
@@ -432,6 +395,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             };
             socket.send(JSON.stringify(message));
+            // Сразу после отправки показываем блок "мыслей"
+            showAgentThought('Анализирую запрос...');
         }
     }
 

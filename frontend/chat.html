@@ -6,6 +6,7 @@
     <title>Чат с Агентом - Smart Hammer</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body class="bg-gray-900">
@@ -14,26 +15,94 @@
             <div class="header-left">
                 <h1>🤖 Чат с Агентом</h1>
                 <span id="connection-status" class="connection-status">Подключение...</span>
+                <div id="file-watcher-status" class="file-watcher-status hidden">
+                    <div class="spinner-small"></div>
+                    <span>Индексация...</span>
+                </div>
             </div>
             <div class="header-right">
+                <button id="freeze-watcher-button" class="header-btn" title="Приостановить индексацию">❄️</button>
                 <a href="/" class="back-link">На главную</a>
                 <button id="clear-history-button" class="clear-btn" title="Очистить чат">🗑️</button>
             </div>
         </div>
-        <div id="message-list" class="message-list custom-scrollbar">
+        <div id="message-list" class="message-list custom-scrollbar"> <!-- Renamed from chat-messages to message-list to match JS -->
             <!-- Сообщения будут загружены с сервера -->
         </div>
-        <div id="typing-indicator" class="typing-indicator" style="display: none;">
-            <span></span><span></span><span></span>
+
+        <!-- Блок для мыслей агента -->
+        <div id="agent-thought-container" class="agent-thought-container hidden">
+            <div class="spinner"></div>
+            <span id="agent-thought-text">Агент думает...</span>
         </div>
-        <div class="chat-form">
+
+        <!-- Форма отправки -->
+        <form id="chat-form" class="chat-form">
             <textarea id="message-input" placeholder="Введите ваш вопрос... (Shift+Enter для новой строки)" rows="1" class="custom-scrollbar"></textarea>
             <div class="form-buttons">
                 <button id="send-button" type="submit">Отправить</button>
                 <button id="plan-button" type="button" title="Запустить с планированием (📋)">📋</button>
             </div>
-        </div>
+        </form>
     </div>
+
+    <!-- ========================================================================== -->
+    <!-- WIDGET TEMPLATES                                                           -->
+    <!-- ========================================================================== -->
+
+    <template id="confirmation-widget-template">
+        <div class="message agent">
+            <div class="message-content border-l-4 border-amber-500 bg-gray-800/40 p-4">
+                <p class="font-bold text-amber-400">⚠️ Запрос на подтверждение действия:</p>
+                <p class="my-2" data-role="prompt-text"></p>
+                <pre class="bg-gray-950 p-3 rounded font-mono text-xs text-gray-300 overflow-x-auto" data-role="tool-call-json"></pre>
+                <div class="confirm-buttons flex gap-3 mt-4">
+                    <button data-role="yes-button" class="px-4 py-2 rounded-md text-white bg-green-600 hover:bg-green-700 font-bold cursor-pointer">Да, разрешить</button>
+                    <button data-role="no-button" class="px-4 py-2 rounded-md text-white bg-red-600 hover:bg-red-700 cursor-pointer">Отклонить</button>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <template id="plan-confirmation-widget-template">
+        <div class="message agent">
+            <div class="message-content border-l-4 border-cyan-500 bg-gray-800/30 p-4">
+                <p><strong>📋 Составлен пошаговый план. Вы можете отредактировать или перетащить шаги перед запуском:</strong></p>
+                <ol data-role="plan-editor-list" class="list-none p-0 m-0 space-y-2 mt-3"></ol>
+                <button data-role="add-step-button" class="ml-7 mt-3 px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs cursor-pointer">+ Добавить шаг</button>
+                <div class="confirm-buttons flex gap-3 mt-5">
+                    <button data-role="approve-plan-button" class="px-4 py-2 rounded-md text-white bg-green-600 hover:bg-green-700 font-bold cursor-pointer">🚀 Утвердить и запустить</button>
+                    <button data-role="reject-plan-button" class="px-4 py-2 rounded-md text-white bg-red-600 hover:bg-red-700 cursor-pointer">Отмена</button>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <template id="plan-step-item-template">
+        <li class="flex items-center gap-2 plan-step-item">
+            <span class="drag-handle" title="Перетащить">⠿</span>
+            <div contenteditable="true" class="plan-step-text flex-grow p-1.5 border border-dashed border-gray-600 rounded bg-gray-900/60 focus:outline-none focus:border-cyan-400 text-sm text-gray-200"></div>
+            <button class="btn-remove-step flex-shrink-0 bg-red-700 text-white rounded-full w-6 h-6 font-bold flex items-center justify-center hover:bg-red-600 cursor-pointer" title="Удалить шаг">-</button>
+        </li>
+    </template>
+
+    <template id="plan-progress-widget-template">
+        <div class="message-content border-l-4 border-green-500 bg-gray-800/40 p-4 rounded-r-lg">
+            <p class="mt-0 text-green-400 font-bold flex items-center gap-2"><span>⚡</span> Выполнение автономной кампании:</p>
+            <ul data-role="progress-list" class="list-none p-0 m-0 space-y-2.5 mt-2"></ul>
+        </div>
+    </template>
+
+    <template id="error-recovery-widget-template">
+        <div class="message agent">
+            <div class="message-content border-l-4 border-red-500 bg-gray-800/30 p-4">
+                <p class="font-bold text-red-400 flex items-center gap-1"><span>❗️</span> Ошибка выполнения кампании:</p>
+                <pre data-role="error-message" class="bg-gray-950 p-3 my-2 rounded font-mono text-xs text-red-300 overflow-x-auto whitespace-pre-wrap"></pre>
+                <p class="text-sm my-2">Выберите стратегию восстановления для агента:</p>
+                <div data-role="button-container" class="confirm-buttons flex flex-wrap gap-2.5 mt-3"></div>
+            </div>
+        </div>
+    </template>
 
     <script src="/js/chat.js"></script>
 </body>
