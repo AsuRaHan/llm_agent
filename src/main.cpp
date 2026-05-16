@@ -18,13 +18,42 @@
 #include "Logger.h"
 #include "Config.h"
 #include "FileWatcher.h"
-#include "ApiHandlers.h" // Предполагается, что этот файл существует и корректен
+#include "ApiHandlers.h"
 
 namespace fs = std::filesystem;
 
 // ============================================================================
 // Initialization Functions
 // ============================================================================
+
+/// Инициализирует папку .shdata
+/// Возвращает true при успехе, false при ошибке
+bool initializeDataDirectory(const std::string& projectDir)
+{
+    std::string dataDir = ".shdata";
+    std::string fullDataPath = fs::path(projectDir).append(dataDir).string();
+    
+    try {
+        if (!fs::exists(fullDataPath) || !fs::is_directory(fullDataPath)) {
+            fs::create_directories(fullDataPath);
+            SPDLOG_INFO("Папка '.shdata' создана: {}", fs::absolute(fullDataPath).string());
+        } else {
+            SPDLOG_INFO("Папка '.shdata' уже существует: {}", fs::absolute(fullDataPath).string());
+        }
+        
+        // Проверка наличия config.json
+        std::string configPath = fs::path(fullDataPath).append("config.json").string();
+        if (!fs::exists(configPath)) {
+            SPDLOG_WARN("Файл конфигурации не найден: {}", configPath);
+            return false;
+        }
+        
+        return true;
+    } catch (const fs::filesystem_error& e) {
+        SPDLOG_CRITICAL("Ошибка при инициализации папки '.shdata': {}", e.what());
+        return false;
+    }
+}
 
 /// Инициализирует приложение: логирование, конфиг, рабочий каталог
 /// Возвращает true при успехе, false при ошибке
@@ -35,6 +64,11 @@ bool initializeApplication(const std::string& projectDir, Config& outConfig)
     SetConsoleOutputCP(CP_UTF8);
     SetConsoleCP(CP_UTF8); // Устанавливаем кодовую страницу для ВВОДА
 #endif
+
+    if (!initializeDataDirectory(projectDir)) {
+        std::cerr << "CRITICAL: Не удалось инициализировать папку '.shdata'. Завершение работы." << std::endl;
+        return false;
+    }
 
     if (!outConfig.load(".shdata/config.json")) {
         // Логгер еще не инициализирован, используем cerr
@@ -59,6 +93,7 @@ bool initializeApplication(const std::string& projectDir, Config& outConfig)
 
     return true;
 }
+
 
 /// Индексирует директорию проекта и возвращает заполненный ContextIndexer
 /// Возвращает nullptr при ошибке
@@ -90,13 +125,6 @@ int main(int argc, char* argv[])
         // ====== Инициализация ======
         Config config;
         std::string projectDir = (argc > 1) ? argv[1] : ".";
-        
-        // Флаг --console больше не используется, но мы его проверяем, чтобы не сломать старые скрипты запуска
-        for (int i = 1; i < argc; ++i) {
-            if (std::string(argv[i]) == "--console") {
-                break;
-            }
-        }
 
         if (!initializeApplication(projectDir, config)) {
             return 1;
@@ -140,6 +168,12 @@ int main(int argc, char* argv[])
 
         // ====== Запуск в режиме веб-сервера ======
         SPDLOG_INFO("Запуск в режиме веб-сервера...");
+        // Очистка консоли перед запуском сервера
+#ifdef _WIN32
+    system("cls");
+#else
+    system("clear");
+#endif
         std::cout << "\n";
         std::cout << "================================================================================\n";
         std::cout << "                    Smart Hammer - Web Server Mode\n";
@@ -149,6 +183,7 @@ int main(int argc, char* argv[])
         std::cout << "  • Frontend:  http://" << config.web_server_host << ":" << config.web_server_port << "/\n";
         std::cout << "  • Indexed files: " << indexer->getFileCount() << "\n";
         std::cout << "  • Embeddings:    " << indexer->getEmbeddingsCount() << "\n";
+        std::cout << "  • Project Directory: " << projectDir << "\n";
         std::cout << "--------------------------------------------------------------------------------\n";
         std::cout << "\nНажмите Ctrl+C для остановки сервера.\n\n";
 

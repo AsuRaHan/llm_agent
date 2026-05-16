@@ -191,23 +191,35 @@ cmake --build build --config Release
 
 ```bat
 @echo off
+@echo off
 cd /d "E:\ai_training\llama.cpp\build\bin\Release"
 
 set SERVER_BIN=llama-server.exe
-set MODEL_PATH=E:\ai_training\models\Tesslate\OmniCoder-9B-GGUF\omnicoder-9b-q8_0.gguf
+:: Указываем путь к OmniCoder-2
+set MODEL_PATH=E:\ai_training\models\mradermacher\OmniCoder-2\OmniCoder-2-9B.Q8_0.gguf
+:: Путь к мультимодальному проектору (чтобы агент "видел" скриншоты)
+set MM_PROJ=E:\ai_training\models\mradermacher\OmniCoder-2\OmniCoder-2-9B.mmproj-Q8_0.gguf
 
-:: Оптимизировано под 16GB VRAM
 "%SERVER_BIN%" ^
     --model "%MODEL_PATH%" ^
-    --n-gpu-layers 99 ^
-    --ctx-size 232768 ^
+    --mmproj "%MM_PROJ%" ^
+    --ctx-size 132768 ^
     --flash-attn on ^
-    --cache-type-k q4_0 ^
-    --cache-type-v q4_0 ^
+    --cache-type-k q8_0 ^
+    --cache-type-v q8_0 ^
+    --temp 0.3 ^
+    --tools all ^
+    --mlock ^
+    --embedding ^
+    --pooling mean ^
     --batch-size 2048 ^
-    --mlock --embedding --pooling mean
+    -ngl 99
 
-
-echo Сервер на запущен. Нажмите Ctrl+C для остановки.
 pause
 ```
+
+### Ресурсы где что скачать
+
+📦 [OmniCoder-2-9B-GGUF](https://huggingface.co/mradermacher/OmniCoder-2-9B-GGUF) — модель используемая в тестировании
+
+🖥️ [llama.cpp](https://github.com/ggml-org/llama.cpp) — сервер для запуска модели на локальном сервере
