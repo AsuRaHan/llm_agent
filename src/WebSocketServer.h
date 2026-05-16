@@ -6,6 +6,9 @@
 #include "ContextIndexer.h"
 #include "SessionManager.h"
 #include "ThreadPool.h"
+#include <string>
+#include <unordered_map>
+#include <mutex>
 #include <memory>
 #include <mutex>
 
@@ -21,7 +24,9 @@ class WebSocketServer {
 public:
     WebSocketServer(const Config& config, AssistantRole& assistant, ContextIndexer& indexer, SessionManager& sessionManager);
 
-    void handleConnection(const httplib::Request& req, httplib::ws::WebSocket& ws);
+    void handleConnection(const httplib::Request& req, httplib::ws::WebSocket& ws);   
+    void broadcast(const nlohmann::json& payload);
+    void setFileWatcherControlCallback(std::function<void(const std::string&)> cb);
 
 private:
     void handleMessage(const std::string& raw_message, std::shared_ptr<SafeWsHandle> ws_handle);
@@ -33,7 +38,7 @@ private:
     void handleClearHistory(const nlohmann::json& msg, std::shared_ptr<SafeWsHandle> ws_handle);
     void handlePlanConfirmation(const nlohmann::json& msg, std::shared_ptr<SafeWsHandle> ws_handle);
     void handleErrorRecoveryConfirmation(const nlohmann::json& msg, std::shared_ptr<SafeWsHandle> ws_handle);
-
+    void handleControlFileWatcher(const nlohmann::json& msg);
     void processPlanGeneration(std::shared_ptr<UserSession> session, const std::string& queryText, std::shared_ptr<SafeWsHandle> ws_handle);
 
     void sendMessage(std::shared_ptr<SafeWsHandle> ws_handle, const nlohmann::json& payload);
@@ -43,4 +48,8 @@ private:
     ContextIndexer& indexer;
     SessionManager& sessionManager;
     ThreadPool threadPool;
+
+    std::mutex clients_mutex;
+    std::unordered_map<httplib::ws::WebSocket*, std::shared_ptr<SafeWsHandle>> clients;
+    std::function<void(const std::string&)> file_watcher_control_callback;
 };

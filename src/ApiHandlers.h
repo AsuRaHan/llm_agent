@@ -6,13 +6,15 @@
 #include "ContextIndexer.h"
 #include "SessionManager.h"
 #include "WebSocketServer.h"
+#include "FileWatcher.h"
 #include <memory>
 
 class ApiHandlers {
 public:
     ApiHandlers(const Config& config, AssistantRole& assistant, ContextIndexer& indexer);
-    void start();
+    void start(const std::string& projectDir);
     void stop();
+    ~ApiHandlers();
 
 private:
     void setupRoutes();
@@ -24,4 +26,5 @@ private:
     ContextIndexer& indexer;
     SessionManager sessionManager;
     WebSocketServer webSocketServer;
+    FileWatcher fileWatcher;
 };

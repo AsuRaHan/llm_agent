@@ -65,7 +65,7 @@ body {
     gap: 15px;
 }
 
-.back-link, .clear-btn {
+.back-link, .clear-btn, .header-btn {
     color: #cbd5e0; /* text-gray-400 */
     text-decoration: none;
     background: none;
@@ -73,11 +73,34 @@ body {
     cursor: pointer;
     font-size: 1.2em;
     opacity: 0.7;
-    transition: opacity 0.2s;
+    transition: opacity 0.2s, color 0.2s;
 }
 
-.back-link:hover, .clear-btn:hover {
+.back-link:hover, .clear-btn:hover, .header-btn:hover {
     opacity: 1;
+}
+
+.header-btn.frozen {
+    color: #38bdf8; /* A blue color to indicate it's active/frozen */
+    opacity: 1;
+}
+
+/* FileWatcher status indicator */
+.file-watcher-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.8em;
+    color: #a0aec0; /* text-gray-400 */
+}
+
+.spinner-small {
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    border-top: 2px solid #fff;
+    width: 14px;
+    height: 14px;
+    animation: spin 1s linear infinite;
 }
 
 /* ==========================================================================
@@ -301,17 +324,29 @@ body {
 }
 
 /* List container inside plan editor */
-#plan-editor-list {
-    margin-left: 20px;
-    padding-left: 10px;
-    margin-top: 10px;
-}
-
-#plan-editor-list li {
+.plan-step-item {
     display: flex;
     align-items: center;
     gap: 10px;
     margin-bottom: 8px;
+}
+
+/* Drag handle for plan steps */
+.plan-step-item .drag-handle {
+    font-size: 1.2em;
+    color: #718096; /* gray-500 */
+    cursor: move;
+    opacity: 0.6;
+    transition: opacity 0.2s;
+}
+
+.plan-step-item:hover .drag-handle {
+    opacity: 1;
+}
+
+.sortable-ghost {
+    opacity: 0.4;
+    background: #4a5568;
 }
 
 /* Interactive Editable Step Node */
@@ -509,3 +544,145 @@ body {
 .bg-red-600:hover { background-color: #b91c1c; }
 .bg-blue-600 { background-color: #2563eb; }
 .bg-blue-600:hover { background-color: #1d4ed8; }
+
+/* ==========================================================================
+   Agent Thought Container (replaces typing indicator)
+   ========================================================================== */
+.agent-thought-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 15px;
+    margin: 10px;
+    border-top: 1px solid #444;
+    background-color: #2a2a2a;
+    color: #ccc;
+    font-style: italic;
+    border-radius: 8px;
+}
+
+.spinner {
+    border: 4px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    border-top: 4px solid #fff;
+    width: 20px;
+    height: 20px;
+    -webkit-animation: spin 1s linear infinite;
+    animation: spin 1s linear infinite;
+    margin-right: 15px;
+}
+
+/* Класс hidden уже должен быть у вас, но на всякий случай */
+.hidden {
+    display: none !important;
+}
+
+
+/* ==========================================================================
+   Agent Thoughts Container
+   ========================================================================== */
+.agent-thoughts-container {
+    display: flex;
+    flex-direction: column;
+    background-color: #1a202c;
+    border-bottom: 1px solid #4a5568;
+    max-height: 300px;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+}
+
+.agent-thoughts-container.active {
+    max-height: 400px;
+}
+
+.thoughts-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 15px;
+    background-color: #2d3748;
+    border-bottom: 1px solid #4a5568;
+}
+
+.thoughts-title {
+    font-weight: bold;
+    color: #a0aec0;
+    font-size: 0.9em;
+}
+
+.close-thoughts-btn {
+    background: none;
+    border: none;
+    color: #a0aec0;
+    font-size: 1.2em;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.close-thoughts-btn:hover {
+    color: #fff;
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.thoughts-content {
+    flex-grow: 1;
+    overflow-y: auto;
+    padding: 15px;
+    background-color: #1a202c;
+}
+
+.thoughts-content .thought-item {
+    margin-bottom: 12px;
+    padding: 10px;
+    background-color: #2d3748;
+    border-radius: 6px;
+    border-left: 3px solid #a0aec0;
+}
+
+.thoughts-content .thought-item:last-child {
+    margin-bottom: 0;
+}
+
+.thoughts-content .thought-time {
+    font-size: 0.75em;
+    color: #718096;
+    margin-bottom: 4px;
+}
+
+.thoughts-content .thought-text {
+    color: #e2e8f0;
+    font-size: 0.9em;
+    line-height: 1.5;
+}
+
+.thoughts-content .thought-text code {
+    background-color: #1a202c;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 0.85em;
+    color: #22d3ee;
+}
+
+.thoughts-content .thought-text pre {
+    background-color: #1a202c;
+    padding: 10px;
+    border-radius: 4px;
+    overflow-x: auto;
+    margin: 8px 0;
+}
+
+.thoughts-content .thought-text pre code {
+    background: none;
+    padding: 0;
+    color: #e2e8f0;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+    width: 8px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: #4a5568;
+    border-radius: 4px;
+}

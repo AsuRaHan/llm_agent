@@ -5,6 +5,7 @@
 #include <atomic>
 #include <functional>
 #include <chrono>
+#include "nlohmann/json.hpp"
 
 // Forward declarations
 class ContextIndexer;
@@ -29,6 +30,8 @@ public:
     // Check if the watcher is currently frozen.
     bool isFrozen() const;
 
+    void setBroadcastCallback(std::function<void(const nlohmann::json&)> cb);
+
 private:
     void run(); // The main loop for the watcher thread.
 
@@ -39,4 +42,5 @@ private:
     std::atomic<bool> index_is_dirty{false};
     std::atomic<bool> is_frozen{false};
     std::chrono::steady_clock::time_point last_change_time;
+    std::function<void(const nlohmann::json&)> broadcast_callback;
 };
