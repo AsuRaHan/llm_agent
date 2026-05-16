@@ -42,6 +42,20 @@ void FileWatcher::stop() {
     }
 }
 
+void FileWatcher::freeze() {
+    is_frozen.store(true);
+    SPDLOG_INFO("[FileWatcher] Заморозка активирована. Обработка изменений приостановлена.");
+}
+
+void FileWatcher::unfreeze() {
+    is_frozen.store(false);
+    SPDLOG_INFO("[FileWatcher] Заморозка снята. Обработка изменений возобновлена.");
+}
+
+bool FileWatcher::isFrozen() const {
+    return is_frozen.load();
+}
+
 void FileWatcher::run() {
 #ifdef _WIN32
     HANDLE hDir = CreateFile(

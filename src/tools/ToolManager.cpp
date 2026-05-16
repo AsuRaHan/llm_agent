@@ -81,11 +81,11 @@ std::string ToolManager::executeTool(const std::string& name, const nlohmann::js
                 return "{\"error\": \"Внутренняя ошибка: Indexer недоступен для выполнения инструмента.\"}";
             }
 
-            // Централизованная блокировка для предотвращения гонки с FileWatcher
-            std::lock_guard lock(indexer->mtx); // Используем CTAD для std::recursive_mutex
-            SPDLOG_TRACE("ToolManager: Мьютекс доступа к файлам заблокирован для инструмента '{}'.", name);
-
-            return it->second->execute(args, indexer);
+            // Централизованная блокировка для предотвращения гонки с FileWatcher при доступе к файлам и индексу
+            indexer->mtx.lock();
+            auto result =it->second->execute(args, indexer);
+            indexer->mtx.unlock();
+            return result;
         } catch (const std::exception& e) {
             SPDLOG_ERROR("Исключение при выполнении инструмента '{}': {}", name, e.what());
             return "{\"error\": \"Исключение при выполнении инструмента: " + std::string(e.what()) + "\"}";

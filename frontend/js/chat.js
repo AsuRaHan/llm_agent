@@ -416,7 +416,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function sendMessage() {
+    function sendMessage(forcePlan = false) {
         const text = messageInput.value.trim();
         if (text && socket && socket.readyState === WebSocket.OPEN) {
             addMessage(text, 'user');
@@ -426,18 +426,33 @@ document.addEventListener('DOMContentLoaded', () => {
             const message = {
                 type: 'query',
                 session_id: sessionId,
-                data: { text: text }
+                data: { 
+                    text: text,
+                    force_plan: forcePlan
+                }
             };
             socket.send(JSON.stringify(message));
         }
     }
 
-    sendButton.addEventListener('click', sendMessage);
+    sendButton.addEventListener('click', () => sendMessage(false));
+
+    // Кнопка для ручного запуска планирования
+    const planButton = document.getElementById('plan-button');
+    if (planButton) {
+        planButton.addEventListener('click', () => {
+            if (messageInput.value.trim()) {
+                sendMessage(true);
+            } else {
+                alert('Пожалуйста, введите задачу перед запуском планирования.');
+            }
+        });
+    }
 
     messageInput.addEventListener('keydown', (event) => {
         if (event.key === 'Enter' && !event.shiftKey) {
             event.preventDefault(); 
-            sendMessage();
+            sendMessage(false);
         }
     });
 
