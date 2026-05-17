@@ -20,19 +20,6 @@ namespace detail {
     };
 } // namespace detail
 
-std::string to_string(AgentStatus status) {
-    switch (status) {
-        case AgentStatus::IDLE: return "IDLE";
-        case AgentStatus::THINKING: return "THINKING";
-        case AgentStatus::AWAITING_CONFIRMATION: return "AWAITING_CONFIRMATION";
-        case AgentStatus::GENERATING_PLAN: return "GENERATING_PLAN";
-        case AgentStatus::AWAITING_PLAN_CONFIRMATION: return "AWAITING_PLAN_CONFIRMATION";
-        case AgentStatus::EXECUTING_PLAN: return "EXECUTING_PLAN";
-        case AgentStatus::AWAITING_ERROR_RECOVERY_DECISION: return "AWAITING_ERROR_RECOVERY_DECISION";
-        default: return "UNKNOWN";
-    }
-}
-
 WebSocketServer::WebSocketServer(const Config& config, AssistantRole& assistant, ContextIndexer& indexer, SessionManager& sessionManager)
     : config(config),
       assistant(assistant), 
