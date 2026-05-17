@@ -414,6 +414,29 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    if (freezeWatcherButton) {
+        freezeWatcherButton.addEventListener('click', () => {
+            isWatcherFrozen = !isWatcherFrozen;
+            const command = isWatcherFrozen ? 'freeze' : 'unfreeze';
+            
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({
+                    type: 'control_file_watcher',
+                    data: { command: command }
+                }));
+            }
+            
+            // Обновляем внешний вид и подсказку кнопки
+            if (isWatcherFrozen) {
+                freezeWatcherButton.classList.add('frozen');
+                freezeWatcherButton.title = 'Возобновить индексацию (заморожено)';
+            } else {
+                freezeWatcherButton.classList.remove('frozen');
+                freezeWatcherButton.title = 'Приостановить индексацию';
+            }
+        });
+    }
+
     messageInput.addEventListener('keydown', (event) => {
         if (event.key === 'Enter' && !event.shiftKey) {
             event.preventDefault(); 

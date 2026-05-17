@@ -32,6 +32,7 @@ private:
     void handleMessage(const std::string& raw_message, std::shared_ptr<SafeWsHandle> ws_handle);
     void processAgentLogic(std::shared_ptr<UserSession> session, const std::string& queryText, std::shared_ptr<SafeWsHandle> ws_handle);
 
+    void setSessionIdle(std::shared_ptr<UserSession> session);
     void handleSyncSession(const nlohmann::json& msg, std::shared_ptr<SafeWsHandle> ws_handle);
     void handleQuery(const nlohmann::json& msg, std::shared_ptr<SafeWsHandle> ws_handle);
     void handleConfirmation(const nlohmann::json& msg, std::shared_ptr<SafeWsHandle> ws_handle);

@@ -159,6 +159,28 @@ void WebSocketServer::handleSyncSession(const nlohmann::json& msg, std::shared_p
     });
 }
 
+void WebSocketServer::setSessionIdle(std::shared_ptr<UserSession> session) {
+    if (session->status == AgentStatus::IDLE) {
+        // Если мы уже в состоянии IDLE, возможно, что-то пошло не так.
+        // На всякий случай размораживаем FileWatcher.
+        if (file_watcher_control_callback) {
+            file_watcher_control_callback("unfreeze");
+        }
+        return;
+    }
+
+    SPDLOG_INFO("Сессия {} переходит в состояние IDLE. Снятие блокировок.", session->id);
+    session->status = AgentStatus::IDLE;
+    session->plan_steps = nlohmann::json::array();
+    session->current_plan_step = -1;
+    session->original_user_query = "";
+    session->pending_tool_call = nullptr;
+
+    if (file_watcher_control_callback) {
+        file_watcher_control_callback("unfreeze");
+    }
+}
+
 void WebSocketServer::processPlanGeneration(std::shared_ptr<UserSession> session, const std::string& queryText, std::shared_ptr<SafeWsHandle> ws_handle) {
     std::string sessionId = session->id;
     try {
@@ -166,7 +188,7 @@ void WebSocketServer::processPlanGeneration(std::shared_ptr<UserSession> session
         
         if (plan_steps.is_array() && !plan_steps.empty() && plan_steps[0].is_string() && plan_steps[0].get<std::string>().rfind("Ошибка:", 0) == 0) {
              SPDLOG_ERROR("Ошибка при генерации плана для сессии {}: {}", sessionId, plan_steps[0].get<std::string>());
-             session->status = AgentStatus::IDLE;
+             setSessionIdle(session);
              if (!session->history.empty() && session->history.back()["role"] == "user") {
                  session->history.erase(session->history.size() - 1);
              }
@@ -184,7 +206,7 @@ void WebSocketServer::processPlanGeneration(std::shared_ptr<UserSession> session
 
     } catch (const std::exception& e) {
         SPDLOG_ERROR("Исключение при генерации плана для сессии {}: {}", sessionId, e.what());
-        session->status = AgentStatus::IDLE;
+        setSessionIdle(session);
         sendMessage(ws_handle, {
             {"type", "error"},
             {"data", {{"message", "Внутренняя ошибка сервера при генерации плана: " + std::string(e.what())}}}
@@ -228,7 +250,7 @@ void WebSocketServer::processAgentLogic(std::shared_ptr<UserSession> session, co
                 // Если шаг плана завершился с ошибкой, прерываем выполнение всего плана
                 if (response.step_failed) {
                     SPDLOG_ERROR("Шаг плана для сессии {} завершился с ошибкой: {}", sessionId, response.error_message);
-                    session->status = AgentStatus::AWAITING_ERROR_RECOVERY_DECISION;
+                    session->status = AgentStatus::AWAITING_ERROR_RECOVERY_DECISION; // Не меняем на IDLE, ждем решения
                     sendMessage(ws_handle, {
                         {"type", "plan_error"}, 
                         {"data", {
@@ -260,12 +282,7 @@ void WebSocketServer::processAgentLogic(std::shared_ptr<UserSession> session, co
             
             AssistantResponse final_response = assistant.processQuery("", {}, indexer, session->history, send_thought);
             
-            // Глубокая очистка состояния сессии после закрытия кампании
-            session->status = AgentStatus::IDLE;
-            session->plan_steps = nlohmann::json::array();
-            session->current_plan_step = -1;
-            session->original_user_query = "";
-            
+            setSessionIdle(session);
             sendMessage(ws_handle, {{"type", "query_response"}, {"data", {{"answer", final_response.text}}}});
 
         } else { 
@@ -279,13 +296,13 @@ void WebSocketServer::processAgentLogic(std::shared_ptr<UserSession> session, co
                 session->pending_tool_call = response.pending_tool_call;
                 sendMessage(ws_handle, {{"type", "action_required"}, {"data", {{"message", response.text}, {"tool_call", response.pending_tool_call}}}});
             } else {
-                session->status = AgentStatus::IDLE;
+                setSessionIdle(session);
                 sendMessage(ws_handle, {{"type", "query_response"}, {"data", {{"answer", response.text}}}});
             }
         }
     } catch (const std::exception& e) {
         SPDLOG_ERROR("Ошибка при обработке логики агента для сессии {}: {}", sessionId, e.what());
-        session->status = AgentStatus::IDLE;
+        setSessionIdle(session);
         sendMessage(ws_handle, {
             {"type", "error"},
             {"data", {{"message", "Внутренняя ошибка сервера в фоновом потоке: " + std::string(e.what())}}}
@@ -307,6 +324,12 @@ void WebSocketServer::handleQuery(const nlohmann::json& msg, std::shared_ptr<Saf
     if (session->status != AgentStatus::IDLE) {
         sendMessage(ws_handle, {{"type", "error"}, {"data", {{"message", "Агент занят. Пожалуйста, подождите."}}}});
         return;
+    }
+
+    // "Замораживаем" FileWatcher перед запуском любой логики агента, чтобы избежать гонки с индексатором.
+    if (file_watcher_control_callback) {
+        SPDLOG_INFO("Запрос от пользователя, сессия {}. Активация заморозки FileWatcher.", sessionId);
+        file_watcher_control_callback("freeze");
     }
 
     // Лингвистическая эвристика на запуск автономного планирования
@@ -369,12 +392,7 @@ void WebSocketServer::handleConfirmation(const nlohmann::json& msg, std::shared_
         SPDLOG_INFO("Пользователь отклонил действие для сессии {}", sessionId);
         session->history.push_back({{"role", "tool"}, {"tool_call_id", pending_call["id"]}, {"content", "{\"result\": \"Error: User explicitly denied execution of this tool.\"}"}});
         
-        // Полная очистка состояния плана, так как цепочка действий разорвана отказом оператора
-        session->status = AgentStatus::IDLE;
-        session->plan_steps = nlohmann::json::array();
-        session->current_plan_step = -1;
-        session->original_user_query = "";
-        
+        setSessionIdle(session);
         sendMessage(ws_handle, {{"type", "query_response"}, {"data", {{"answer", "Действие отклонено. Автономный план отменен по требованию пользователя."}}}});
         return;
     }
@@ -436,10 +454,7 @@ void WebSocketServer::handleErrorRecoveryConfirmation(const nlohmann::json& msg,
         });
     } else { // "abort" or any other unknown option
         SPDLOG_INFO("Пользователь выбрал 'abort' для сессии {}. План отменен.", sessionId);
-        session->status = AgentStatus::IDLE;
-        session->plan_steps = nlohmann::json::array();
-        session->current_plan_step = -1;
-        session->original_user_query = "";
+        setSessionIdle(session);
         sendMessage(ws_handle, {{"type", "query_response"}, {"data", {{"answer", "Хорошо, план отменен. Чем я могу помочь?"}}}});
     }
 }
@@ -470,9 +485,7 @@ void WebSocketServer::handlePlanConfirmation(const nlohmann::json& msg, std::sha
         // Проверяем, не оказался ли план пустым после редактирования
         if (session->plan_steps.empty()) {
             SPDLOG_WARN("Пользователь утвердил пустой план для сессии {}. План отменен.", sessionId);
-            session->status = AgentStatus::IDLE;
-            session->current_plan_step = -1;
-            session->original_user_query = "";
+            setSessionIdle(session);
             sendMessage(ws_handle, {{"type", "query_response"}, {"data", {{"answer", "План пуст. Задачи для выполнения отсутствуют."}}}});
             return;
         }
@@ -485,10 +498,7 @@ void WebSocketServer::handlePlanConfirmation(const nlohmann::json& msg, std::sha
         });
     } else {
         SPDLOG_INFO("Пользователь отклонил план для сессии {}", sessionId);
-        session->status = AgentStatus::IDLE;
-        session->plan_steps = nlohmann::json::array();
-        session->current_plan_step = -1;
-        session->original_user_query = "";
+        setSessionIdle(session);
         sendMessage(ws_handle, {{"type", "query_response"}, {"data", {{"answer", "Хорошо, план отменен. Чем я могу помочь?"}}}});
     }
 }
@@ -511,8 +521,11 @@ void WebSocketServer::handleClearHistory(const nlohmann::json& msg, std::shared_
     (void)ws_handle; 
     std::string sessionId = msg.value("session_id", "");
     if (sessionId.empty()) return;
-    SPDLOG_INFO("Очистка истории для сессии: {}", sessionId);
+
+    auto session = sessionManager.getSession(sessionId);
     sessionManager.clearSession(sessionId);
+    // Сбрасываем состояние сессии в IDLE и размораживаем FileWatcher
+    setSessionIdle(session);
 }
 
 void WebSocketServer::sendMessage(std::shared_ptr<SafeWsHandle> ws_handle, const nlohmann::json& payload) {
