@@ -15,12 +15,27 @@
 #include <unordered_set>
 #include <algorithm>
 #include <filesystem>
+#include <csignal> // Для обработки сигналов (Ctrl+C)
 #include "Logger.h"
 #include "FileWatcher.h"
 #include "ApiHandlers.h"
 
+// Глобальный указатель на обработчик API для доступа из обработчика сигналов
+// Это необходимо, чтобы мы могли вызвать stop() из статического контекста.
+ApiHandlers* g_apiHandlers = nullptr;
+
 namespace fs = std::filesystem;
 
+/// Обработчик сигналов (например, Ctrl+C) для грациозного завершения
+void signalHandler(int signum) {
+    SPDLOG_INFO("Получен сигнал завершения (сигнал {}). Запуск грациозной остановки...", signum);
+    if (g_apiHandlers) {
+        g_apiHandlers->stop();
+    } else {
+        // Если обработчик еще не инициализирован, просто выходим
+        exit(signum);
+    }
+}
 // ============================================================================
 // Initialization Functions
 // ============================================================================
@@ -120,6 +135,9 @@ std::unique_ptr<ContextIndexer> indexProject(const std::string& projectDir, cons
 
 int main(int argc, char* argv[])
 {
+    // Регистрируем обработчик для сигнала SIGINT (Ctrl+C)
+    signal(SIGINT, signalHandler);
+
     try {
         // ====== Инициализация ======
         Config config;
@@ -184,6 +202,9 @@ int main(int argc, char* argv[])
         // Создание и инициализация обработчиков API.
         // ApiHandlers будет владеть сервером и управлять жизненным циклом WebSocketServer.
         ApiHandlers apiHandlers(config, *assistant, *indexer);
+        
+        // Сохраняем указатель для глобального доступа из обработчика сигналов
+        g_apiHandlers = &apiHandlers;
 
         // Запуск сервера (этот вызов блокирует выполнение)
         apiHandlers.start(projectDir);
