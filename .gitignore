@@ -16,6 +16,10 @@ Agent.exe
 index.json
 config.json
 
+# Бэкап-файлы (создаются ApplyDiffTool)
+*.backup.*
+*.backup
+
 # VS Code настройки
 .vscode/
 build
