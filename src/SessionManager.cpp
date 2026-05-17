@@ -25,9 +25,8 @@ void SessionManager::clearSession(const std::string& sessionId) {
     std::lock_guard<std::mutex> lock(mutex_);
     auto it = sessions_.find(sessionId);
     if (it != sessions_.end()) {
-        SPDLOG_INFO("Очистка сессии: {}", sessionId);
+        SPDLOG_INFO("Очистка истории сессии: {}", sessionId);
         it->second->history = nlohmann::json::array();
-        it->second->status = AgentStatus::IDLE;
-        it->second->pending_tool_call = nullptr;
+        // Статус и другие поля сессии сбрасываются в WebSocketServer, чтобы корректно управлять состоянием (например, FileWatcher)
     }
 }
