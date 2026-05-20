@@ -12,10 +12,10 @@ public:
     ~SessionManager();
     std::shared_ptr<UserSession> getSession(const std::string& sessionId);
     void clearSession(const std::string& sessionId);
-
-private:
     void saveSessions();
     void loadSessions();
+private:
+
 
     const std::string session_db_path = ".shdata/sessions.json";
     std::mutex mutex_;

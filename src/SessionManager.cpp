@@ -28,6 +28,7 @@ std::shared_ptr<UserSession> SessionManager::getSession(const std::string& sessi
     auto newSession = std::make_shared<UserSession>();
     newSession->id = sessionId;
     sessions_[sessionId] = newSession;
+    saveSessions(); // Сохраняем сессии сразу после создания новой
     return newSession;
 }
 
@@ -38,6 +39,7 @@ void SessionManager::clearSession(const std::string& sessionId) {
         SPDLOG_INFO("Очистка истории для сессии: {}", sessionId);
         it->second->history = nlohmann::json::array();
         // Статус и другие поля сессии сбрасываются в WebSocketServer, чтобы корректно управлять состоянием (например, FileWatcher)
+        saveSessions(); // Сохраняем сессии после очистки
     }
 }
 

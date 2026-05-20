@@ -23,9 +23,9 @@ void ContextIndexer::loadIndex() {
     fileIndexer.load();  // Загружаем метаданные файлов (fileIndex)
 
     // Опционально: Добавьте проверку согласованности здесь, если необходимо, например:
-    // if (indexManager.getEmbeddingCount() > 0 && fileIndexer.getFileCount() == 0) {
-    //     SPDLOG_WARN("IndexManager загрузил эмбеддинги, но FileIndexer не загрузил метаданные файлов. Это может указывать на несогласованность.");
-    // }
+    if (indexManager.getEmbeddingCount() > 0 && fileIndexer.getFileCount() == 0) {
+        SPDLOG_WARN("IndexManager загрузил эмбеддинги, но FileIndexer не загрузил метаданные файлов. Это может указывать на несогласованность.");
+    }
 }
 
 void ContextIndexer::saveIndex() {

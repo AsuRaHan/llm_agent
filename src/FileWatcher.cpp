@@ -174,20 +174,6 @@ void FileWatcher::run() {
         }
     }
 
-    // Final save before the thread exits, if there are any pending changes.
-    if (index_is_dirty) {
-        SPDLOG_INFO("[FileWatcher] Сохранение финальных изменений индекса перед завершением потока...");
-        indexer.saveIndex(); // Теперь это вызов фасада ContextIndexer
-        index_is_dirty = false;
-        // Отправляем статус "бездействие" после финального сохранения
-        if (broadcast_callback) {
-            broadcast_callback({
-                {"type", "file_watcher_status"},
-                {"data", {{"status", "idle"}}}
-            });
-        }
-    }
-
     CloseHandle(hDir);
     CloseHandle(overlapped.hEvent);
 #else // Linux inotify implementation

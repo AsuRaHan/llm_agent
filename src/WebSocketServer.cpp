@@ -287,6 +287,9 @@ void WebSocketServer::processAgentLogic(std::shared_ptr<UserSession> session, co
             }
 
             AssistantResponse response = assistant.processQuery(queryText, context, indexer, session->history, send_thought);
+            // Сохраняем сессию СРАЗУ после того, как ассистент обновил историю
+            sessionManager.saveSessions();
+
             session->history = response.conversation_history;
 
             if (response.requires_confirmation) {
@@ -295,6 +298,8 @@ void WebSocketServer::processAgentLogic(std::shared_ptr<UserSession> session, co
                 sendMessage(ws_handle, {{"type", "action_required"}, {"data", {{"message", response.text}, {"tool_call", response.pending_tool_call}}}});
             } else {
                 setSessionIdle(session);
+                // Сохраняем сессию еще раз после сброса статуса в IDLE
+                sessionManager.saveSessions();
                 sendMessage(ws_handle, {{"type", "query_response"}, {"data", {{"answer", response.text}}}});
             }
         }
@@ -352,6 +357,9 @@ void WebSocketServer::handleQuery(const nlohmann::json& msg, std::shared_ptr<Saf
     }
 
     session->history.push_back({{"role", "user"}, {"content", queryText}});
+    // Сохраняем сессию сразу после добавления сообщения пользователя в историю
+    SPDLOG_DEBUG("Сохранение сессии {} после получения нового запроса от пользователя.", sessionId);
+    sessionManager.saveSessions();
 
     if (needs_plan) {
         SPDLOG_INFO("Запрос требует планирования. Запуск генерации плана для сессии {}.", sessionId);
