@@ -34,7 +34,7 @@
 
 ---
 
-## [Unreleased] - 2026-05-17
+## [Unreleased] - 2026-05-20
 
 ### Добавлено
 - **Ручное планирование**: Добавлена кнопка ручного запуска планирования (📋) в интерфейсе чата
@@ -46,87 +46,24 @@
 - **Режим планирования**: Добавлены режимы планирования (plan mode, plan mode2)
 - **Адаптация ширины чата**: Улучшена адаптация интерфейса чата
 - **Улучшение обработки URL**: Улучшена обработка URL в ReadUrlTool
+- **Масштабная рефакторинг кодовой базы и фронтенда**:
+  - Созданы новые модули фронтенда: `session.js`, `socket.js`, `index.js`, компоненты `message.js`, `widget.js`
+  - Созданы тесты: интеграционные (`chat.test.js`) и юнит-тесты для всех модулей
+  - Созданы новые хедеры: `AssistantResponse.h`, `LLMProvider.h`, `OpenAIProvider.cpp/h`
+  - Создан план рефакторинга: `REFACTORING_PLAN.md`
+  - Создана документация фронтенда: `frontend/README.md`
 
 ### Изменено
-- **frontend/chat.html**: 
-  - Добавлена кнопка планирования (📋) в форму чата
-  - Добавлены шаблоны для виджетов: план-подтверждение, прогресс плана, восстановление после ошибок
-  - Реализована drag-and-drop функциональность для перестановки шагов плана
-  
-- **frontend/js/chat.js**: 
-  - Реализована функция `sendMessage(forcePlan)` для поддержки ручного запуска планирования
-  - Добавлены функции `showAgentThought()` / `hideAgentThought()` для отображения мыслей агента
-  - Реализованы функции `addPlanConfirmationWidget()`, `updatePlanProgress()`, `addErrorRecoveryWidget()`
-  - Добавлена поддержка заморозки FileWatcher через кнопку ❄️
-  - Реализован drag-and-drop с использованием SortableJS для перестановки шагов плана
-  
-- **src/WebSocketServer.cpp**: 
-  - Расширена логика определения необходимости планирования (ключевые слова в любой части строки, не только в начале)
-  - Добавлена поддержка явного запроса планирования через `force_plan`
-  - Реализована логика обработки ошибок с вариантами восстановления (retry, skip, re-plan, abort)
-  - Добавлена поддержка перепланирования при ошибке выполнения плана
-  - Реализована логика заморозки FileWatcher перед запуском любой логики агента
-  - Добавлена поддержка редактируемых шагов плана через `confirm_plan` с параметром `steps`
-  - Обновления фронтенда и бэкенда: изменения в WebSocketServer, ApiHandlers, AssistantRole, Config и UI
-  
-- **src/WebSocketServer.h**: 
-  - Добавлены объявления методов обработки новых типов сообщений
-  
-- **src/SessionManager.cpp**: 
-  - Рефакторинг сохранения сессий: выделен приватный метод `saveSessions_nolock()` для сохранения без блокировки мьютекса
-  - Улучшена загрузка сессий: добавлена проверка существования файла, прав доступа, пустого файла
-  - При загрузке инициализируются новые поля: `plan_steps`, `current_plan_step`, `original_user_query`
-  - Улучшено логирование: исправлены сообщения об ошибках (SPDLOG_ERROR вместо SPDLOG_INFO)
-  
-- **src/SessionManager.h**: 
-  - Добавлен приватный метод `saveSessions_nolock()`
-  
-- **src/ApiHandlers.cpp**: 
-  - Обновления фронтенда и бэкенда: изменения в WebSocketServer, ApiHandlers, AssistantRole, Config и UI
-  
-- **src/ApiHandlers.h**: 
-  - Обновления фронтенда и бэкенда: изменения в WebSocketServer, ApiHandlers, AssistantRole, Config и UI
-  
-- **src/AssistantRole.cpp**: 
-  - Обновления фронтенда и бэкенда: изменения в WebSocketServer, ApiHandlers, AssistantRole, Config и UI
-  - Улучшена обработка RAG-контекста и системных промптов
-  - Улучшена обработка продолжения диалога после подтверждения инструментов
-  
-- **src/AssistantRole.h**: 
-  - Обновления фронтенда и бэкенда: изменения в WebSocketServer, ApiHandlers, AssistantRole, Config и UI
-  
-- **src/ContextIndexer.h**: 
-  - Улучшена обработка RAG-контекста и системных промптов
-  
-- **src/FileWatcher.cpp**: 
-  - Реализована логика заморозки FileWatcher перед запуском любой логики агента
-  - Исправления agent mode и planer
-  - Исправления FileWatcher
-  
-- **src/FileWatcher.h**: 
-  - Добавлен `std::atomic<bool> is_frozen` для атомарной проверки состояния
-  
-- **src/ThreadPool.cpp**: 
-  - Добавлена поддержка асинхронности
-  
-- **src/ThreadPool.h**: 
-  - Добавлена поддержка асинхронности
-  
-- **src/UserSession.h**: 
-  - Добавлена поддержка асинхронности
-  
-- **src/main.cpp**: 
-  - Обновление README.md и src/main.cpp
-  - Обновления фронтенда и бэкенда: изменения в WebSocketServer, ApiHandlers, AssistantRole, Config и UI
-  
-- **src/tools/ApplyDiffTool.cpp**: 
-  - Обновления фронтенда и бэкенда: изменения в WebSocketServer, ApiHandlers, AssistantRole, Config и UI
-  
-- **src/tools/EditFileTool.cpp**: 
-  - Обновления фронтенда и бэкенда: изменения в WebSocketServer, ApiHandlers, AssistantRole, Config и UI
-  
-- **src/tools/ToolManager.cpp**: 
-  - Обновления фронтенда и бэкенда: изменения в WebSocketServer, ApiHandlers, AssistantRole, Config и UI
+- **frontend/js/doc.js**: 17 строк изменено
+- **frontend/js/main.js**: 274 строки изменено
+- **src/ApiHandlers.cpp/h**: 15 строк изменено
+- **src/AssistantRole.cpp/h**: 261 строка изменено
+- **src/CodeParser.cpp/h**: 377 строк изменено
+- **src/ContextIndexer.cpp/h**: 40 строк изменено
+- **src/ContextIndexerHelper/FileIndexer.cpp/h**: 25 строк изменено
+- **src/EmbeddingClient.cpp/h**: 163 строки изменено
+- **src/main.cpp**: 93 строки изменено
+- **CMakeLists.txt**: +1 строка
 
 ### Исправлено
 - Bug в agent mode
@@ -145,6 +82,7 @@
 - Улучшена обработка продолжения диалога после подтверждения инструментов
 - Рефакторинг SessionManager: выделен метод сохранения без блокировки мьютекса для предотвращения двойной блокировки
 - Улучшена загрузка сессий с проверкой существования файла, прав доступа и пустого файла
+- Масштабная рефакторинг кодовой базы и фронтенда с созданием новых модулей и тестов
 
 ---
 
