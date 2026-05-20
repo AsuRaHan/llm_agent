@@ -38,6 +38,8 @@ void FileWatcher::stop() {
     if (running) {
         running = false;
         if (watcher_thread.joinable()) {
+            // Небольшая задержка, чтобы дать циклу в run() шанс увидеть running = false и выйти
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
             watcher_thread.join();
         }
         SPDLOG_INFO("[FileWatcher] Мониторинг остановлен.");
@@ -159,7 +161,7 @@ void FileWatcher::run() {
         // Debounced save: if there are changes and some time has passed, save the index.
         if (index_is_dirty && std::chrono::steady_clock::now() - last_change_time > std::chrono::seconds(5)) {
             SPDLOG_INFO("[FileWatcher] Сохранение накопленных изменений индекса...");
-            indexer.saveIndex();
+            indexer.saveIndex(); // Теперь это вызов фасада ContextIndexer
             index_is_dirty = false;
 
             // Отправляем статус "бездействие" после сохранения
@@ -175,7 +177,7 @@ void FileWatcher::run() {
     // Final save before the thread exits, if there are any pending changes.
     if (index_is_dirty) {
         SPDLOG_INFO("[FileWatcher] Сохранение финальных изменений индекса перед завершением потока...");
-        indexer.saveIndex();
+        indexer.saveIndex(); // Теперь это вызов фасада ContextIndexer
         index_is_dirty = false;
         // Отправляем статус "бездействие" после финального сохранения
         if (broadcast_callback) {

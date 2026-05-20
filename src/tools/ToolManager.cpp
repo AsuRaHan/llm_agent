@@ -81,10 +81,9 @@ std::string ToolManager::executeTool(const std::string& name, const nlohmann::js
                 return "{\"error\": \"Внутренняя ошибка: Indexer недоступен для выполнения инструмента.\"}";
             }
 
-            // Централизованная блокировка для предотвращения гонки с FileWatcher при доступе к файлам и индексу
-            indexer->mtx.lock();
-            auto result =it->second->execute(args, indexer);
-            indexer->mtx.unlock();
+            // Централизованная блокировка для предотвращения гонки с FileWatcher при доступе к файлам и индексу.
+            std::lock_guard<std::recursive_mutex> lock(indexer->getFileIndexer().mtx);
+            auto result = it->second->execute(args, indexer);
             return result;
         } catch (const std::exception& e) {
             SPDLOG_ERROR("Исключение при выполнении инструмента '{}': {}", name, e.what());

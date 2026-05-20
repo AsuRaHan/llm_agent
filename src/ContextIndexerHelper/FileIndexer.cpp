@@ -8,12 +8,16 @@
 #include "Config.h"
 #include "Logger.h"
 #include <algorithm>
+#include "nlohmann/json.hpp" // Для JSON сериализации
+
+using json = nlohmann::json;
 
 FileIndexer::FileIndexer(
     const Config& config,
     IndexManager& indexManager,
     EmbeddingClient& embeddingClient)
-    : config(config), indexManager(indexManager), embeddingClient(embeddingClient)
+    : config(config), indexManager(indexManager), embeddingClient(embeddingClient),
+      fileIndexerMetadataPath(".shdata/file_indexer_meta.json") // Инициализация пути
 {
     ignoredDirectories.insert(config.ignored_directories.begin(), config.ignored_directories.end());
     ignoredExtensions.insert(config.ignored_extensions.begin(), config.ignored_extensions.end());
@@ -50,6 +54,73 @@ void FileIndexer::setIgnoredExtensions(const std::vector<std::string>& exts)
     for (const auto& ext : exts) {
         ignoredExtensions.insert(ext);
     }
+}
+
+void FileIndexer::load() {
+    std::lock_guard lock(mtx);
+    std::ifstream metaFile(fileIndexerMetadataPath);
+    if (!metaFile.is_open()) {
+        SPDLOG_WARN("Файл метаданных FileIndexer '{}' не найден. Будет создан новый fileIndex.", fileIndexerMetadataPath);
+        fileIndex.clear(); // Убеждаемся, что он пуст, если нет файла метаданных
+        return;
+    }
+
+    json meta;
+    try {
+        metaFile >> meta;
+
+        if (meta.contains("file_index")) {
+            for (auto& [path, value] : meta["file_index"].items()) {
+                long long time_count = value["last_write_time"];
+                auto duration_since_epoch = fs::file_time_type::duration(time_count);
+                std::vector<ChunkInfo> chunks;
+                if (value.contains("chunks")) {
+                    for (const auto& chunk_json : value["chunks"]) {
+                        chunks.push_back({
+                            chunk_json["id"],
+                            {chunk_json["start_byte"], chunk_json["length"]}
+                        });
+                    }
+                }
+                fileIndex[path] = { fs::file_time_type(duration_since_epoch), chunks };
+            }
+        }
+        SPDLOG_INFO("Загружено {} записей в fileIndex из '{}'.", fileIndex.size(), fileIndexerMetadataPath);
+    }
+    catch (json::parse_error& e) {
+        SPDLOG_ERROR("Error: Could not parse FileIndexer metadata file '{}'. Starting fresh. Error: {}", fileIndexerMetadataPath, e.what());
+        fileIndex.clear(); // Начинаем с чистого листа, если JSON поврежден
+        return;
+    }
+}
+
+void FileIndexer::save() {
+    std::lock_guard lock(mtx);
+    if (fileIndex.empty()) {
+        SPDLOG_INFO("FileIndexer: fileIndex пуст, сохранение не требуется. Удаляю старый файл метаданных.");
+        fs::remove(fileIndexerMetadataPath);
+        return;
+    }
+
+    SPDLOG_INFO("Сохранение метаданных FileIndexer в: {}", fileIndexerMetadataPath);
+    std::ofstream metaFile(fileIndexerMetadataPath);
+    if (!metaFile.is_open()) {
+        SPDLOG_ERROR("Error: Could not open FileIndexer metadata file '{}' for writing.", fileIndexerMetadataPath);
+        return;
+    }
+
+    json meta;
+    json file_index_json;
+    for (const auto& [path, record] : fileIndex) {
+        json chunks_json = json::array();
+        for(const auto& chunk_info : record.chunks) {
+            chunks_json.push_back({{"id", chunk_info.id}, {"start_byte", chunk_info.location.start_byte}, {"length", chunk_info.location.length}});
+        }
+        file_index_json[path] = {{"last_write_time", record.last_write_time.time_since_epoch().count()}, {"chunks", chunks_json}};
+    }
+    meta["file_index"] = file_index_json;
+    metaFile << meta.dump(4, ' ', false, nlohmann::json::error_handler_t::replace);
+    SPDLOG_INFO("Сохранено {} записей в метаданные FileIndexer.", fileIndex.size());
 }
 
 void FileIndexer::scanDiskForChanges(
@@ -222,7 +293,9 @@ void FileIndexer::indexDirectory(const fs::path& directoryPath)
     // Фаза 3: Сохранение индекса на диск, если были изменения
     if (newFiles > 0 || updatedFiles > 0 || removedFiles > 0) {
         SPDLOG_INFO("Обнаружены изменения в файлах, сохранение индекса на диск...");
-        indexManager.save();
+        // Сохраняем обе части индекса
+        indexManager.save(); 
+        save();              
     }
 
     SPDLOG_INFO("Завершено индексирование. Новых файлов: {}, Измененных: {}, Удалено: {}", 

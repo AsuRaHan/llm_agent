@@ -221,7 +221,12 @@ void WebSocketServer::processAgentLogic(std::shared_ptr<UserSession> session, co
                 sendMessage(ws_handle, {{"type", "plan_update"}, {"data", {{"current_step", current_step_idx}, {"steps", session->plan_steps}}}});
 
                 // Для первого шага ищем RAG-контекст по оригинальному запросу. Для последующих - не ищем.
-                auto context = (current_step_idx == 0) ? indexer.findTopK(session->original_user_query, config.top_k_results) : std::vector<SearchResult>();
+                std::vector<SearchResult> context;
+                if (current_step_idx == 0) {
+                    auto& searcher = indexer.getSearcher();
+                    auto& fileIndex = indexer.getFileIndexer().getFileIndex();
+                    context = searcher.findTopK(session->original_user_query, config.top_k_results, fileIndex);
+                }
 
                 // ВАЖНО: Мы пушим ноту шага в историю ТОЛЬКО если мы не продолжаем работу после подтверждения опасного инструмента.
                 // Если мы вернулись из handleConfirmation, вызов инструмента уже сидит на вершине истории, и пушить туда системную ноту нельзя.
@@ -274,7 +279,13 @@ void WebSocketServer::processAgentLogic(std::shared_ptr<UserSession> session, co
 
         } else { 
             // --- СИНГЛ-ШОТ РЕЖИМ (ОБЫЧНЫЙ ДИАЛОГ БЕЗ ПЛАНА) ---
-            auto context = queryText.empty() ? std::vector<SearchResult>() : indexer.findTopK(queryText, config.top_k_results);
+            std::vector<SearchResult> context;
+            if (!queryText.empty()) {
+                auto& searcher = indexer.getSearcher();
+                auto& fileIndex = indexer.getFileIndexer().getFileIndex();
+                context = searcher.findTopK(queryText, config.top_k_results, fileIndex);
+            }
+
             AssistantResponse response = assistant.processQuery(queryText, context, indexer, session->history, send_thought);
             session->history = response.conversation_history;
 

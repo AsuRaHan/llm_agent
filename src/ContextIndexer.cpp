@@ -1,84 +1,55 @@
 #include "ContextIndexer.h"
-#include <iostream>
-#include <filesystem>
 #include "Logger.h"
-#include "Config.h"
-#include "EmbeddingClient.h"
-
-namespace fs = std::filesystem;
 
 ContextIndexer::ContextIndexer(const Config& config)
     : config(config),
-      embeddingClient(std::make_unique<EmbeddingClient>(config)),
-      indexManager(std::make_unique<IndexManager>()),
-      fileIndexer(std::make_unique<FileIndexer>(config, *indexManager, *embeddingClient)),
-      searcher(std::make_unique<Searcher>(*indexManager, *embeddingClient))
+      embeddingClient(config), // Инициализируем EmbeddingClient первым
+      indexManager(".shdata/index_meta.json", ".shdata/index.bin"), // Инициализируем IndexManager
+      fileIndexer(config, indexManager, embeddingClient), // Передаем IndexManager по ссылке
+      searcher(indexManager, embeddingClient) // Передаем IndexManager по ссылке
 {
-    SPDLOG_INFO("ContextIndexer инициализирован...");
-    loadIndex();
+    SPDLOG_INFO("ContextIndexer инициализирован.");
+    loadIndex(); // Загружаем данные IndexManager и FileIndexer
 }
 
-ContextIndexer::~ContextIndexer()
-{
-    SPDLOG_INFO("ContextIndexer уничтожен.");
+ContextIndexer::~ContextIndexer() {
+    SPDLOG_INFO("ContextIndexer уничтожен. Сохраняю индекс...");
+    saveIndex(); // Убеждаемся, что оба компонента сохранены при уничтожении ContextIndexer
 }
 
-void ContextIndexer::loadIndex()
-{
-    std::lock_guard lock(mtx);
-    indexManager->load();
+void ContextIndexer::loadIndex() {
+    SPDLOG_INFO("ContextIndexer: Загрузка индекса...");
+    indexManager.load(); // Загружаем HNSW индекс и id_to_chunk_map
+    fileIndexer.load();  // Загружаем метаданные файлов (fileIndex)
+
+    // Опционально: Добавьте проверку согласованности здесь, если необходимо, например:
+    // if (indexManager.getEmbeddingCount() > 0 && fileIndexer.getFileCount() == 0) {
+    //     SPDLOG_WARN("IndexManager загрузил эмбеддинги, но FileIndexer не загрузил метаданные файлов. Это может указывать на несогласованность.");
+    // }
 }
 
-void ContextIndexer::setIgnoredDirectories(const std::vector<std::string>& ignoredDirs)
-{
-    std::lock_guard lock(mtx);
-    fileIndexer->setIgnoredDirectories(ignoredDirs);
+void ContextIndexer::saveIndex() {
+    SPDLOG_INFO("ContextIndexer: Сохранение индекса...");
+    indexManager.save();
+    fileIndexer.save();
 }
 
-void ContextIndexer::setIgnoredExtensions(const std::vector<std::string>& ignoredExts)
-{
-    std::lock_guard lock(mtx);
-    fileIndexer->setIgnoredExtensions(ignoredExts);
+void ContextIndexer::indexDirectory(const std::filesystem::path& directoryPath) {
+    fileIndexer.indexDirectory(directoryPath);
 }
 
-void ContextIndexer::indexDirectory(const fs::path& directoryPath)
-{
-    // No lock here, FileIndexer manages its own threading.
-    fileIndexer->indexDirectory(directoryPath);
+void ContextIndexer::reindexFile(const std::string& path) {
+    fileIndexer.reindexFile(path);
 }
 
-int ContextIndexer::getEmbeddingsCount() const
-{
-    std::lock_guard lock(mtx);
-    return indexManager->getEmbeddingCount();
+void ContextIndexer::removeFileFromIndex(const std::string& path) {
+    fileIndexer.removeFileFromIndex(path);
 }
 
-int ContextIndexer::getFileCount() const
-{
-    std::lock_guard lock(mtx);
-    return fileIndexer->getFileCount();
+int ContextIndexer::getEmbeddingsCount() const {
+    return indexManager.getEmbeddingCount();
 }
 
-void ContextIndexer::saveIndex()
-{
-    std::lock_guard lock(mtx);
-    indexManager->save();
-}
-
-std::vector<SearchResult> ContextIndexer::findTopK(const std::string& queryText, int k)
-{
-    // No lock here, Searcher manages its own threading.
-    return searcher->findTopK(queryText, k, fileIndexer->getFileIndex());
-}
-
-void ContextIndexer::reindexFile(const std::string& path)
-{
-    // No lock here, FileIndexer manages its own threading.
-    fileIndexer->reindexFile(path);
-}
-
-void ContextIndexer::removeFileFromIndex(const std::string& path)
-{
-    // No lock here, FileIndexer manages its own threading.
-    fileIndexer->removeFileFromIndex(path);
+int ContextIndexer::getFileCount() const {
+    return fileIndexer.getFileCount();
 }

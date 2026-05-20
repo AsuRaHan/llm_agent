@@ -45,7 +45,9 @@ std::string CodeSearchTool::execute(const nlohmann::json& args, ContextIndexer* 
 
     SPDLOG_INFO("[Tool:code_search] Searching for: '{}' with k={}", query, k);
 
-    std::vector<SearchResult> results = indexer->findTopK(query, k);
+    auto& searcher = indexer->getSearcher();
+    auto& fileIndex = indexer->getFileIndexer().getFileIndex();
+    std::vector<SearchResult> results = searcher.findTopK(query, k, fileIndex);
 
     if (results.empty()) {
         return "No relevant code chunks found for the query: '" + query + "'";

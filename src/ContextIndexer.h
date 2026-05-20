@@ -1,85 +1,38 @@
 #pragma once
 
-#include <string>
-#include <vector>
-#include <filesystem>
-#include <memory>
-#include <mutex>
-
+#include "Config.h"
+#include "EmbeddingClient.h"
 #include "ContextIndexerHelper/IndexManager.h"
 #include "ContextIndexerHelper/FileIndexer.h"
 #include "ContextIndexerHelper/Searcher.h"
+#include <memory>
+#include <filesystem>
 
-namespace fs = std::filesystem;
-
-struct Config;
-
-/**
- * ContextIndexer: Фасад, координирует работу всех компонентов
- * - IndexManager: управление HNSW индексом
- * - FileIndexer: сканирование директории и реиндексирование
- * - Searcher: поиск с эмбеддингами и keyword boost
- */
-class ContextIndexer
-{
+class ContextIndexer {
 public:
-    explicit ContextIndexer(const Config& config);
+    ContextIndexer(const Config& config);
     ~ContextIndexer();
 
-    /**
-     * Устанавливает директории для исключения из индексирования
-     */
-    void setIgnoredDirectories(const std::vector<std::string>& ignoredDirs);
+    void indexDirectory(const std::filesystem::path& directoryPath);
+    void reindexFile(const std::string& path); // Делегировано от FileIndexer
+    void removeFileFromIndex(const std::string& path); // Делегировано от FileIndexer
 
-    /**
-     * Устанавливает расширения файлов для исключения из индексирования
-     */
-    void setIgnoredExtensions(const std::vector<std::string>& ignoredExts);
+    void saveIndex(); // Делегирует IndexManager и FileIndexer
+    void loadIndex(); // Делегирует IndexManager и FileIndexer
 
-    /**
-     * Индексирует директорию, определяет изменения и обновляет индекс
-     */
-    void indexDirectory(const fs::path& directoryPath);
-
-    /**
-     * Возвращает количество векторов в индексе
-     */
     int getEmbeddingsCount() const;
-
-    /**
-     * Возвращает количество файлов в индексе
-     */
     int getFileCount() const;
 
-    /**
-     * Сохраняет индекс на диск
-     */
-    void saveIndex();
-
-    /**
-     * Поиск топ K релевантных результатов по текстовому запросу
-     */
-    std::vector<SearchResult> findTopK(const std::string& queryText, int k);
-
-    /**
-     * Переиндексирует один файл
-     */
-    void reindexFile(const std::string& path);
-
-    /**
-     * Удаляет файл из индекса
-     */
-    void removeFileFromIndex(const std::string& path);
-
-    // Мьютекс для синхронизации доступа между FileWatcher и другими компонентами
-    mutable std::recursive_mutex mtx;
+    // Предоставляет доступ к Searcher для внешнего использования (например, ApiHandlers)
+    Searcher& getSearcher() { return searcher; }
+    FileIndexer& getFileIndexer() { return fileIndexer; } // Для FileWatcher для взаимодействия
+    IndexManager& getIndexManager() { return indexManager; } // Для Searcher для получения данных по метке
+    EmbeddingClient& getEmbeddingClient() { return embeddingClient; } // Для Searcher для получения эмбеддингов запроса
 
 private:
     const Config& config;
-    std::unique_ptr<EmbeddingClient> embeddingClient;
-    std::unique_ptr<IndexManager> indexManager;
-    std::unique_ptr<FileIndexer> fileIndexer;
-    std::unique_ptr<Searcher> searcher;
-
-    void loadIndex();
+    EmbeddingClient embeddingClient; // Должен быть инициализирован первым
+    IndexManager indexManager;       // Владеет HNSW индексом и картой ID
+    FileIndexer fileIndexer;         // Владеет метаданными файла (пути, last_write_time, chunk_ids)
+    Searcher searcher;               // Выполняет операции поиска
 };

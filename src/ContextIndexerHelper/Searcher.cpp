@@ -75,7 +75,7 @@ void Searcher::boostByKeywords(
                                 keyword, path);
 
                     // Извлекаем оригинальный вектор чанка из HNSW по его ID
-                    std::vector<float> data_vec = indexManager.getDataByLabel(chunk_info.id);
+                    std::vector<float> data_vec = indexManager.getDataByLabel(chunk_info.id); // getDataByLabel имеет свою блокировку
                     if (data_vec.empty()) continue;
 
                     double base_score = ChunkerStrategy::cosineSimilarity(queryEmbedding, data_vec);
@@ -118,7 +118,7 @@ std::vector<SearchResult> Searcher::findTopK(
         if (chunk_text.empty()) continue;
 
         // Вычисляем косинус-подобие как меру релевантности (вместо L2 расстояния)
-        std::vector<float> data_vec = indexManager.getDataByLabel(id);
+        std::vector<float> data_vec = indexManager.getDataByLabel(id); // getDataByLabel имеет свою блокировку
         double score = ChunkerStrategy::cosineSimilarity(queryEmbedding, data_vec);
         topResults.push_back({path, chunk_text, score});
     }
