@@ -2,93 +2,84 @@
 
 #include <string>
 #include <vector>
-#include <unordered_set>
-#include <unordered_map>
 #include <filesystem>
-#include <chrono>
 #include <memory>
 #include <mutex>
-#include <atomic>
 
-#include "EmbeddingClient.h"
-#include "nlohmann/json.hpp"
-#include "hnswlib/hnswlib.h" // Include HNSWLib
-#include "CodeParser.h" // Include our new parser
-
-struct AssistantRole;
-struct Config; // Forward declaration
+#include "ContextIndexerHelper/IndexManager.h"
+#include "ContextIndexerHelper/FileIndexer.h"
+#include "ContextIndexerHelper/Searcher.h"
 
 namespace fs = std::filesystem;
 
-// Struct to hold a search result
-struct SearchResult {
-    std::string filePath;
-    std::string chunkText;
-    double score;
-};
+struct Config;
 
-// Points to a specific location of a chunk within a file
-struct ChunkLocation {
-    size_t start_byte;
-    size_t length;
-};
-
-// Stores information about an indexed chunk
-struct ChunkInfo {
-    size_t id; // ID used in HNSW index
-    ChunkLocation location;
-};
-struct FileRecord
-{
-    fs::file_time_type last_write_time;
-    std::vector<ChunkInfo> chunks;
-};
-
+/**
+ * ContextIndexer: Фасад, координирует работу всех компонентов
+ * - IndexManager: управление HNSW индексом
+ * - FileIndexer: сканирование директории и реиндексирование
+ * - Searcher: поиск с эмбеддингами и keyword boost
+ */
 class ContextIndexer
 {
 public:
     explicit ContextIndexer(const Config& config);
     ~ContextIndexer();
 
+    /**
+     * Устанавливает директории для исключения из индексирования
+     */
     void setIgnoredDirectories(const std::vector<std::string>& ignoredDirs);
+
+    /**
+     * Устанавливает расширения файлов для исключения из индексирования
+     */
     void setIgnoredExtensions(const std::vector<std::string>& ignoredExts);
+
+    /**
+     * Индексирует директорию, определяет изменения и обновляет индекс
+     */
     void indexDirectory(const fs::path& directoryPath);
+
+    /**
+     * Возвращает количество векторов в индексе
+     */
     int getEmbeddingsCount() const;
-    int getFileCount() const { return fileIndex.size(); }
+
+    /**
+     * Возвращает количество файлов в индексе
+     */
+    int getFileCount() const;
+
+    /**
+     * Сохраняет индекс на диск
+     */
     void saveIndex();
+
+    /**
+     * Поиск топ K релевантных результатов по текстовому запросу
+     */
     std::vector<SearchResult> findTopK(const std::string& queryText, int k);
 
-    // Methods for incremental updates
+    /**
+     * Переиндексирует один файл
+     */
     void reindexFile(const std::string& path);
+
+    /**
+     * Удаляет файл из индекса
+     */
     void removeFileFromIndex(const std::string& path);
 
-    // Мьютекс для синхронизации доступа к файлам и индексу между FileWatcher и ToolManager
+    // Мьютекс для синхронизации доступа между FileWatcher и другими компонентами
     mutable std::recursive_mutex mtx;
 
 private:
-    std::string readFileContent(const fs::path& path);
-    std::string readChunkContent(const std::string& path, const ChunkLocation& location);
-    void loadIndex();
-    // cosineSimilarity is no longer needed for search, but can be useful for score calculation
-    double cosineSimilarity(const std::vector<float>& a, const std::vector<float>& b);
-    std::vector<ChunkLocation> fixedSizeChunkText(const std::string& text, size_t chunkSize, size_t overlap);
-    void addChunk(const std::string& path, const std::string& text, const std::vector<float>& embedding, const ChunkLocation& location);
-
     const Config& config;
-    EmbeddingClient embeddingClient;
-    std::unique_ptr<CodeParser> codeParser; // The parser instance
-    std::unique_ptr<AssistantRole> summarizerAssistant;
-    std::unordered_set<std::string> ignoredDirectories;
-    std::unordered_set<std::string> ignoredExtensions;
-    std::unordered_set<std::string> ignoredFiles;
-    std::unordered_map<std::string, FileRecord> fileIndex;
+    std::unique_ptr<EmbeddingClient> embeddingClient;
+    std::unique_ptr<IndexManager> indexManager;
+    std::unique_ptr<FileIndexer> fileIndexer;
+    std::unique_ptr<Searcher> searcher;
 
-    // --- HNSWLib members ---
-    const std::string hnswIndexPath = ".shdata/index.bin";
-    const std::string metadataDbPath = ".shdata/index_meta.json";
-    size_t embedding_dim = 0; // To be determined from the first embedding
-    std::unique_ptr<hnswlib::L2Space> space;
-    std::unique_ptr<hnswlib::HierarchicalNSW<float>> index;
-    std::unordered_map<size_t, std::pair<std::string, ChunkLocation>> id_to_chunk_map; // map ID -> {filePath, location}
-    std::atomic<size_t> current_max_elements = 0;
+    void loadIndex();
 };
