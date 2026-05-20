@@ -82,6 +82,15 @@ public:
     void setIgnoredExtensions(const std::vector<std::string>& exts);
 
     /**
+     * Загружает метаданные файлов из файла.
+     */
+    void load();
+    /**
+     * Сохраняет метаданные файлов в файл.
+     */
+    void save();
+
+    /**
      * Возвращает количество файлов в индексе
      */
     int getFileCount() const { return fileIndex.size(); }
@@ -108,6 +117,7 @@ private:
 
     // fileIndex: path -> запись о файле (время изменения и список чанков с их ID)
     std::unordered_map<std::string, FileRecord> fileIndex;
+    std::string fileIndexerMetadataPath; // Путь к файлу метаданных FileIndexer
 
     /**
      * Сканирует диск и определяет какие файлы нужно переиндексировать

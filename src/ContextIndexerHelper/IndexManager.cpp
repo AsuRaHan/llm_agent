@@ -175,6 +175,7 @@ void IndexManager::load()
     }
 
     json meta;
+    SPDLOG_INFO("IndexManager: Чтение метаданных из '{}'.", metadataDbPath);
     try {
         metaFile >> meta;
         embedding_dim = meta.value("embedding_dim", 0);
@@ -195,6 +196,7 @@ void IndexManager::load()
                 );
             }
         }
+        SPDLOG_INFO("IndexManager: Загружено {} записей в id_to_chunk_map.", id_to_chunk_map.size());
     }
     catch (json::parse_error& e) {
         SPDLOG_ERROR("Error: Could not parse metadata file '{}'. Starting fresh. Error: {}", 
@@ -219,6 +221,7 @@ void IndexManager::load()
     index = std::make_unique<hnswlib::HierarchicalNSW<float>>(
         space.get(), current_max_elements, 16, 200, 100, true
     );
+    SPDLOG_INFO("IndexManager: Инициализация HNSWlib для загрузки.");
     SPDLOG_INFO("Загрузка бинарного индекса из '{}'...", hnswIndexPath);
     index->loadIndex(hnswIndexPath, space.get(), current_max_elements);
     SPDLOG_INFO("Загружено {} векторов из индекса.", index->cur_element_count.load());
@@ -228,16 +231,16 @@ void IndexManager::save()
 {
     std::lock_guard lock(mtx);
     if (!index || getEmbeddingCount() == 0) {
-        SPDLOG_INFO("Индекс пуст или не инициализирован, сохранение не требуется.");
+        SPDLOG_INFO("IndexManager: Индекс пуст или не инициализирован, сохранение не требуется. Удаляю старые файлы.");
         fs::remove(hnswIndexPath);
         fs::remove(metadataDbPath);
         return;
     }
 
-    SPDLOG_INFO("Сохранение индекса в бинарный файл: {}", hnswIndexPath);
+    SPDLOG_INFO("IndexManager: Сохранение HNSW индекса в бинарный файл: {}", hnswIndexPath);
     index->saveIndex(hnswIndexPath);
 
-    SPDLOG_INFO("Сохранение метаданных в: {}", metadataDbPath);
+    SPDLOG_INFO("IndexManager: Сохранение метаданных в: {}", metadataDbPath);
     std::ofstream metaFile(metadataDbPath);
     if (!metaFile.is_open()) {
         SPDLOG_ERROR("Error: Could not open metadata file '{}' for writing.", metadataDbPath);
@@ -259,5 +262,5 @@ void IndexManager::save()
     meta["id_to_chunk_map"] = id_map_json;
 
     metaFile << meta.dump(4, ' ', false, nlohmann::json::error_handler_t::replace);
-    SPDLOG_INFO("Сохранено {} записей в метаданные.", id_to_chunk_map.size());
+    SPDLOG_INFO("IndexManager: Сохранено {} записей в метаданные.", id_to_chunk_map.size());
 }

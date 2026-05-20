@@ -3,7 +3,7 @@
 #include <Windows.h>
 #endif
 
-#include "ContextIndexer.h"
+#include "ContextIndexer.h" // Теперь это наш фасад
 #include "AssistantRole.h"
 #include "WebSocketServer.h"
 #include <iostream>
@@ -11,6 +11,8 @@
 #include <string>
 #include <vector>
 #include <deque>
+#include <thread>
+#include <chrono>
 #include <locale>
 #include <unordered_set>
 #include <algorithm>
@@ -209,6 +211,10 @@ int main(int argc, char* argv[])
 
         // Запуск сервера (этот вызов блокирует выполнение)
         apiHandlers.start(projectDir);
+
+        // Небольшая задержка, чтобы дать время всем фоновым потокам (например, от httplib)
+        // корректно завершиться после вызова stop().
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
         SPDLOG_INFO("Server stopped.");
         std::cout << "\nСервер остановлен.\n";
