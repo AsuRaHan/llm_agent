@@ -2,30 +2,24 @@
 
 #include <string>
 #include <vector>
-#include <thread>
-#include <optional>
-
-#include <httplib.h>
-#include <nlohmann/json.hpp>
-
-#include "Config.h" // Include for ServerProperties and Config
+#include <memory>
+#include "LLMProvider.h"
+#include "Config.h"
 
 class EmbeddingClient
 {
 public:
-    explicit EmbeddingClient(const Config& config);
+    explicit EmbeddingClient(std::shared_ptr<LLMProvider> provider);
 
     /**
      * @brief Generates an embedding for the given text.
      * 
      * @param text The text to embed.
-     * @return std::vector<float> The embedding vector.
+     * @param filename The name of the file being embedded, for logging purposes.
+     * @return std::vector<float> The embedding vector, or an empty vector on failure.
      */
     std::vector<float> getEmbedding(const std::string& text, const std::string& filename);
-    std::optional<ServerProperties> fetchServerProperties() const;
 
 private:
-    const Config& config;
-    httplib::Client cli;
-    bool probeEmbeddingEndpoint() const;
+    std::shared_ptr<LLMProvider> llmProvider;
 };

@@ -8,17 +8,16 @@
 #include <algorithm>
 #include <regex>
 #include <iterator>
+#include <httplib.h> // Include httplib header
 
 using json = nlohmann::json;
+using namespace httplib;
 
-AssistantRole::AssistantRole(const Config& config) 
-    : config(config), 
-      cli(config.server_host, config.server_port),
+AssistantRole::AssistantRole(std::shared_ptr<LLMProvider> llmProvider, const Config& config) 
+    : llmProvider(llmProvider),
+      config(config),
       toolManager(std::make_unique<ToolManager>(config))
 {
-    // Устанавливаем таймауты. Connection - на установку соединения, read - на ожидание ответа.
-    cli.set_connection_timeout(10, 0); // 10 секунд на подключение
-    cli.set_read_timeout(config.chat_completion_timeout_sec, 0); // Таймаут на генерацию ответа моделью
 }
 
 // Destructor must be defined in the .cpp file where ToolManager is a complete type
@@ -186,49 +185,23 @@ AssistantResponse AssistantRole::processQuery(
         std::string body_str = body.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
 
         // 3. Call LLM
-        httplib::Result res;
-        for (int attempt = 1; attempt <= config.retry_count; ++attempt) {
-            res = cli.Post("/v1/chat/completions", headers, body_str, "application/json");
-            if (res) break;
-            SPDLOG_ERROR("Попытка {} из {} для генерации ответа не удалась. Ошибка соединения: {}. Повтор...",
-                        attempt, config.retry_count, httplib::to_string(res.error()));
-            std::this_thread::sleep_for(std::chrono::milliseconds(config.retry_delay_ms));
-        }
+        AssistantResponse llm_response = llmProvider->processChat(messages, toolManager->getToolsSpecification(), send_thought);
 
-        if (!res || res->status != 200) {
-            if (res) {
-                SPDLOG_ERROR("Ошибка от LLM. Статус: {}. Тело: {}", res->status, res->body);
-            } else {
-                SPDLOG_ERROR("Ошибка соединения с LLM: {}", httplib::to_string(res.error()));
-            }
+        if (llm_response.step_failed) {
             return {
                 .text = "",
                 .is_final = true,
                 .conversation_history = messages,
                 .step_failed = true,
-                .error_message = "Не удалось получить ответ от языковой модели (ошибка соединения или таймаут).",
+                .error_message = llm_response.error_message,
                 .recovery_options = {"retry"}
             };
         }
 
-        // 4. Process LLM response
-        json response_json;
-        try {
-            response_json = json::parse(res->body);
-        } catch (const json::exception& e) {
-            SPDLOG_ERROR("Не удалось разобрать JSON-ответ от LLM: {}. Тело: {}", e.what(), res->body);
-            return {
-                .text = "",
-                .is_final = true,
-                .conversation_history = messages,
-                .step_failed = true,
-                .error_message = "Не удалось обработать ответ модели (некорректный JSON): " + std::string(e.what()),
-                .recovery_options = {"retry"}
-            };
-        }
+        json response_json = llm_response.llm_response;
 
         if (!response_json.contains("choices") || response_json["choices"].empty()) {
-            SPDLOG_ERROR("Ответ LLM не содержит 'choices'. Тело: {}", res->body);
+            SPDLOG_ERROR("Ответ LLM не содержит 'choices'. Тело: {}", response_json.dump(2));
             return {
                 .text = "",
                 .is_final = true,
@@ -399,23 +372,16 @@ AssistantResponse AssistantRole::processQuery(
     }
 
     // Make one last call to the LLM
-    auto final_res = cli.Post("/v1/chat/completions", headers, final_body.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace), "application/json");
+    auto final_llm_response = llmProvider->processChat(messages, json::array(), send_thought);
 
-    if (final_res && final_res->status == 200) {
-        try {
-            json final_response_json = json::parse(final_res->body);
-            if (final_response_json.contains("choices") && !final_response_json["choices"].empty()) {
-                std::string final_text = final_response_json["choices"][0]["message"]["content"];
-                messages.push_back({{"role", "assistant"}, {"content", final_text}});
-                return {
-                    .text = final_text, 
-                    .is_final = true, 
-                    .conversation_history = messages
-                };
-            }
-        } catch (const json::exception& e) {
-            SPDLOG_ERROR("Не удалось разобрать финальный JSON-ответ от LLM: {}", e.what());
-        }
+    if (!final_llm_response.step_failed && final_llm_response.llm_response.contains("choices") && !final_llm_response.llm_response["choices"].empty()) {
+        std::string final_text = final_llm_response.llm_response["choices"][0]["message"]["content"];
+        messages.push_back({{"role", "assistant"}, {"content", final_text}});
+        return {
+            .text = final_text, 
+            .is_final = true, 
+            .conversation_history = messages
+        };
     }
 
     return {
@@ -428,111 +394,7 @@ AssistantResponse AssistantRole::processQuery(
     };
 }
 
-std::string AssistantRole::generateProjectSummaryGreeting(int file_count, int embedding_count) {
-    SPDLOG_INFO("Генерация приветственного сообщения о проекте...");
 
-    // std::string prompt_text = 
-    //     "Ты — остроумный и дружелюбный ИИ-ассистент для программиста. Тебя называют «Smart Hammer». Ты только что закончил "
-    //     "сканирование его проекта. Ты проиндексировал " + std::to_string(file_count) + 
-    //     " файлов и создал " + std::to_string(embedding_count) + 
-    //     " смысловых 'воспоминаний' (эмбеддингов). Твоя задача — сгенерировать короткое, "
-    //     "креативное и ободряющее приветственное сообщение для разработчика. Дай ему понять, "
-    //     "что ты в сети и готов помочь разобраться в коде. Не просто констатируй факты, "
-    //     "прояви немного индивидуальности. Говори от первого лица.";
-
-    // json body = {
-    //     {"messages", json::array({
-    //         { {"role", "system"}, {"content", "Ты — полезный ИИ-ассистент."} },
-    //         { {"role", "user"}, {"content", prompt_text} }
-    //     })},
-    //     {"model", config.chat_model_name},
-    //     {"temperature", 0.7} // A bit more creative
-    // };
-
-    // httplib::Headers headers;
-    // if (!config.api_key.empty()) {
-    //     headers.emplace("Authorization", "Bearer " + config.api_key);
-    // }
-    // std::string body_str = body.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
-
-    // httplib::Result res;
-    // // Using a simplified retry logic for this non-critical call
-    // for (int attempt = 1; attempt <= config.retry_count; ++attempt) {
-    //     res = cli.Post("/v1/chat/completions", headers, body_str, "application/json");
-    //     if (res) break;
-    //     std::this_thread::sleep_for(std::chrono::milliseconds(config.retry_delay_ms));
-    // }
-
-    // if (res && res->status == 200) {
-    //     try {
-    //         auto json_body = json::parse(res->body);
-    //         if (json_body.contains("choices") && !json_body["choices"].empty()) {
-    //             return json_body["choices"][0]["message"]["content"].get<std::string>();
-    //         }
-    //     } catch (const json::exception& e) {
-    //         SPDLOG_ERROR("Не удалось разобрать ответ для приветствия: {}", e.what());
-    //     }
-    // }
-    
-    // Fallback message if AI fails
-    return "Привет! Я просканировал твой проект. Готов отвечать на вопросы.";
-}
-
-std::string AssistantRole::generateChunkSummary(const std::string& codeChunk, const std::string& chunkName) {
-    SPDLOG_DEBUG("Запрос на генерацию саммари для чанка '{}'...", chunkName);
-
-    std::string system_prompt =
-        "Твоя задача — создать очень короткое, лаконичное саммари (одно два предложения) для предоставленного фрагмента кода. "
-        "Саммари должно описывать основное назначение или действие этого кода. "
-        "Отвечай только текстом саммари, без лишних слов и преамбул.";
-
-    std::string user_prompt = "Создай саммари для этого кода:\n```\n" + codeChunk + "\n```";
-
-    json body = {
-        {"messages", json::array({
-            { {"role", "system"}, {"content", system_prompt} },
-            { {"role", "user"}, {"content", user_prompt} }
-        })},
-        {"model", config.chat_model_name},
-        {"temperature", 0.0}, // Factual summary
-        {"max_tokens", 200}   // Limit response size
-    };
-
-    httplib::Headers headers;
-    if (!config.api_key.empty()) {
-        headers.emplace("Authorization", "Bearer " + config.api_key);
-    }
-    std::string body_str = body.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
-
-    httplib::Result res;
-    for (int attempt = 1; attempt <= config.retry_count; ++attempt) {
-        res = cli.Post("/v1/chat/completions", headers, body_str, "application/json");
-        if (res) break;
-        SPDLOG_WARN("Попытка {}/{} для саммари '{}' не удалась. Ошибка соединения: {}. Повтор...",
-                    attempt, config.retry_count, chunkName, httplib::to_string(res.error()));
-        std::this_thread::sleep_for(std::chrono::milliseconds(config.retry_delay_ms));
-    }
-
-    if (res && res->status == 200) {
-        try {
-            auto json_body = json::parse(res->body);
-            if (json_body.contains("choices") && !json_body["choices"].empty()) {
-                std::string summary = json_body["choices"][0]["message"]["content"].get<std::string>();
-                // Clean up summary: remove quotes and newlines
-                summary.erase(std::remove(summary.begin(), summary.end(), '\"'), summary.end());
-                summary.erase(std::remove(summary.begin(), summary.end(), '\n'), summary.end());
-                summary.erase(std::remove(summary.begin(), summary.end(), '\r'), summary.end());
-                SPDLOG_DEBUG("Саммари для '{}': {}", chunkName, summary);
-                return summary;
-            }
-        } catch (const json::exception& e) {
-            SPDLOG_ERROR("Не удалось разобрать ответ для саммари '{}': {}", chunkName, e.what());
-        }
-    }
-
-    SPDLOG_WARN("Не удалось сгенерировать саммари для '{}'. Будет использован пустой текст.", chunkName);
-    return ""; // Return empty string on failure
-}
 
 nlohmann::json AssistantRole::parsePlanFromMarkdown(const std::string& text) {
     // Regex to find a JSON object within markdown code fences (```json ... ``` or ``` ... ```)
@@ -565,58 +427,14 @@ nlohmann::json AssistantRole::parsePlanFromMarkdown(const std::string& text) {
 nlohmann::json AssistantRole::generatePlan(const std::string& user_query) {
     SPDLOG_INFO("Генерация плана для запроса: '{}'", user_query);
 
-    std::string system_prompt_text =
-        "Ты — AI-архитектор Smart Hammer. Твоя задача — разбить задачу пользователя на "
-        "минимальные атомарные шаги. Каждый шаг должен выполняться за один-два вызова инструментов.\n"
-        "Выдай ответ СТРОГО в формате JSON-объекта с ключом 'plan', который содержит массив строк. "
-        "Не добавляй никакого другого текста или markdown-разметки.\n"
-        "Пример: {\"plan\": [\"Изучить структуру файла CodeParser.cpp\", \"Найти утечки памяти\", \"Применить diff-патч\"]}";
+    json response_json = llmProvider->generatePlan(user_query);
 
-    json messages = {
-        {{"role", "system"}, {"content", system_prompt_text}},
-        {{"role", "user"}, {"content", "Задача: " + user_query}}
-    };
-
-    json body = {
-        {"messages", messages},
-        {"model", config.chat_model_name},
-        {"temperature", 0.0}, // We want a deterministic plan
-        // Request JSON output format from the model
-        {"response_format", { {"type", "json_object"} }}
-    };
-
-    httplib::Headers headers;
-    if (!config.api_key.empty()) {
-        headers.emplace("Authorization", "Bearer " + config.api_key);
+    if (response_json.contains("error")) {
+        SPDLOG_ERROR("Не удалось сгенерировать план: {}", response_json["error"].get<std::string>());
+        return json::array({"Ошибка: " + response_json["error"].get<std::string>()});
     }
-    std::string body_str = body.dump(-1, ' ', false, json::error_handler_t::replace);
-
-    httplib::Result res;
-    for (int attempt = 1; attempt <= config.retry_count; ++attempt) {
-        res = cli.Post("/v1/chat/completions", headers, body_str, "application/json");
-        if (res) break;
-        SPDLOG_ERROR("Попытка {} из {} для генерации плана не удалась. Ошибка соединения: {}. Повтор...",
-                    attempt, config.retry_count, httplib::to_string(res.error()));
-        std::this_thread::sleep_for(std::chrono::milliseconds(config.retry_delay_ms));
-    }
-
-    if (!res || res->status != 200) {
-        if (res) {
-            SPDLOG_ERROR("Ошибка от LLM при генерации плана. Статус: {}. Тело: {}", res->status, res->body);
-        } else {
-            SPDLOG_ERROR("Ошибка соединения с LLM при генерации плана: {}", httplib::to_string(res.error()));
-        }
-        return json::array({"Ошибка: не удалось сгенерировать план."});
-    }
-
-    std::string content;
-    try {
-        json response_json = json::parse(res->body);
-        content = response_json["choices"][0]["message"]["content"];
-    } catch (const json::exception& e) {
-        SPDLOG_ERROR("Не удалось разобрать основной JSON-ответ от LLM: {}", e.what());
-        return json::array({"Ошибка: модель вернула некорректный JSON."});
-    }
+    
+    std::string content = response_json["choices"][0]["message"]["content"];
 
     json plan_json = parsePlanFromMarkdown(content);
     if (plan_json.is_object() && plan_json.contains("plan") && plan_json["plan"].is_array()) {

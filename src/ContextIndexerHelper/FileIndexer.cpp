@@ -15,8 +15,10 @@ using json = nlohmann::json;
 FileIndexer::FileIndexer(
     const Config& config,
     IndexManager& indexManager,
-    EmbeddingClient& embeddingClient)
+    EmbeddingClient& embeddingClient,
+    std::shared_ptr<LLMProvider> provider)
     : config(config), indexManager(indexManager), embeddingClient(embeddingClient),
+      llmProvider(provider),
       fileIndexerMetadataPath(".shdata/file_indexer_meta.json") // Инициализация пути
 {
     ignoredDirectories.insert(config.ignored_directories.begin(), config.ignored_directories.end());
@@ -25,9 +27,6 @@ FileIndexer::FileIndexer(
 
     if (config.chunking_strategy == "tree-sitter" || config.chunking_strategy == "tree-sitter-hybrid") {
         codeParser = std::make_unique<CodeParser>(config);
-    }
-    if (config.chunking_strategy == "tree-sitter-hybrid") {
-        summarizerAssistant = std::make_unique<AssistantRole>(config);
     }
 
     SPDLOG_INFO("FileIndexer инициализирован.");
@@ -206,8 +205,8 @@ std::vector<ChunkToAdd> FileIndexer::processFileChunks(const std::string& path)
             std::string chunkName = path + " [#chunk " + std::to_string(i) + "]";
             std::string text_for_embedding = chunk.text;
 
-            if (config.chunking_strategy == "tree-sitter-hybrid" && summarizerAssistant) {
-                std::string summary = summarizerAssistant->generateChunkSummary(chunk.text, chunkName);
+            if (config.chunking_strategy == "tree-sitter-hybrid" && llmProvider) {
+                std::string summary = llmProvider->generateChunkSummary(chunk.text, chunkName);
                 text_for_embedding = "[SUMMARY]: " + summary + "\n[CODE]:\n" + chunk.text;
             }
 

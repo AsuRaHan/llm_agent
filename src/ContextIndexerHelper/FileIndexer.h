@@ -3,18 +3,15 @@
 #include <string>
 #include <vector>
 #include <unordered_set>
-#include <unordered_map>
-#include <filesystem>
-#include <mutex>
-
 #include "IndexManager.h"
+#include "ChunkerStrategy.h"
+#include "CodeParser.h"
 #include "ChunkerStrategy.h"
 
 namespace fs = std::filesystem;
 
-class CodeParser;
 class EmbeddingClient;
-class AssistantRole;
+class LLMProvider;
 struct Config;
 
 /**
@@ -52,7 +49,8 @@ public:
     explicit FileIndexer(
         const Config& config,
         IndexManager& indexManager,
-        EmbeddingClient& embeddingClient
+        EmbeddingClient& embeddingClient,
+        std::shared_ptr<LLMProvider> provider
     );
     ~FileIndexer();
 
@@ -109,7 +107,7 @@ private:
     IndexManager& indexManager;
     EmbeddingClient& embeddingClient;
     std::unique_ptr<CodeParser> codeParser;
-    std::unique_ptr<AssistantRole> summarizerAssistant;
+    std::shared_ptr<LLMProvider> llmProvider;
 
     std::unordered_set<std::string> ignoredDirectories;
     std::unordered_set<std::string> ignoredExtensions;

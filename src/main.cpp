@@ -22,6 +22,8 @@
 #include "FileWatcher.h"
 #include "ApiHandlers.h"
 #include "EmbeddingClient.h"
+#include "OpenAIProvider.h"
+#include "httplib.h"
 
 // Глобальный указатель на обработчик API для доступа из обработчика сигналов
 // Это необходимо, чтобы мы могли вызвать stop() из статического контекста.
@@ -112,12 +114,84 @@ bool initializeApplication(const std::string& projectDir, Config& outConfig)
 }
 
 
+// ============================================================================
+// Server-side helper functions
+// ============================================================================
+bool probeEmbeddingEndpoint(const Config& config) {
+    SPDLOG_DEBUG("Проверка эндпоинта /v1/embeddings...");
+    httplib::Client probe_cli(config.server_host, config.server_port);
+    probe_cli.set_connection_timeout(2, 0);
+
+    auto res = probe_cli.Post("/v1/embeddings", "{}", "application/json");
+
+    if (!res) {
+        SPDLOG_WARN("Проверка не удалась: не удалось подключиться к эндпоинту /v1/embeddings. Ошибка: {}", httplib::to_string(res.error()));
+        return false;
+    }
+
+    if (res->status == 404) {
+        SPDLOG_WARN("Проверка не удалась: эндпоинт /v1/embeddings не найден (сервер вернул 404).");
+        return false;
+    }
+    
+    SPDLOG_DEBUG("Проверка успешна: эндпоинт /v1/embeddings существует (сервер ответил статусом {}).", res->status);
+    return true;
+}
+
+std::optional<ServerProperties> fetchServerProperties(const Config& config) {
+    SPDLOG_INFO("Получение свойств с сервера LLM на {}:{}...", config.server_host, config.server_port);
+    
+    httplib::Client temp_cli(config.server_host, config.server_port);
+    temp_cli.set_connection_timeout(5, 0);
+    temp_cli.set_read_timeout(10, 0);
+
+    httplib::Headers headers;
+    if (!config.api_key.empty()) {
+        headers.emplace("Authorization", "Bearer " + config.api_key);
+    }
+
+    auto res = temp_cli.Get("/props", headers);
+
+    if (!res) {
+        SPDLOG_CRITICAL("Не удалось подключиться к серверу LLM для получения свойств. Ошибка: {}", httplib::to_string(res.error()));
+        return std::nullopt;
+    }
+
+    if (res->status != 200) {
+        SPDLOG_CRITICAL("Сервер LLM ответил ошибкой на запрос /props. Статус: {}.", res->status);
+        return std::nullopt;
+    }
+
+    try {
+        using json = nlohmann::json;
+        json body = json::parse(res->body);
+        ServerProperties props;
+
+        props.model_path = body.value("model_path", "unknown");
+        props.chat_template = body.value("chat_template", "");
+        props.context_size = body.value("default_generation_settings", json::object()).value("n_ctx", body.value("context_size", 4096));
+        props.embedding_enabled = body.value("embedding", probeEmbeddingEndpoint(config));
+
+        SPDLOG_INFO("Свойства сервера успешно получены:");
+        SPDLOG_INFO("  - Модель: {}", props.model_path);
+        SPDLOG_INFO("  - Шаблон чата: '{}'", props.chat_template.empty() ? "не указан" : props.chat_template);
+        SPDLOG_INFO("  - Размер контекста: {}", props.context_size);
+        SPDLOG_INFO("  - Поддержка эмбеддингов: {}", props.embedding_enabled ? "Да" : "Нет");
+
+        return props;
+    } catch (const nlohmann::json::exception& e) {
+        SPDLOG_CRITICAL("Не удалось разобрать JSON-ответ от /props: {}", e.what());
+        return std::nullopt;
+    }
+}
+
+
 /// Индексирует директорию проекта и возвращает заполненный ContextIndexer
 /// Возвращает nullptr при ошибке
-std::unique_ptr<ContextIndexer> indexProject(const std::string& projectDir, const Config& config)
+std::unique_ptr<ContextIndexer> indexProject(const std::string& projectDir, const Config& config, std::shared_ptr<LLMProvider> provider)
 {
     try {
-        auto indexer = std::make_unique<ContextIndexer>(config);
+        auto indexer = std::make_unique<ContextIndexer>(provider, config);
         
         SPDLOG_INFO("Запуск индексирования проекта...");
         indexer->indexDirectory(projectDir);
@@ -151,8 +225,7 @@ int main(int argc, char* argv[])
         }
 
         // ====== Проверка совместимости с LLM сервером ======
-        EmbeddingClient conn_checker(config);
-        auto server_props_opt = conn_checker.fetchServerProperties();
+        auto server_props_opt = fetchServerProperties(config);
 
         if (!server_props_opt) {
             SPDLOG_CRITICAL("Не удалось получить свойства с LLM сервера. Проверьте, что сервер запущен и доступен.");
@@ -162,9 +235,12 @@ int main(int argc, char* argv[])
             SPDLOG_CRITICAL("Сервер LLM запущен без поддержки эмбеддингов (флаг --embedding). Агент не может работать без этой функции. Завершение работы.");
             return 1;
         }
+        
+        // ====== Создание LLM провайдера ======
+        auto llmProvider = std::make_shared<OpenAIProvider>(config);
 
         // ====== Индексирование проекта ======
-        auto indexer = indexProject(projectDir, config);
+        auto indexer = indexProject(projectDir, config, llmProvider);
         if (!indexer) {
             return 1;
         }
@@ -176,10 +252,6 @@ int main(int argc, char* argv[])
         }
 
         SPDLOG_INFO("Запуск Agent...");
-
-
-        // ====== Создание ассистента ======
-        auto assistant = std::make_shared<AssistantRole>(config);
 
         // ====== Запуск в режиме веб-сервера ======
         SPDLOG_INFO("Запуск в режиме веб-сервера...");
@@ -203,8 +275,7 @@ int main(int argc, char* argv[])
         std::cout << "\nНажмите Ctrl+C для остановки сервера.\n\n";
 
         // Создание и инициализация обработчиков API.
-        // ApiHandlers будет владеть сервером и управлять жизненным циклом WebSocketServer.
-        ApiHandlers apiHandlers(config, *assistant, *indexer);
+        ApiHandlers apiHandlers(llmProvider, config, *indexer);
         
         // Сохраняем указатель для глобального доступа из обработчика сигналов
         g_apiHandlers = &apiHandlers;
