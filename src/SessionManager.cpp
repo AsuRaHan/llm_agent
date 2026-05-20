@@ -28,7 +28,7 @@ std::shared_ptr<UserSession> SessionManager::getSession(const std::string& sessi
     auto newSession = std::make_shared<UserSession>();
     newSession->id = sessionId;
     sessions_[sessionId] = newSession;
-    saveSessions(); // Сохраняем сессии сразу после создания новой
+    saveSessions_nolock(); // Сохраняем сессии сразу после создания новой, без повторной блокировки
     return newSession;
 }
 
@@ -39,12 +39,13 @@ void SessionManager::clearSession(const std::string& sessionId) {
         SPDLOG_INFO("Очистка истории для сессии: {}", sessionId);
         it->second->history = nlohmann::json::array();
         // Статус и другие поля сессии сбрасываются в WebSocketServer, чтобы корректно управлять состоянием (например, FileWatcher)
-        saveSessions(); // Сохраняем сессии после очистки
+        saveSessions_nolock(); // Сохраняем сессии после очистки, без повторной блокировки
     }
 }
 
-void SessionManager::saveSessions() {
-    std::lock_guard<std::mutex> lock(mutex_);
+// Приватный метод, который выполняет сохранение без блокировки мьютекса.
+// Вызывается из публичных методов, которые уже захватили блокировку.
+void SessionManager::saveSessions_nolock() {
     if (sessions_.empty()) {
         if (std::filesystem::exists(session_db_path)) {
             std::filesystem::remove(session_db_path);
@@ -52,12 +53,12 @@ void SessionManager::saveSessions() {
         }
         return;
     }
-
+    
     json data;
     for (const auto& [id, session_ptr] : sessions_) {
         data[id] = *session_ptr;
     }
-
+    
     try {
         std::ofstream f(session_db_path);
         f << data.dump(4);
@@ -67,11 +68,29 @@ void SessionManager::saveSessions() {
     }
 }
 
+void SessionManager::saveSessions() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    saveSessions_nolock();
+}
+
 void SessionManager::loadSessions() {
     std::lock_guard<std::mutex> lock(mutex_);
+
+    // 1. Явная проверка на существование файла
+    if (!std::filesystem::exists(session_db_path)) {
+        SPDLOG_INFO("Файл сессий '{}' не найден. Будет создан новый при необходимости.", session_db_path);
+        return;
+    }
+
     std::ifstream f(session_db_path);
     if (!f.is_open()) {
-        SPDLOG_INFO("Файл сессий '{}' не найден. Будет создан новый при завершении работы.", session_db_path);
+        SPDLOG_ERROR("Файл сессий '{}' существует, но не может быть открыт для чтения (проверьте права доступа).", session_db_path);
+        return;
+    }
+
+    // 2. Проверка на пустой файл, чтобы избежать ошибки парсинга
+    if (f.peek() == std::ifstream::traits_type::eof()) {
+        SPDLOG_INFO("Файл сессий '{}' пуст. Загрузка пропущена.", session_db_path);
         return;
     }
 
@@ -83,6 +102,9 @@ void SessionManager::loadSessions() {
             // Сбрасываем статус в IDLE, чтобы избежать зависания.
             session->status = AgentStatus::IDLE;
             session->pending_tool_call = nullptr;
+            session->plan_steps = nlohmann::json::array();
+            session->current_plan_step = -1;
+            session->original_user_query = "";
             sessions_[id] = session;
         }
         SPDLOG_INFO("Загружено {} сессий из '{}'.", sessions_.size(), session_db_path);
@@ -90,3 +112,4 @@ void SessionManager::loadSessions() {
         SPDLOG_ERROR("Ошибка парсинга файла сессий '{}': {}", session_db_path, e.what());
     }
 }
+
