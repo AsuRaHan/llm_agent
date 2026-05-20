@@ -19,6 +19,7 @@
 #include "Logger.h"
 #include "FileWatcher.h"
 #include "ApiHandlers.h"
+#include "EmbeddingClient.h"
 
 // Глобальный указатель на обработчик API для доступа из обработчика сигналов
 // Это необходимо, чтобы мы могли вызвать stop() из статического контекста.

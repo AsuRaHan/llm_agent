@@ -190,6 +190,11 @@ add_executable(Agent
       src/ApiHandlers.cpp
       src/SessionManager.cpp
       src/ContextIndexer.cpp
+      src/ContextIndexerHelper/FileReader.cpp
+      src/ContextIndexerHelper/ChunkerStrategy.cpp
+      src/ContextIndexerHelper/IndexManager.cpp
+      src/ContextIndexerHelper/Searcher.cpp
+      src/ContextIndexerHelper/FileIndexer.cpp
       src/EmbeddingClient.cpp
       src/AssistantRole.cpp
       src/Logger.cpp
@@ -234,6 +239,7 @@ target_include_directories(Agent PUBLIC
   # Add src directory to includes to find headers in subdirectories like `tools`
   ${CMAKE_CURRENT_SOURCE_DIR}/src
   ${CMAKE_CURRENT_SOURCE_DIR}/src/tools
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/ContextIndexerHelper
   $<BUILD_INTERFACE:${spdlog_SOURCE_DIR}/include>
   $<BUILD_INTERFACE:${hnswlib_SOURCE_DIR}>
   $<BUILD_INTERFACE:${tree_sitter_core_SOURCE_DIR}/lib/include> # Заголовочные файлы Tree-sitter core
