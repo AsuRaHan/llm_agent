@@ -16,6 +16,7 @@ public:
     void loadSessions();
 private:
 
+    void saveSessions_nolock();
 
     const std::string session_db_path = ".shdata/sessions.json";
     std::mutex mutex_;
