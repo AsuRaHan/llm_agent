@@ -1,5 +1,16 @@
+/**
+ * doc.js - Загрузка и отображение документации
+ * 
+ * @module doc/doc
+ */
+
 document.addEventListener('DOMContentLoaded', () => {
     const contentDiv = document.getElementById('content');
+
+    // Инициализация MessageRenderer
+    const messageRenderer = new MessageRenderer({
+        useMarkdown: true
+    });
 
     // Загружаем markdown файл из корня проекта
     fetch('/doc.md')
@@ -10,7 +21,9 @@ document.addEventListener('DOMContentLoaded', () => {
             return response.text();
         })
         .then(markdown => {
-            contentDiv.innerHTML = marked.parse(markdown);
+            // Используем marked для парсинга
+            const rawHtml = marked.parse(markdown);
+            contentDiv.innerHTML = rawHtml;
         })
         .catch(error => {
             console.error('Error fetching or parsing documentation:', error);

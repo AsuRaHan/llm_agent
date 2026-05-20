@@ -7,11 +7,12 @@
 #include "SessionManager.h"
 #include "WebSocketServer.h"
 #include "FileWatcher.h"
+#include "LLMProvider.h"
 #include <memory>
 
 class ApiHandlers {
 public:
-    ApiHandlers(const Config& config, AssistantRole& assistant, ContextIndexer& indexer);
+    ApiHandlers(std::shared_ptr<LLMProvider> provider, const Config& config, ContextIndexer& indexer);
     void start(const std::string& projectDir);
     void stop();
     ~ApiHandlers();
@@ -22,7 +23,7 @@ private:
     const Config& config;
     httplib::Server svr;
     
-    AssistantRole& assistant;
+    std::shared_ptr<AssistantRole> assistant;
     ContextIndexer& indexer;
     SessionManager sessionManager;
     WebSocketServer webSocketServer;

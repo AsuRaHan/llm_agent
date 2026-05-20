@@ -1,15 +1,14 @@
 #include "ContextIndexer.h"
 #include "Logger.h"
 
-ContextIndexer::ContextIndexer(const Config& config)
-    : config(config),
-      embeddingClient(config), // Инициализируем EmbeddingClient первым
-      indexManager(".shdata/index_meta.json", ".shdata/index.bin"), // Инициализируем IndexManager
-      fileIndexer(config, indexManager, embeddingClient), // Передаем IndexManager по ссылке
-      searcher(indexManager, embeddingClient) // Передаем IndexManager по ссылке
+ContextIndexer::ContextIndexer(std::shared_ptr<LLMProvider> provider, const Config& config)
+    : embeddingClient(provider),
+      indexManager(".shdata/index_meta.json", ".shdata/index.bin"),
+      fileIndexer(config, indexManager, embeddingClient, provider),
+      searcher(indexManager, embeddingClient)
 {
     SPDLOG_INFO("ContextIndexer инициализирован.");
-    loadIndex(); // Загружаем данные IndexManager и FileIndexer
+    loadIndex();
 }
 
 ContextIndexer::~ContextIndexer() {

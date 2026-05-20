@@ -5,34 +5,33 @@
 #include "ContextIndexerHelper/IndexManager.h"
 #include "ContextIndexerHelper/FileIndexer.h"
 #include "ContextIndexerHelper/Searcher.h"
+#include "LLMProvider.h"
 #include <memory>
 #include <filesystem>
 
 class ContextIndexer {
 public:
-    ContextIndexer(const Config& config);
+    ContextIndexer(std::shared_ptr<LLMProvider> provider, const Config& config);
     ~ContextIndexer();
 
     void indexDirectory(const std::filesystem::path& directoryPath);
-    void reindexFile(const std::string& path); // Делегировано от FileIndexer
-    void removeFileFromIndex(const std::string& path); // Делегировано от FileIndexer
+    void reindexFile(const std::string& path);
+    void removeFileFromIndex(const std::string& path);
 
-    void saveIndex(); // Делегирует IndexManager и FileIndexer
-    void loadIndex(); // Делегирует IndexManager и FileIndexer
+    void saveIndex();
+    void loadIndex();
 
     int getEmbeddingsCount() const;
     int getFileCount() const;
 
-    // Предоставляет доступ к Searcher для внешнего использования (например, ApiHandlers)
     Searcher& getSearcher() { return searcher; }
-    FileIndexer& getFileIndexer() { return fileIndexer; } // Для FileWatcher для взаимодействия
-    IndexManager& getIndexManager() { return indexManager; } // Для Searcher для получения данных по метке
-    EmbeddingClient& getEmbeddingClient() { return embeddingClient; } // Для Searcher для получения эмбеддингов запроса
+    FileIndexer& getFileIndexer() { return fileIndexer; }
+    IndexManager& getIndexManager() { return indexManager; }
+    EmbeddingClient& getEmbeddingClient() { return embeddingClient; }
 
 private:
-    const Config& config;
-    EmbeddingClient embeddingClient; // Должен быть инициализирован первым
-    IndexManager indexManager;       // Владеет HNSW индексом и картой ID
-    FileIndexer fileIndexer;         // Владеет метаданными файла (пути, last_write_time, chunk_ids)
-    Searcher searcher;               // Выполняет операции поиска
+    EmbeddingClient embeddingClient;
+    IndexManager indexManager;
+    FileIndexer fileIndexer;
+    Searcher searcher;
 };

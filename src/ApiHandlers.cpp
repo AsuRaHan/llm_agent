@@ -3,12 +3,12 @@
 #include <fstream>
 #include <sstream>
 
-ApiHandlers::ApiHandlers(const Config& config, AssistantRole& assistant, ContextIndexer& indexer)
+ApiHandlers::ApiHandlers(std::shared_ptr<LLMProvider> provider, const Config& config, ContextIndexer& indexer)
     : config(config),
-      assistant(assistant),
+      assistant(std::make_shared<AssistantRole>(provider, config)),
       indexer(indexer),
       sessionManager(),
-      webSocketServer(config, assistant, indexer, sessionManager),
+      webSocketServer(config, *assistant, indexer, sessionManager),
       fileWatcher(indexer)
 {
     // "Знакомим" компоненты друг с другом через колбэки, чтобы избежать циклических зависимостей
@@ -57,7 +57,7 @@ void ApiHandlers::setupRoutes() {
 }
 
 void ApiHandlers::start(const std::string& projectDir) {
-    // fileWatcher.start(projectDir);
+    fileWatcher.start(projectDir);
     SPDLOG_INFO("Запуск веб-сервера на {}:{}", config.web_server_host, config.web_server_port);
     svr.listen(config.web_server_host.c_str(), config.web_server_port);
     SPDLOG_INFO("Веб-сервер остановлен.");
@@ -66,7 +66,7 @@ void ApiHandlers::start(const std::string& projectDir) {
 void ApiHandlers::stop() {
     // Проверяем, запущен ли сервер, чтобы избежать ошибок при повторном вызове
     if (svr.is_running()) {
-        // fileWatcher.stop();
+        fileWatcher.stop();
         svr.stop();
     }
 }
