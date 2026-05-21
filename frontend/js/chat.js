@@ -4,6 +4,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const messageInput = document.getElementById('message-input');
     const sendButton = document.getElementById('send-button');
     const clearHistoryButton = document.getElementById('clear-history-button');
+    const autoConfirmButton = document.getElementById('auto-confirm-button');
     const connectionStatus = document.getElementById('connection-status');
     const fileWatcherStatus = document.getElementById('file-watcher-status');
     const freezeWatcherButton = document.getElementById('freeze-watcher-button');
@@ -14,6 +15,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let socket;
     let sessionId = localStorage.getItem('sessionId');
     let isWatcherFrozen = false;
+    let isAutoConfirmEnabled = false;
 
     if (!sessionId) {
         sessionId = 'sess_' + Math.random().toString(36).substr(2, 9);
@@ -187,17 +189,48 @@ document.addEventListener('DOMContentLoaded', () => {
         widgetElement.querySelector('[data-role="tool-call-json"]').textContent = JSON.stringify(toolCall.function, null, 2);
 
         const yesButton = widgetElement.querySelector('[data-role="yes-button"]');
-        yesButton.onclick = () => {
+        const noButton = widgetElement.querySelector('[data-role="no-button"]');
+        let autoConfirmTimer = null;
+
+        const executeYesAction = () => {
+            if (autoConfirmTimer) {
+                clearInterval(autoConfirmTimer);
+            }
             socket.send(JSON.stringify({ type: 'confirm_action', session_id: sessionId, data: { confirmed: true } }));
             widgetElement.remove();
             showAgentThought('Выполняю подтвержденное действие...');
         };
 
-        const noButton = widgetElement.querySelector('[data-role="no-button"]');
-        noButton.onclick = () => {
-            socket.send(JSON.stringify({ type: 'confirm_action', session_id: sessionId, data: { confirmed: false } }));
-            widgetElement.remove();
-        };
+        if (isAutoConfirmEnabled) {
+            const countdownElement = document.createElement('span');
+            countdownElement.className = 'text-xs text-gray-400 ml-3';
+            let countdown = 3;
+            countdownElement.textContent = `(авто-подтверждение через ${countdown}...)`;
+            noButton.parentElement.appendChild(countdownElement);
+
+            autoConfirmTimer = setInterval(() => {
+                countdown--;
+                countdownElement.textContent = `(авто-подтверждение через ${countdown}...)`;
+                if (countdown <= 0) {
+                    executeYesAction();
+                }
+            }, 1000);
+
+            yesButton.onclick = executeYesAction;
+            noButton.textContent = 'Отменить';
+            noButton.onclick = () => {
+                clearInterval(autoConfirmTimer);
+                socket.send(JSON.stringify({ type: 'confirm_action', session_id: sessionId, data: { confirmed: false } }));
+                widgetElement.remove();
+            };
+
+        } else {
+            yesButton.onclick = executeYesAction;
+            noButton.onclick = () => {
+                socket.send(JSON.stringify({ type: 'confirm_action', session_id: sessionId, data: { confirmed: false } }));
+                widgetElement.remove();
+            };
+        }
 
         messageList.appendChild(widgetElement);
         messageList.scrollTop = messageList.scrollHeight;
@@ -410,6 +443,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 sendMessage(true);
             } else {
                 alert('Пожалуйста, введите задачу перед запуском планирования.');
+            }
+        });
+    }
+
+    if (autoConfirmButton) {
+        autoConfirmButton.addEventListener('click', () => {
+            isAutoConfirmEnabled = !isAutoConfirmEnabled;
+            if (isAutoConfirmEnabled) {
+                autoConfirmButton.classList.add('active');
+                autoConfirmButton.title = 'Авто-подтверждение включено';
+            } else {
+                autoConfirmButton.classList.remove('active');
+                autoConfirmButton.title = 'Авто-подтверждение выключено';
             }
         });
     }

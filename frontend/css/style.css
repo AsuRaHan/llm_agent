@@ -85,6 +85,11 @@ body {
     opacity: 1;
 }
 
+.header-btn.active {
+    color: #2ecc71; /* A green color to indicate it's active */
+    opacity: 1;
+}
+
 /* FileWatcher status indicator */
 .file-watcher-status {
     display: flex;

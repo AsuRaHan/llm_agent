@@ -61,11 +61,11 @@ bool initializeDataDirectory(const std::string& projectDir)
         }
         
         // Проверка наличия config.json
-        std::string configPath = fs::path(fullDataPath).append("config.json").string();
-        if (!fs::exists(configPath)) {
-            SPDLOG_WARN("Файл конфигурации не найден: {}", configPath);
-            return false;
-        }
+        // std::string configPath = fs::path(fullDataPath).append("config.json").string();
+        // if (!fs::exists(configPath)) {
+        //     SPDLOG_WARN("Файл конфигурации не найден: {}", configPath);
+        //     return false;
+        // }
         
         return true;
     } catch (const fs::filesystem_error& e) {
