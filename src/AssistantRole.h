@@ -24,7 +24,8 @@ public:
         const std::vector<SearchResult>& initialContext,
         ContextIndexer& indexer,
         const nlohmann::json& continuation_history,
-        const std::function<void(const std::string&)>& send_thought
+        const std::function<void(const std::string&)>& send_thought,
+        const std::function<void(const std::string&)>& send_stream_chunk
     );
 
     nlohmann::json generatePlan(const std::string& user_query);

@@ -17,6 +17,10 @@ document.addEventListener('DOMContentLoaded', () => {
     let isWatcherFrozen = false;
     let isAutoConfirmEnabled = false;
 
+    // Состояние для потоковой передачи ответа
+    let streamingMessageElement = null;
+    let accumulatedStreamText = '';
+
     if (!sessionId) {
         sessionId = 'sess_' + Math.random().toString(36).substr(2, 9);
         localStorage.setItem('sessionId', sessionId);
@@ -101,24 +105,43 @@ document.addEventListener('DOMContentLoaded', () => {
             const msg = JSON.parse(event.data);
             console.log('Received:', msg);
 
+            // Скрываем блок "мыслей" для большинства сообщений, кроме самих мыслей и токенов
+            if (msg.type !== 'agent_thought' && msg.type !== 'llm_token') {
+                hideAgentThought();
+            }
+
             switch (msg.type) {
                 case 'session_state':
-                    hideAgentThought();
                     handleSessionState(msg.data);
                     break;
-                case 'query_response':
+                // `query_response` заменен на потоковую передачу
+                case 'llm_token':
+                    if (!streamingMessageElement) {
+                        // Первый токен: создаем новый элемент сообщения для агента
+                        hideAgentThought(); // Скрываем спиннер "Агент думает..."
+                        streamingMessageElement = addMessage('', 'agent');
+                    }
+                    accumulatedStreamText += msg.data.token;
+                    const messageContent = streamingMessageElement.querySelector('.message-content');
+                    if (messageContent) {
+                        // Перерисовываем Markdown всего накопленного текста
+                        messageContent.innerHTML = parseMarkdown(accumulatedStreamText);
+                    }
+                    messageList.scrollTop = messageList.scrollHeight;
+                    break;
+                case 'stream_end':
+                    // Поток завершен. Сбрасываем состояние и разблокируем ввод.
+                    streamingMessageElement = null;
+                    accumulatedStreamText = '';
                     hideAgentThought();
-                    addMessage(msg.data.answer, 'agent');
                     break;
                 case 'agent_thought':
                     showAgentThought(msg.data.message);
                     break;
                 case 'action_required':
-                    hideAgentThought();
                     addConfirmationWidget(msg.data.message, msg.data.tool_call);
                     break;
                 case 'plan_generated':
-                    hideAgentThought();
                     addPlanConfirmationWidget(msg.data.steps);
                     break;
                 case 'plan_update':
@@ -126,11 +149,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     updatePlanProgress(msg.data.current_step, msg.data.steps);
                     break;
                 case 'plan_error':
-                    hideAgentThought();
                     addErrorRecoveryWidget(msg.data.error_message, msg.data.recovery_options);
                     break;
                 case 'error':
-                    hideAgentThought();
                     addMessage(`Ошибка: ${msg.data.message}`, 'error');
                     break;
                 case 'pong':
@@ -178,6 +199,7 @@ document.addEventListener('DOMContentLoaded', () => {
         messageElement.appendChild(contentElement);
         messageList.appendChild(messageElement);
         messageList.scrollTop = messageList.scrollHeight;
+        return messageElement; // Возвращаем элемент для дальнейших манипуляций (стриминг)
     }
 
     function addConfirmationWidget(promptText, toolCall) {
@@ -428,7 +450,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             };
             socket.send(JSON.stringify(message));
+            
             // Сразу после отправки показываем блок "мыслей"
+            // и сбрасываем состояние предыдущего стриминга
+            streamingMessageElement = null;
+            accumulatedStreamText = '';
             showAgentThought('Анализирую запрос...');
         }
     }

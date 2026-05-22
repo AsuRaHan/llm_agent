@@ -11,7 +11,8 @@ public:
     AssistantResponse processChat(
         const nlohmann::json& messages,
         const nlohmann::json& tools,
-        const std::function<void(const std::string&)>& send_thought
+        const std::function<void(const std::string&)>& send_thought,
+        const std::function<void(const std::string&)>& send_stream_chunk
     ) override;
 
     nlohmann::json generatePlan(const std::string& user_query) override;

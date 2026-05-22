@@ -15,15 +15,20 @@ OpenAIProvider::OpenAIProvider(const Config& config)
 AssistantResponse OpenAIProvider::processChat(
     const nlohmann::json& messages,
     const nlohmann::json& tools,
-    const std::function<void(const std::string&)>& send_thought
+    const std::function<void(const std::string&)>& send_thought,
+    const std::function<void(const std::string&)>& send_stream_chunk
 ) {
     json body = {
         {"messages", messages},
         {"model", config.chat_model_name},
-        {"tools", tools},
-        {"tool_choice", "auto"},
-        {"temperature", 0.1}
+        {"temperature", 0.1},
+        {"stream", true}
     };
+
+    if (!tools.is_null() && !tools.empty()) {
+        body["tools"] = tools;
+        body["tool_choice"] = "auto";
+    }
 
     httplib::Headers headers;
     if (!config.api_key.empty()) {
@@ -31,9 +36,79 @@ AssistantResponse OpenAIProvider::processChat(
     }
     std::string body_str = body.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
 
+    std::string accumulated_content;
+    json accumulated_tool_calls = json::array();
+    std::map<int, json> tool_call_map; 
+    
+    std::string sse_buffer;
+
+    auto content_receiver = [&](const char *data, size_t data_length) {
+        sse_buffer.append(data, data_length);
+
+        size_t pos;
+        while ((pos = sse_buffer.find("\n\n")) != std::string::npos) {
+            std::string event_str = sse_buffer.substr(0, pos);
+            sse_buffer.erase(0, pos + 2); // consume the event and the terminator
+
+            std::istringstream stream(event_str);
+            std::string line;
+            while (std::getline(stream, line)) {
+                if (line.rfind("data: ", 0) == 0) {
+                    std::string data_str = line.substr(6);
+                    if (data_str.find("[DONE]") != std::string::npos) {
+                        return true;
+                    }
+
+                    try {
+                        json chunk = json::parse(data_str);
+                        if (chunk["choices"].empty()) {
+                            continue;
+                        }
+
+                        json delta = chunk["choices"][0]["delta"];
+
+                        // Handle content chunks
+                        if (delta.contains("content") && delta["content"].is_string()) {
+                            std::string token = delta["content"];
+                            accumulated_content += token;
+                            if (send_stream_chunk) {
+                                send_stream_chunk(token);
+                            }
+                        }
+
+                        // Handle tool call chunks
+                        if (delta.contains("tool_calls") && delta["tool_calls"].is_array()) {
+                            for (const auto& tool_call_chunk : delta["tool_calls"]) {
+                                int index = tool_call_chunk["index"];
+
+                                if (tool_call_chunk.contains("id")) {
+                                    tool_call_map[index]["id"] = tool_call_chunk["id"];
+                                }
+                                if (tool_call_chunk.contains("type")) {
+                                    tool_call_map[index]["type"] = tool_call_chunk["type"];
+                                }
+                                if (tool_call_chunk.contains("function")) {
+                                    if (tool_call_chunk["function"].contains("name")) {
+                                        tool_call_map[index]["function"]["name"] = tool_call_chunk["function"]["name"];
+                                    }
+                                    if (tool_call_chunk["function"].contains("arguments")) {
+                                        tool_call_map[index]["function"]["arguments"] = tool_call_map[index]["function"]["arguments"].get<std::string>() + tool_call_chunk["function"]["arguments"].get<std::string>();
+                                    }
+                                }
+                            }
+                        }
+                    } catch (const json::exception& e) {
+                        SPDLOG_ERROR("Failed to parse SSE chunk: {}. Chunk: {}", e.what(), data_str);
+                    }
+                }
+            }
+        }
+        return true; 
+    };
+    
     httplib::Result res;
     for (int attempt = 1; attempt <= config.retry_count; ++attempt) {
-        res = cli.Post("/v1/chat/completions", headers, body_str, "application/json");
+        res = cli.Post("/v1/chat/completions", headers, body_str, "application/json", content_receiver);
         if (res) break;
         SPDLOG_ERROR("Attempt {} of {} for chat completion failed. Connection error: {}. Retrying...",
                      attempt, config.retry_count, httplib::to_string(res.error()));
@@ -49,16 +124,26 @@ AssistantResponse OpenAIProvider::processChat(
         return { .step_failed = true, .error_message = "Failed to get a response from the language model." };
     }
 
-    json response_json;
-    try {
-        response_json = json::parse(res->body);
-    } catch (const json::exception& e) {
-        SPDLOG_ERROR("Failed to parse JSON response from LLM: {}. Body: {}", e.what(), res->body);
-        return { .step_failed = true, .error_message = "Failed to parse the model's response." };
+    // After stream is complete, assemble the final tool calls
+    for (auto const& [index, val] : tool_call_map) {
+        accumulated_tool_calls.push_back(val);
+    }
+    
+    // Construct the final JSON response in the format AssistantRole expects
+    json message = {
+        {"role", "assistant"},
+        {"content", accumulated_content}
+    };
+
+    if (!accumulated_tool_calls.empty()) {
+        message["tool_calls"] = accumulated_tool_calls;
     }
 
-    // Return the full response message for AssistantRole to process
-    return { .llm_response = response_json };
+    json final_response = {
+        {"choices", {{{"message", message}}}}
+    };
+
+    return { .llm_response = final_response };
 }
 
 nlohmann::json OpenAIProvider::generatePlan(const std::string& user_query) {
