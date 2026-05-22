@@ -191,7 +191,7 @@ std::optional<ServerProperties> fetchServerProperties(const Config& config) {
 std::unique_ptr<ContextIndexer> indexProject(const std::string& projectDir, const Config& config, std::shared_ptr<LLMProvider> provider)
 {
     try {
-        auto indexer = std::make_unique<ContextIndexer>(provider, config);
+        auto indexer = std::make_unique<ContextIndexer>(provider, config); // Pass config to ContextIndexer
         
         SPDLOG_INFO("Запуск индексирования проекта...");
         indexer->indexDirectory(projectDir);

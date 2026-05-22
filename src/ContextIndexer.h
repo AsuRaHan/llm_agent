@@ -15,6 +15,7 @@ public:
     ~ContextIndexer();
 
     void indexDirectory(const std::filesystem::path& directoryPath);
+    bool isPathIgnored(const std::filesystem::path& path) const;
     void reindexFile(const std::string& path);
     void removeFileFromIndex(const std::string& path);
 
@@ -34,4 +35,5 @@ private:
     IndexManager indexManager;
     FileIndexer fileIndexer;
     Searcher searcher;
+    const Config& config;
 };
