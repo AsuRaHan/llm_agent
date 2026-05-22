@@ -32,7 +32,7 @@ console.log('✅ DOM элементы найдены:', {
 });
 
 // --- Initialization ---
-const socketManager = new SocketManager(`ws://${window.location.host}/ws`, {
+const socketManager = new SocketManager(`ws://${window.location.hostname}:9000/ws`, {
     reconnectAttempts: 5,
     reconnectDelay: 3000,
     keepAliveInterval: 30000

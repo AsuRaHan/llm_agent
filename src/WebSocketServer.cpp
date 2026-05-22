@@ -535,7 +535,7 @@ void WebSocketServer::sendMessage(std::shared_ptr<SafeWsHandle> ws_handle, const
     }
     try {
         std::string payload_str = payload.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
-        SPDLOG_TRACE("Отправка сообщения: {}", payload_str);
+        // SPDLOG_TRACE("Отправка сообщения: {}", payload_str);
         ws_handle->ws->send(payload_str);
     } catch (const std::exception& e) {
         SPDLOG_ERROR("Не удалось отправить сообщение: {}", e.what());

@@ -82,26 +82,16 @@ AssistantResponse AssistantRole::processQuery(
                 }
                 std::string result = toolManager->executeTool(tool_name, tool_args, &indexer);
 
-                // Проверяем, вернул ли инструмент ошибку в формате {"error": "..."}
                 try {
                     json result_json = json::parse(result);
                     if (result_json.contains("error")) {
                         SPDLOG_ERROR("Инструмент '{}' завершился с ошибкой: {}", tool_name, result_json["error"].get<std::string>());
-                        messages.push_back({{"role", "tool"}, {"tool_call_id", tool_id}, {"content", result}});
-                        return {
-                            .text = "",
-                            .is_final = true,
-                            .conversation_history = messages,
-                            .step_failed = true,
-                            .error_message = "Инструмент '" + tool_name + "' завершился с ошибкой: " + result_json["error"].get<std::string>(),
-                            .recovery_options = {"retry", "skip"}
-                        };
                     }
                 } catch (const json::exception& e) {
-                    // If result is not JSON or has no "error", continue as normal.
+                    // Not a JSON error, which is fine. It's just a string result.
                 }
 
-                // Add the tool's result to the history
+                // Add the tool's result (or error JSON) to the history for the LLM to see.
                 messages.push_back({
                     {"role", "tool"},
                     {"tool_call_id", tool_id},
@@ -263,18 +253,14 @@ AssistantResponse AssistantRole::processQuery(
                 std::string result = toolManager->executeTool(tool_name, tool_args, &indexer);
                 
                 try {
-                    json result_json = json::parse(result);
-                    if (result_json.contains("error")) {
-                        SPDLOG_ERROR("Инструмент '{}' завершился с ошибкой: {}", tool_name, result_json["error"].get<std::string>());
-                        messages.push_back({{"role", "tool"}, {"tool_call_id", tool_id}, {"content", result}});
-                        return {
-                            .text = "", .is_final = true, .conversation_history = messages, .step_failed = true,
-                            .error_message = "Инструмент '" + tool_name + "' завершился с ошибкой: " + result_json["error"].get<std::string>(),
-                            .recovery_options = {"retry", "skip"}
-                        };
-                    }
-                } catch (const json::exception& e) { /* Not a JSON error, proceed */ }
-                
+                     json result_json = json::parse(result);
+                     if (result_json.contains("error")) {
+                         SPDLOG_ERROR("Инструмент '{}' завершился с ошибкой: {}", tool_name, result_json["error"].get<std::string>());
+                     }
+                 } catch (const json::exception& e) {
+                     // Not a JSON error, which is fine. It's just a string result.
+                 }
+                // Add the tool's result (or error JSON) to the history for the LLM to see.
                 messages.push_back({{"role", "tool"}, {"tool_call_id", tool_id}, {"content", result}});
             }
 
@@ -286,19 +272,18 @@ AssistantResponse AssistantRole::processQuery(
             continue;
         }
 
-        SPDLOG_ERROR("Неожиданный формат ответа от LLM: {}", choice.dump(2));
-        return {
-            .text = "", .is_final = true, .conversation_history = messages, .step_failed = true,
-            .error_message = "Получен неожиданный формат ответа от модели (не текст и не вызов инструмента).",
-            .recovery_options = {"retry"}
-        };
+        // Fallback: Если ответ пуст (нет ни контента, ни вызовов инструментов),
+        // это означает, что модель завершила свою цепочку рассуждений.
+        // Мы прерываем цикл и переходим к финальному подведению итогов.
+        SPDLOG_INFO("LLM вернул пустой ответ, завершаем цикл и переходим к подведению итогов.");
+        break;
     }
 
     SPDLOG_WARN("Превышено максимальное количество вызовов инструментов ({}). Запрос финального ответа.", config.max_tool_calls);
     
     messages.push_back({
         {"role", "user"},
-        {"content", "Ты достиг максимального количества вызовов инструментов. Предоставь пользователю окончательный ответ, основываясь на уже собранной информации."}
+        {"content", "Ты достиг максимального количества вызовов инструментов. Или Fallback: Если ответ пуст (нет ни контента, ни вызовов инструментов),это означает, что модель завершила свою цепочку рассуждений. Предоставь пользователю окончательный ответ, основываясь на уже собранной информации."}
     });
 
     // Make one last call to the LLM to get a final summary
