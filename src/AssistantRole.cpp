@@ -145,17 +145,8 @@ AssistantResponse AssistantRole::processQuery(
         messages = messages_for_llm;
     }
 
-    // Count tool calls already in history to respect the limit across continuations
-    int tool_calls_made = 0;
-    for(const auto& msg : messages) {
-        if (msg.contains("tool_calls") && msg["tool_calls"].is_array()) {
-            tool_calls_made += msg["tool_calls"].size();
-        }
-    }
-
-    for (int i = tool_calls_made; i < config.max_tool_calls; ++i) {
+    for (int i = 0; i < config.max_tool_calls; ++i) {
         SPDLOG_INFO("Итерация {}/{} цикла обработки запроса...", i + 1, config.max_tool_calls);
-
         // Call LLM with streaming
         AssistantResponse llm_response = llmProvider->processChat(messages, toolManager->getToolsSpecification(), send_thought, send_stream_chunk);
 
@@ -264,10 +255,10 @@ AssistantResponse AssistantRole::processQuery(
                 messages.push_back({{"role", "tool"}, {"tool_call_id", tool_id}, {"content", result}});
             }
 
-            int remaining_calls = config.max_tool_calls - (i + 1);
-            if (remaining_calls > 0 && !messages.empty() && messages.back()["role"] == "tool") {
+            int remaining_iterations = config.max_tool_calls - (i + 1);
+            if (remaining_iterations > 0 && !messages.empty() && messages.back()["role"] == "tool") {
                 std::string current_content = messages.back()["content"];
-                messages.back()["content"] = current_content + "\n\n[SYSTEM_NOTE]: Инструменты выполнены. У тебя осталось " + std::to_string(remaining_calls) + " вызовов.";
+                messages.back()["content"] = current_content + "\n\n[SYSTEM_NOTE]: Инструменты выполнены. У тебя осталось " + std::to_string(remaining_iterations) + " итераций для вызова инструментов.";
             }
             continue;
         }
@@ -279,11 +270,11 @@ AssistantResponse AssistantRole::processQuery(
         break;
     }
 
-    SPDLOG_WARN("Превышено максимальное количество вызовов инструментов ({}). Запрос финального ответа.", config.max_tool_calls);
+    SPDLOG_WARN("Превышено максимальное количество итераций ({}) для вызова инструментов. Запрос финального ответа.", config.max_tool_calls);
     
     messages.push_back({
         {"role", "user"},
-        {"content", "Ты достиг максимального количества вызовов инструментов. Или Fallback: Если ответ пуст (нет ни контента, ни вызовов инструментов),это означает, что модель завершила свою цепочку рассуждений. Предоставь пользователю окончательный ответ, основываясь на уже собранной информации."}
+        {"content", "Ты достиг максимального количества итераций для вызова инструментов. Предоставь пользователю окончательный ответ, основываясь на уже собранной информации."}
     });
 
     // Make one last call to the LLM to get a final summary
@@ -301,7 +292,7 @@ AssistantResponse AssistantRole::processQuery(
 
     return {
         .text = "", .is_final = true, .conversation_history = messages, .step_failed = true,
-        .error_message = "Превышен лимит вызовов инструментов (" + std::to_string(config.max_tool_calls) + ").",
+        .error_message = "Превышен лимит итераций для вызова инструментов (" + std::to_string(config.max_tool_calls) + ").",
         .recovery_options = {"re-plan"}
     };
 }
