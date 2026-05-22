@@ -3,10 +3,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Пути указаны относительно /js/
     const { SocketManager } = await import('./socket.js');
     const { StreamingManager } = await import('./streaming.js');
-    const { SessionManager } = await import('./session.js');
+    // SessionManager заменен на локальное управление состоянием
     const { MessageRenderer } = await import('./message.js');
     const { StreamingIndicator } = await import('./streaming-indicator.js');
-    const { TokenAccumulator } = await import('./token-accumulator.js');
 
     // --- DOM Элементы ---
     const messageList = document.getElementById('message-list');
@@ -21,9 +20,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     const autoConfirmButton = document.getElementById('auto-confirm-button');
     const freezeWatcherButton = document.getElementById('freeze-watcher-button');
     const clearHistoryButton = document.getElementById('clear-history-button');
+    const newChatButton = document.getElementById('new-chat-button');
+    const chatList = document.getElementById('chat-list');
 
     // --- Состояние приложения ---
     let state = {
+        sessions: [], // [{id: '...', title: '...'}, ...]
+        activeSessionId: null,
         isAutoConfirmEnabled: false,
         isWatcherFrozen: false,
     };
@@ -35,14 +38,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         reconnectDelay: 3000,
     });
 
-    // Используем ваш SessionManager для управления ID сессии
-    const sessionManager = new SessionManager(socketManager, 'llm_agent_');
-
     // StreamingManager будет обрабатывать llm_token и stream_end
     const streamingManager = new StreamingManager(socketManager);
 
     // MessageRenderer для отрисовки сообщений
-    const messageRenderer = new MessageRenderer(messageList, { useMarkdown: true, marked: window.marked });
+    const messageRenderer = new MessageRenderer(messageList, { useMarkdown: true });
 
     // StreamingIndicator для индикации загрузки
     const streamingIndicator = new StreamingIndicator(indicatorContainer);
@@ -79,7 +79,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     socketManager.onOpen(() => {
         connectionStatusSpan.textContent = '🟢 Подключено';
         connectionStatusSpan.style.color = '#2ecc71';
-        socketManager.send({ type: 'sync_session', session_id: sessionManager.getSessionId() });
+        switchChat(state.activeSessionId); // Синхронизируем активный чат при подключении
     });
 
     socketManager.onClose(() => {
@@ -178,8 +178,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Поток завершен, сохраняем финальный текст в историю
         const finalText = streamingManager.getAccumulatedText();
         if (finalText) {
-            const history = sessionManager.loadSession().history || [];
-            sessionManager.updateSessionData('history', [...history, { role: 'assistant', content: finalText }]);
+            // История управляется на сервере, здесь ничего делать не нужно.
         }
         // Сбрасываем состояние для следующего сообщения
         streamingMessageElement = null;
@@ -190,12 +189,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function sendMessage(forcePlan = false) {
         const text = messageInput.value.trim();
-        if (!text || !socketManager.isConnected()) return;
+        if (!text || !socketManager.isConnected() || !state.activeSessionId) return;
 
         // Отображаем сообщение пользователя и обновляем историю
         messageRenderer.render(text, 'user');
-        const history = sessionManager.loadSession().history || [];
-        sessionManager.updateSessionData('history', [...history, { role: 'user', content: text }]);
+        updateChatTitle(state.activeSessionId, text);
         
         messageInput.value = '';
         messageInput.style.height = 'auto';
@@ -208,7 +206,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Отправляем запрос на сервер
         socketManager.send({
             type: 'query',
-            session_id: sessionManager.getSessionId(),
+            session_id: state.activeSessionId,
             data: { text, force_plan }
         });
     }
@@ -218,15 +216,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     function handleSessionState(data) {
         messageList.innerHTML = ''; // Очищаем чат перед отрисовкой истории
 
-        const history = data.history || [];
-        sessionManager.updateSessionData('history', history);
-
-        if (history.length > 0) {
+        if (data.history && data.history.length > 0) {
+            const history = data.history;
             history.forEach(msg => {
                 if (msg.role === 'user' || (msg.role === 'assistant' && msg.content)) {
                     messageRenderer.render(msg.content, msg.role);
                 }
             });
+            updateChatTitle(state.activeSessionId, history[0]?.content);
         } else if (data.greeting) {
             messageRenderer.render(data.greeting, 'system');
         }
@@ -253,7 +250,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const handleConfirm = (confirmed) => {
             socketManager.send({
                 type: 'confirm_action',
-                session_id: sessionManager.getSessionId(),
+                session_id: state.activeSessionId,
                 data: { confirmed }
             });
             widget.remove();
@@ -270,14 +267,79 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Функции renderPlanConfirmationWidget, updatePlanProgress, renderErrorRecoveryWidget
     // должны быть реализованы здесь аналогично, если они вам нужны.
     // Я оставлю их заглушками, чтобы не перегружать ответ.
-    function renderPlanConfirmationWidget(steps) { console.warn("renderPlanConfirmationWidget not fully implemented"); }
-    function updatePlanProgress(currentStep, steps) { console.warn("updatePlanProgress not fully implemented"); }
-    function renderErrorRecoveryWidget(errorMessage, recoveryOptions) { console.warn("renderErrorRecoveryWidget not fully implemented"); }
+    function renderPlanConfirmationWidget(steps) {
+        const template = document.getElementById('plan-confirmation-widget-template');
+        const widget = template.content.cloneNode(true).firstElementChild;
+        const planList = widget.querySelector('[data-role="plan-editor-list"]');
 
+        const createStepItem = (stepText) => {
+            const stepTemplate = document.getElementById('plan-step-item-template');
+            const stepItem = stepTemplate.content.cloneNode(true).firstElementChild;
+            stepItem.querySelector('.plan-step-text').textContent = stepText;
+            stepItem.querySelector('.btn-remove-step').addEventListener('click', () => stepItem.remove());
+            return stepItem;
+        };
+
+        steps.forEach(step => {
+            planList.appendChild(createStepItem(step));
+        });
+
+        if (typeof Sortable !== 'undefined') {
+            new Sortable(planList, { animation: 150, handle: '.drag-handle' });
+        }
+
+        widget.querySelector('[data-role="add-step-button"]').addEventListener('click', () => {
+            planList.appendChild(createStepItem('Новый шаг...'));
+        });
+
+        const handleConfirm = (confirmed) => {
+            const updatedSteps = confirmed ? Array.from(planList.querySelectorAll('.plan-step-text')).map(el => el.textContent.trim()) : [];
+            socketManager.send({
+                type: 'confirm_plan',
+                session_id: state.activeSessionId,
+                data: { confirmed, steps: updatedSteps }
+            });
+            widget.remove();
+        };
+
+        widget.querySelector('[data-role="approve-plan-button"]').addEventListener('click', () => handleConfirm(true));
+        widget.querySelector('[data-role="reject-plan-button"]').addEventListener('click', () => handleConfirm(false));
+
+        messageList.appendChild(widget);
+        messageList.scrollTop = messageList.scrollHeight;
+    }
+    function updatePlanProgress(currentStep, steps) { console.warn("updatePlanProgress not fully implemented"); }
+    function renderErrorRecoveryWidget(errorMessage, recoveryOptions) {
+        const template = document.getElementById('error-recovery-widget-template');
+        const widget = template.content.cloneNode(true).firstElementChild;
+
+        widget.querySelector('[data-role="error-message"]').textContent = errorMessage;
+        const buttonContainer = widget.querySelector('[data-role="button-container"]');
+
+        recoveryOptions.forEach(option => {
+            const button = document.createElement('button');
+            button.className = 'px-3 py-1.5 rounded-md text-white bg-sky-600 hover:bg-sky-700 text-sm cursor-pointer';
+            button.textContent = option;
+            button.addEventListener('click', () => {
+                socketManager.send({
+                    type: 'confirm_error_recovery',
+                    session_id: state.activeSessionId,
+                    data: { option }
+                });
+                widget.remove();
+            });
+            buttonContainer.appendChild(button);
+        });
+
+        messageList.appendChild(widget);
+        messageList.scrollTop = messageList.scrollHeight;
+    }
 
     // --- Настройка обработчиков событий ---
 
     function setupEventListeners() {
+        newChatButton.addEventListener('click', () => createNewChat());
+
         sendButton.addEventListener('click', () => sendMessage(false));
         planButton.addEventListener('click', () => {
             if (messageInput.value.trim()) {
@@ -315,14 +377,110 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         clearHistoryButton.addEventListener('click', () => {
             if (confirm('Вы уверены, что хотите очистить историю текущего чата?')) {
-                socketManager.send({ type: 'clear_history', session_id: sessionManager.getSessionId() });
+                socketManager.send({ type: 'clear_history', session_id: state.activeSessionId });
                 messageList.innerHTML = '';
                 messageRenderer.render('История очищена. Готов к новым задачам!', 'system');
             }
         });
     }
 
+    // --- Логика управления чатами ---
+
+    function loadSessions() {
+        const savedSessions = localStorage.getItem('chatSessions');
+        if (savedSessions) {
+            state.sessions = JSON.parse(savedSessions);
+            state.activeSessionId = localStorage.getItem('activeSessionId') || (state.sessions[0]?.id || null);
+        }
+        if (state.sessions.length === 0) {
+            createNewChat(false); // Создаем первый чат без переключения
+        }
+    }
+
+    function saveSessions() {
+        localStorage.setItem('chatSessions', JSON.stringify(state.sessions));
+        localStorage.setItem('activeSessionId', state.activeSessionId);
+    }
+
+    function createNewChat(shouldSwitch = true) {
+        const newSessionId = 'sess_' + Math.random().toString(36).substr(2, 9);
+        state.sessions.unshift({ id: newSessionId, title: 'Новый чат' });
+        if (shouldSwitch) {
+            switchChat(newSessionId);
+        } else {
+            state.activeSessionId = newSessionId;
+        }
+        renderChatList();
+        saveSessions();
+    }
+
+    function switchChat(sessionId) {
+        if (!sessionId || (state.activeSessionId === sessionId && messageList.innerHTML !== '')) return;
+
+        state.activeSessionId = sessionId;
+        messageList.innerHTML = '';
+        streamingMessageElement = null;
+        streamingManager.reset();
+        enableInput();
+
+        if (socketManager.isConnected()) {
+            socketManager.send({ type: 'sync_session', session_id: sessionId });
+        }
+        
+        renderChatList();
+        saveSessions();
+    }
+
+    function deleteChat(sessionIdToDelete) {
+        state.sessions = state.sessions.filter(s => s.id !== sessionIdToDelete);
+        
+        if (state.activeSessionId === sessionIdToDelete) {
+            if (state.sessions.length > 0) {
+                switchChat(state.sessions[0].id);
+            } else {
+                createNewChat();
+            }
+        }
+        renderChatList();
+        saveSessions();
+    }
+
+    function updateChatTitle(sessionId, firstMessage) {
+        const session = state.sessions.find(s => s.id === sessionId);
+        if (session && session.title === 'Новый чат' && firstMessage) {
+            session.title = firstMessage.substring(0, 30) + (firstMessage.length > 30 ? '...' : '');
+            renderChatList();
+            saveSessions();
+        }
+    }
+
+    function renderChatList() {
+        chatList.innerHTML = '';
+        state.sessions.forEach(session => {
+            const template = document.getElementById('chat-list-item-template');
+            const item = template.content.cloneNode(true).firstElementChild;
+            item.dataset.sessionId = session.id;
+            item.querySelector('.chat-title').textContent = session.title;
+
+            if (session.id === state.activeSessionId) {
+                item.classList.add('active'); // CSS-класс для активного чата
+            }
+
+            item.addEventListener('click', () => switchChat(session.id));
+            item.querySelector('.delete-chat-button').addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (confirm(`Удалить чат "${session.title}"?`)) {
+                    deleteChat(session.id);
+                }
+            });
+
+            chatList.appendChild(item);
+        });
+    }
+
     // --- Запуск приложения ---
+    loadSessions();
+    renderChatList();
     setupEventListeners();
     socketManager.connect().catch(err => console.error("Initial connection failed:", err));
 });

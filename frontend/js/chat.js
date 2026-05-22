@@ -1,34 +1,32 @@
 document.addEventListener('DOMContentLoaded', () => {
-    // --- DOM Elements ---
     const messageList = document.getElementById('message-list');
     const chatForm = document.getElementById('chat-form');
     const messageInput = document.getElementById('message-input');
     const sendButton = document.getElementById('send-button');
-    const planButton = document.getElementById('plan-button');
     const clearHistoryButton = document.getElementById('clear-history-button');
     const autoConfirmButton = document.getElementById('auto-confirm-button');
     const connectionStatus = document.getElementById('connection-status');
     const fileWatcherStatus = document.getElementById('file-watcher-status');
     const freezeWatcherButton = document.getElementById('freeze-watcher-button');
+    // Новый блок для мыслей
     const thoughtContainer = document.getElementById('agent-thought-container');
     const thoughtText = document.getElementById('agent-thought-text');
-    const chatSidebar = document.getElementById('chat-sidebar');
-    const newChatButton = document.getElementById('new-chat-button');
-    const chatList = document.getElementById('chat-list');
 
-    // --- State ---
     let socket;
-    let state = {
-        sessions: [], // [{id: '...', title: '...'}, ...]
-        activeSessionId: null,
-        isWatcherFrozen: false,
-        isAutoConfirmEnabled: false,
-    };
+    let sessionId = localStorage.getItem('sessionId');
+    let isWatcherFrozen = false;
+    let isAutoConfirmEnabled = false;
+
+    // Состояние для потоковой передачи ответа
     let streamingMessageElement = null;
     let accumulatedStreamText = '';
 
-    // --- Initialization ---
+    if (!sessionId) {
+        sessionId = 'sess_' + Math.random().toString(36).substr(2, 9);
+        localStorage.setItem('sessionId', sessionId);
+    }
 
+    // 1. Настраиваем marked перед использованием
     marked.setOptions({
         breaks: true,   // Переносы строк \n превратятся в <br>
         gfm: true       // Включаем GitHub Flavored Markdown (таблицы, зачеркивания)
@@ -36,7 +34,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Утилита для экранирования HTML, чтобы логи и символы не ломали верстку
     function escapeHTML(str) {
-        return str?.replace(/&/g, '&amp;')
+        return str.replace(/&/g, '&amp;')
                   .replace(/</g, '&lt;')
                   .replace(/>/g, '&gt;')
                   .replace(/"/g, '&quot;')
@@ -44,7 +42,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // 2. Полностью заменяем старую функцию parseMarkdown на использование библиотеки:
-    function renderMarkdown(text) {
+    function parseMarkdown(text) {
         if (!text) return '';
 
         // Используем библиотеку marked для генерации HTML
@@ -94,13 +92,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsHost = window.location.hostname;
         const wsPort = 9000; 
-        socket = new WebSocket(`${wsProtocol}//${wsHost}:${wsPort}/ws`); // Используем порт 9000
+        socket = new WebSocket(`${wsProtocol}//${wsHost}:${wsPort}/ws`);
 
         socket.onopen = () => {
             console.log('WebSocket connection established.');
             connectionStatus.textContent = 'Соединение установлено';
             connectionStatus.style.color = '#2ecc71';
-            switchChat(state.activeSessionId); // Sync the active session on connect
+            socket.send(JSON.stringify({ type: 'sync_session', session_id: sessionId }));
         };
 
         socket.onmessage = (event) => {
@@ -121,12 +119,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (!streamingMessageElement) {
                         // Первый токен: создаем новый элемент сообщения для агента
                         hideAgentThought(); // Скрываем спиннер "Агент думает..."
-                        streamingMessageElement = addMessage('', 'agent', state.activeSessionId);
+                        streamingMessageElement = addMessage('', 'agent');
                     }
                     accumulatedStreamText += msg.data.token;
                     const messageContent = streamingMessageElement.querySelector('.message-content');
                     if (messageContent) {
-                        messageContent.innerHTML = renderMarkdown(accumulatedStreamText);
+                        // Перерисовываем Markdown всего накопленного текста
+                        messageContent.innerHTML = parseMarkdown(accumulatedStreamText);
                     }
                     messageList.scrollTop = messageList.scrollHeight;
                     break;
@@ -140,20 +139,20 @@ document.addEventListener('DOMContentLoaded', () => {
                     showAgentThought(msg.data.message);
                     break;
                 case 'action_required':
-                    addConfirmationWidget(msg.data.message, msg.data.tool_call, state.activeSessionId);
+                    addConfirmationWidget(msg.data.message, msg.data.tool_call);
                     break;
                 case 'plan_generated':
-                    addPlanConfirmationWidget(msg.data.steps, state.activeSessionId);
+                    addPlanConfirmationWidget(msg.data.steps);
                     break;
                 case 'plan_update':
                     // Во время выполнения плана блок мыслей и так должен быть виден
-                    updatePlanProgress(msg.data.current_step, msg.data.steps, state.activeSessionId);
+                    updatePlanProgress(msg.data.current_step, msg.data.steps);
                     break;
                 case 'plan_error':
-                    addErrorRecoveryWidget(msg.data.error_message, msg.data.recovery_options, state.activeSessionId);
+                    addErrorRecoveryWidget(msg.data.error_message, msg.data.recovery_options);
                     break;
                 case 'error':
-                    addMessage(`Ошибка: ${msg.data.message}`, 'error', state.activeSessionId);
+                    addMessage(`Ошибка: ${msg.data.message}`, 'error');
                     break;
                 case 'pong':
                     break;
@@ -183,20 +182,24 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
-    function addMessage(text, sender, sessionIdForMessage) {
-        if (sessionIdForMessage !== state.activeSessionId) return; // Don't render messages for inactive chats
-
+    function setChatInputEnabled(enabled) {
+        // Эта функция теперь в основном управляется hide/showAgentThought
+        messageInput.disabled = !enabled;
+        sendButton.disabled = !enabled;
+    }
+    function addMessage(text, sender) {
         const messageElement = document.createElement('div');
         messageElement.classList.add('message', sender);
         const contentElement = document.createElement('div');
         contentElement.classList.add('message-content');
         
-        contentElement.innerHTML = renderMarkdown(text);
+        // Рендерим через безопасный кастомный парсер Markdown
+        contentElement.innerHTML = parseMarkdown(text);
 
         messageElement.appendChild(contentElement);
         messageList.appendChild(messageElement);
         messageList.scrollTop = messageList.scrollHeight;
-        return messageElement;
+        return messageElement; // Возвращаем элемент для дальнейших манипуляций (стриминг)
     }
 
     function addConfirmationWidget(promptText, toolCall) {
@@ -215,12 +218,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if (autoConfirmTimer) {
                 clearInterval(autoConfirmTimer);
             }
-            socket.send(JSON.stringify({ type: 'confirm_action', session_id: state.activeSessionId, data: { confirmed: true } }));
+            socket.send(JSON.stringify({ type: 'confirm_action', session_id: sessionId, data: { confirmed: true } }));
             widgetElement.remove();
             showAgentThought('Выполняю подтвержденное действие...');
         };
 
-        if (state.isAutoConfirmEnabled) {
+        if (isAutoConfirmEnabled) {
             const countdownElement = document.createElement('span');
             countdownElement.className = 'text-xs text-gray-400 ml-3';
             let countdown = 3;
@@ -239,14 +242,14 @@ document.addEventListener('DOMContentLoaded', () => {
             noButton.textContent = 'Отменить';
             noButton.onclick = () => {
                 clearInterval(autoConfirmTimer);
-                socket.send(JSON.stringify({ type: 'confirm_action', session_id: state.activeSessionId, data: { confirmed: false } }));
+                socket.send(JSON.stringify({ type: 'confirm_action', session_id: sessionId, data: { confirmed: false } }));
                 widgetElement.remove();
             };
 
         } else {
             yesButton.onclick = executeYesAction;
             noButton.onclick = () => {
-                socket.send(JSON.stringify({ type: 'confirm_action', session_id: state.activeSessionId, data: { confirmed: false } }));
+                socket.send(JSON.stringify({ type: 'confirm_action', session_id: sessionId, data: { confirmed: false } }));
                 widgetElement.remove();
             };
         }
@@ -306,7 +309,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             socket.send(JSON.stringify({
                 type: 'confirm_plan',
-                session_id: state.activeSessionId,
+                session_id: sessionId,
                 data: { 
                     confirmed: true,
                     steps: editedSteps
@@ -316,11 +319,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         widgetElement.querySelector('[data-role="reject-plan-button"]').addEventListener('click', () => {
             widgetElement.remove();
-            addMessage('Вы отклонили план. Вы можете скорректировать задачу или задать другой вопрос.', 'agent', state.activeSessionId);
+            addMessage('Вы отклонили план. Вы можете скорректировать задачу или задать другой вопрос.', 'agent');
             
             socket.send(JSON.stringify({
                 type: 'confirm_plan',
-                session_id: state.activeSessionId,
+                session_id: sessionId,
                 data: { confirmed: false }
             }));
         });
@@ -396,7 +399,7 @@ document.addEventListener('DOMContentLoaded', () => {
             button.addEventListener('click', () => {
                 socket.send(JSON.stringify({
                     type: 'confirm_error_recovery',
-                    session_id: state.activeSessionId,
+                    session_id: sessionId,
                     data: { option: button.dataset.option }
                 }));
                 widgetElement.remove();
@@ -414,14 +417,14 @@ document.addEventListener('DOMContentLoaded', () => {
         
         if (data.history && data.history.length > 0) {
             data.history.forEach(msg => {
-                if (msg.role === 'user' || (msg.role === 'assistant' && msg.content)) {
-                    addMessage(msg.content, msg.role, state.activeSessionId);
+                if (msg.role === 'user') {
+                    addMessage(msg.content, 'user');
+                } else if (msg.role === 'assistant' && msg.content) {
+                    addMessage(msg.content, 'agent');
                 }
             });
-            // Update chat title with the first user message if it's a "New Chat"
-            updateChatTitle(state.activeSessionId, data.history[0]?.content);
         } else if (data.greeting) {
-            addMessage(data.greeting, 'agent', state.activeSessionId);
+            addMessage(data.greeting, 'agent');
         }
 
         if (data.status === 'AWAITING_CONFIRMATION') {
@@ -434,13 +437,13 @@ document.addEventListener('DOMContentLoaded', () => {
     function sendMessage(forcePlan = false) {
         const text = messageInput.value.trim();
         if (text && socket && socket.readyState === WebSocket.OPEN) {
-            addMessage(text, 'user', state.activeSessionId);
+            addMessage(text, 'user');
             messageInput.value = '';
             messageInput.style.height = 'auto'; // Сброс высоты
 
             const message = {
                 type: 'query',
-                session_id: state.activeSessionId,
+                session_id: sessionId,
                 data: { 
                     text: text,
                     force_plan: forcePlan
@@ -448,9 +451,6 @@ document.addEventListener('DOMContentLoaded', () => {
             };
             socket.send(JSON.stringify(message));
             
-            // Update chat title if it's a new chat
-            updateChatTitle(state.activeSessionId, text);
-
             // Сразу после отправки показываем блок "мыслей"
             // и сбрасываем состояние предыдущего стриминга
             streamingMessageElement = null;
@@ -459,104 +459,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- Multi-Chat Logic ---
+    sendButton.addEventListener('click', () => sendMessage(false));
 
-    function loadSessions() {
-        const savedSessions = localStorage.getItem('chatSessions');
-        if (savedSessions) {
-            state.sessions = JSON.parse(savedSessions);
-            state.activeSessionId = localStorage.getItem('activeSessionId') || (state.sessions[0]?.id || null);
-        }
-        if (state.sessions.length === 0) {
-            createNewChat(false); // Create initial chat without switching
-        }
-    }
-
-    function saveSessions() {
-        localStorage.setItem('chatSessions', JSON.stringify(state.sessions));
-        localStorage.setItem('activeSessionId', state.activeSessionId);
-    }
-
-    function createNewChat(shouldSwitch = true) {
-        const newSessionId = 'sess_' + Math.random().toString(36).substr(2, 9);
-        state.sessions.unshift({ id: newSessionId, title: 'Новый чат' });
-        if (shouldSwitch) {
-            switchChat(newSessionId);
-        } else {
-            state.activeSessionId = newSessionId;
-        }
-        renderChatList();
-        saveSessions();
-    }
-
-    function switchChat(sessionId) {
-        if (!sessionId || state.activeSessionId === sessionId && messageList.innerHTML !== '') return;
-
-        state.activeSessionId = sessionId;
-        messageList.innerHTML = '';
-        streamingMessageElement = null;
-        accumulatedStreamText = '';
-        hideAgentThought();
-
-        if (socket && socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({ type: 'sync_session', session_id: sessionId }));
-        }
-        
-        renderChatList(); // To update the active highlight
-        saveSessions();
-        messageInput.focus();
-    }
-
-    function deleteChat(sessionIdToDelete) {
-        state.sessions = state.sessions.filter(s => s.id !== sessionIdToDelete);
-        
-        if (state.activeSessionId === sessionIdToDelete) {
-            if (state.sessions.length > 0) {
-                switchChat(state.sessions[0].id);
-            } else {
-                createNewChat();
-            }
-        }
-        renderChatList();
-        saveSessions();
-    }
-
-    function updateChatTitle(sessionId, firstMessage) {
-        const session = state.sessions.find(s => s.id === sessionId);
-        if (session && session.title === 'Новый чат' && firstMessage) {
-            session.title = firstMessage.substring(0, 30) + (firstMessage.length > 30 ? '...' : '');
-            renderChatList();
-            saveSessions();
-        }
-    }
-
-    function renderChatList() {
-        chatList.innerHTML = '';
-        state.sessions.forEach(session => {
-            const template = document.getElementById('chat-list-item-template');
-            const item = template.content.cloneNode(true).firstElementChild;
-            item.dataset.sessionId = session.id;
-            item.querySelector('.chat-title').textContent = session.title;
-
-            if (session.id === state.activeSessionId) {
-                item.classList.add('active');
-            }
-
-            item.addEventListener('click', () => switchChat(session.id));
-            item.querySelector('.delete-chat-button').addEventListener('click', (e) => {
-                e.stopPropagation();
-                if (confirm(`Удалить чат "${session.title}"?`)) {
-                    deleteChat(session.id);
-                }
-            });
-
-            chatList.appendChild(item);
-        });
-    }
-
-    // --- Event Listeners Setup ---
-    function setupEventListeners() {
-        sendButton.addEventListener('click', () => sendMessage(false));
+    // Кнопка для ручного запуска планирования
+    const planButton = document.getElementById('plan-button');
+    if (planButton) {
         planButton.addEventListener('click', () => {
             if (messageInput.value.trim()) {
                 sendMessage(true);
@@ -564,10 +471,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 alert('Пожалуйста, введите задачу перед запуском планирования.');
             }
         });
-        newChatButton.addEventListener('click', () => createNewChat());
+    }
+
+    if (autoConfirmButton) {
         autoConfirmButton.addEventListener('click', () => {
-            state.isAutoConfirmEnabled = !state.isAutoConfirmEnabled;
-            if (state.isAutoConfirmEnabled) {
+            isAutoConfirmEnabled = !isAutoConfirmEnabled;
+            if (isAutoConfirmEnabled) {
                 autoConfirmButton.classList.add('active');
                 autoConfirmButton.title = 'Авто-подтверждение включено';
             } else {
@@ -575,9 +484,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 autoConfirmButton.title = 'Авто-подтверждение выключено';
             }
         });
+    }
+
+    if (freezeWatcherButton) {
         freezeWatcherButton.addEventListener('click', () => {
-            state.isWatcherFrozen = !state.isWatcherFrozen;
-            const command = state.isWatcherFrozen ? 'freeze' : 'unfreeze';
+            isWatcherFrozen = !isWatcherFrozen;
+            const command = isWatcherFrozen ? 'freeze' : 'unfreeze';
             
             if (socket && socket.readyState === WebSocket.OPEN) {
                 socket.send(JSON.stringify({
@@ -587,7 +499,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             
             // Обновляем внешний вид и подсказку кнопки
-            if (state.isWatcherFrozen) {
+            if (isWatcherFrozen) {
                 freezeWatcherButton.classList.add('frozen');
                 freezeWatcherButton.title = 'Возобновить индексацию (заморожено)';
             } else {
@@ -595,30 +507,35 @@ document.addEventListener('DOMContentLoaded', () => {
                 freezeWatcherButton.title = 'Приостановить индексацию';
             }
         });
-        messageInput.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault(); 
-                sendMessage(false);
-            }
-        });
-        messageInput.addEventListener('input', () => {
-            messageInput.style.height = 'auto';
-            messageInput.style.height = (messageInput.scrollHeight) + 'px';
-        });
-        clearHistoryButton.addEventListener('click', () => {
-            if (confirm('Вы уверены, что хотите очистить историю текущего чата?')) {
-                if (socket && socket.readyState === WebSocket.OPEN) {
-                    socket.send(JSON.stringify({ type: 'clear_history', session_id: state.activeSessionId }));
-                    messageList.innerHTML = '';
-                    addMessage('История очищена. Готов к новым задачам!', 'agent', state.activeSessionId);
-                }
-            }
-        });
     }
 
-    // --- App Start ---
-    loadSessions();
-    renderChatList();
-    setupEventListeners();
-    connect(); // Connect WebSocket
+    messageInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault(); 
+            sendMessage(false);
+        }
+    });
+
+    messageInput.addEventListener('input', () => {
+        messageInput.style.height = 'auto';
+        messageInput.style.height = (messageInput.scrollHeight) + 'px';
+    });
+
+    clearHistoryButton.addEventListener('click', () => {
+        if (confirm('Вы уверены, что хотите очистить историю сессии?')) {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({ type: 'clear_history', session_id: sessionId }));
+                messageList.innerHTML = '';
+                addMessage('История очищена. Готов к новым задачам!', 'agent');
+            }
+        }
+    });
+
+    // setInterval(() => {
+    //     if (socket && socket.readyState === WebSocket.OPEN) {
+    //         socket.send(JSON.stringify({ type: 'ping' }));
+    //     }
+    // }, 30000);
+
+    connect();
 });
