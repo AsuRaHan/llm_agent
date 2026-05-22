@@ -270,10 +270,8 @@ void WebSocketServer::processAgentLogic(std::shared_ptr<UserSession> session, co
             AssistantResponse final_response = assistant.processQuery("", {}, indexer, session->history, send_thought, send_stream_chunk);
             sendMessage(ws_handle, {{"type", "stream_end"}});
             
+            // The final answer was streamed. Now we can set the session to idle.
             setSessionIdle(session);
-            // The final answer was streamed, so we just send an empty query_response to signal completion
-            sendMessage(ws_handle, {{"type", "query_response"}, {"data", {{"answer", ""}}}});
-
         } else { 
             // --- СИНГЛ-ШОТ РЕЖИМ (ОБЫЧНЫЙ ДИАЛОГ БЕЗ ПЛАНА) ---
             std::vector<SearchResult> context;
@@ -296,8 +294,6 @@ void WebSocketServer::processAgentLogic(std::shared_ptr<UserSession> session, co
             } else {
                 setSessionIdle(session);
                 sessionManager.saveSessions();
-                // The answer was streamed. Send an empty query_response to signal completion.
-                sendMessage(ws_handle, {{"type", "query_response"}, {"data", {{"answer", ""}}}});
             }
         }
     } catch (const std::exception& e) {
