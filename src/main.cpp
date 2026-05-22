@@ -61,11 +61,11 @@ bool initializeDataDirectory(const std::string& projectDir)
         }
         
         // Проверка наличия config.json
-        std::string configPath = fs::path(fullDataPath).append("config.json").string();
-        if (!fs::exists(configPath)) {
-            SPDLOG_WARN("Файл конфигурации не найден: {}", configPath);
-            return false;
-        }
+        // std::string configPath = fs::path(fullDataPath).append("config.json").string();
+        // if (!fs::exists(configPath)) {
+        //     SPDLOG_WARN("Файл конфигурации не найден: {}", configPath);
+        //     return false;
+        // }
         
         return true;
     } catch (const fs::filesystem_error& e) {
@@ -191,7 +191,7 @@ std::optional<ServerProperties> fetchServerProperties(const Config& config) {
 std::unique_ptr<ContextIndexer> indexProject(const std::string& projectDir, const Config& config, std::shared_ptr<LLMProvider> provider)
 {
     try {
-        auto indexer = std::make_unique<ContextIndexer>(provider, config);
+        auto indexer = std::make_unique<ContextIndexer>(provider, config); // Pass config to ContextIndexer
         
         SPDLOG_INFO("Запуск индексирования проекта...");
         indexer->indexDirectory(projectDir);

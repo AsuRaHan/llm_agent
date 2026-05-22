@@ -42,11 +42,12 @@ void Config::create_default(const std::string& filepath) const {
     j["indexing"]["top_k_results"] = top_k_results;
     j["indexing"]["initial_index_size"] = initial_index_size;
     j["indexing"]["chunking_strategy"] = "tree-sitter-hybrid";
-    j["indexing"]["ignored_directories"] = { "build", ".git", ".vscode", "CMakeFiles", ".shdata" };
+    j["indexing"]["ignored_directories"] = { "build", ".git", ".vscode", "CMakeFiles",".shdata", "node_modules" };
     j["indexing"]["ignored_extensions"] = {
         ".exe", ".obj", ".pdb", ".ilk", ".sln", ".vcxproj", ".filters", ".user",
         ".recipe", ".tlog", ".lastbuildstate", ".bin", ".stamp", ".cmake",
-        ".json", ".log"
+        ".json", ".log", ".zip", ".tar", ".gz", ".7z", ".rar", ".iso",
+        ".dll", ".so", ".dylib", ".lib", ".a", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".mp4", ".avi", ".mkv", ".mp3", ".wav", ".flac", ".ogg", ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".odt", ".ods"
     };
     j["indexing"]["ignored_files"] = { ".gitignore" };
 
@@ -124,7 +125,7 @@ bool Config::load(const std::string& filepath) {
                 ignored_files = j["indexing"]["ignored_files"].get<std::vector<std::string>>();
         }
 
-        // SPDLOG_INFO("Конфигурация успешно загружена из '{}'.", filepath);
+        SPDLOG_INFO("Конфигурация успешно загружена из '{}'.", filepath);
         return true;
 
     } catch (const json::exception& e) {

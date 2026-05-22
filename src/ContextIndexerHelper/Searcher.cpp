@@ -71,11 +71,18 @@ void Searcher::boostByKeywords(
 
                 // Проверяем вхождение ключевого слова в текст чанка
                 if (lower_chunk_text.find(lower_keyword) != std::string::npos) {
-                    SPDLOG_DEBUG("Keyword boost: Найдено совпадение для '{}' внутри чанка файла '{}'", 
-                                keyword, path);
+                    // SPDLOG_DEBUG("Keyword boost: Найдено совпадение для '{}' внутри чанка файла '{}'", keyword, path);
 
-                    // Извлекаем оригинальный вектор чанка из HNSW по его ID
-                    std::vector<float> data_vec = indexManager.getDataByLabel(chunk_info.id); // getDataByLabel имеет свою блокировку
+                    std::vector<float> data_vec;
+                    try {
+                        // Извлекаем оригинальный вектор чанка из HNSW по его ID
+                        data_vec = indexManager.getDataByLabel(chunk_info.id);
+                    } catch (const std::runtime_error& e) {
+                        // This can happen if the index was modified and fileIndex is slightly out of sync.
+                        // It's safer to just log it and continue.
+                        // SPDLOG_WARN("Inconsistency during keyword boost: chunk ID {} for file '{}' not found in HNSW index. Skipping. Error: {}", chunk_info.id, path, e.what());
+                        continue;
+                    }
                     if (data_vec.empty()) continue;
 
                     double base_score = ChunkerStrategy::cosineSimilarity(queryEmbedding, data_vec);

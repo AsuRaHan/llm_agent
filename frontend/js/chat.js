@@ -4,6 +4,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const messageInput = document.getElementById('message-input');
     const sendButton = document.getElementById('send-button');
     const clearHistoryButton = document.getElementById('clear-history-button');
+    const autoConfirmButton = document.getElementById('auto-confirm-button');
     const connectionStatus = document.getElementById('connection-status');
     const fileWatcherStatus = document.getElementById('file-watcher-status');
     const freezeWatcherButton = document.getElementById('freeze-watcher-button');
@@ -14,6 +15,11 @@ document.addEventListener('DOMContentLoaded', () => {
     let socket;
     let sessionId = localStorage.getItem('sessionId');
     let isWatcherFrozen = false;
+    let isAutoConfirmEnabled = false;
+
+    // Состояние для потоковой передачи ответа
+    let streamingMessageElement = null;
+    let accumulatedStreamText = '';
 
     if (!sessionId) {
         sessionId = 'sess_' + Math.random().toString(36).substr(2, 9);
@@ -99,24 +105,43 @@ document.addEventListener('DOMContentLoaded', () => {
             const msg = JSON.parse(event.data);
             console.log('Received:', msg);
 
+            // Скрываем блок "мыслей" для большинства сообщений, кроме самих мыслей и токенов
+            if (msg.type !== 'agent_thought' && msg.type !== 'llm_token') {
+                hideAgentThought();
+            }
+
             switch (msg.type) {
                 case 'session_state':
-                    hideAgentThought();
                     handleSessionState(msg.data);
                     break;
-                case 'query_response':
+                // `query_response` заменен на потоковую передачу
+                case 'llm_token':
+                    if (!streamingMessageElement) {
+                        // Первый токен: создаем новый элемент сообщения для агента
+                        hideAgentThought(); // Скрываем спиннер "Агент думает..."
+                        streamingMessageElement = addMessage('', 'agent');
+                    }
+                    accumulatedStreamText += msg.data.token;
+                    const messageContent = streamingMessageElement.querySelector('.message-content');
+                    if (messageContent) {
+                        // Перерисовываем Markdown всего накопленного текста
+                        messageContent.innerHTML = parseMarkdown(accumulatedStreamText);
+                    }
+                    messageList.scrollTop = messageList.scrollHeight;
+                    break;
+                case 'stream_end':
+                    // Поток завершен. Сбрасываем состояние и разблокируем ввод.
+                    streamingMessageElement = null;
+                    accumulatedStreamText = '';
                     hideAgentThought();
-                    addMessage(msg.data.answer, 'agent');
                     break;
                 case 'agent_thought':
                     showAgentThought(msg.data.message);
                     break;
                 case 'action_required':
-                    hideAgentThought();
                     addConfirmationWidget(msg.data.message, msg.data.tool_call);
                     break;
                 case 'plan_generated':
-                    hideAgentThought();
                     addPlanConfirmationWidget(msg.data.steps);
                     break;
                 case 'plan_update':
@@ -124,11 +149,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     updatePlanProgress(msg.data.current_step, msg.data.steps);
                     break;
                 case 'plan_error':
-                    hideAgentThought();
                     addErrorRecoveryWidget(msg.data.error_message, msg.data.recovery_options);
                     break;
                 case 'error':
-                    hideAgentThought();
                     addMessage(`Ошибка: ${msg.data.message}`, 'error');
                     break;
                 case 'pong':
@@ -176,6 +199,7 @@ document.addEventListener('DOMContentLoaded', () => {
         messageElement.appendChild(contentElement);
         messageList.appendChild(messageElement);
         messageList.scrollTop = messageList.scrollHeight;
+        return messageElement; // Возвращаем элемент для дальнейших манипуляций (стриминг)
     }
 
     function addConfirmationWidget(promptText, toolCall) {
@@ -187,17 +211,48 @@ document.addEventListener('DOMContentLoaded', () => {
         widgetElement.querySelector('[data-role="tool-call-json"]').textContent = JSON.stringify(toolCall.function, null, 2);
 
         const yesButton = widgetElement.querySelector('[data-role="yes-button"]');
-        yesButton.onclick = () => {
+        const noButton = widgetElement.querySelector('[data-role="no-button"]');
+        let autoConfirmTimer = null;
+
+        const executeYesAction = () => {
+            if (autoConfirmTimer) {
+                clearInterval(autoConfirmTimer);
+            }
             socket.send(JSON.stringify({ type: 'confirm_action', session_id: sessionId, data: { confirmed: true } }));
             widgetElement.remove();
             showAgentThought('Выполняю подтвержденное действие...');
         };
 
-        const noButton = widgetElement.querySelector('[data-role="no-button"]');
-        noButton.onclick = () => {
-            socket.send(JSON.stringify({ type: 'confirm_action', session_id: sessionId, data: { confirmed: false } }));
-            widgetElement.remove();
-        };
+        if (isAutoConfirmEnabled) {
+            const countdownElement = document.createElement('span');
+            countdownElement.className = 'text-xs text-gray-400 ml-3';
+            let countdown = 3;
+            countdownElement.textContent = `(авто-подтверждение через ${countdown}...)`;
+            noButton.parentElement.appendChild(countdownElement);
+
+            autoConfirmTimer = setInterval(() => {
+                countdown--;
+                countdownElement.textContent = `(авто-подтверждение через ${countdown}...)`;
+                if (countdown <= 0) {
+                    executeYesAction();
+                }
+            }, 1000);
+
+            yesButton.onclick = executeYesAction;
+            noButton.textContent = 'Отменить';
+            noButton.onclick = () => {
+                clearInterval(autoConfirmTimer);
+                socket.send(JSON.stringify({ type: 'confirm_action', session_id: sessionId, data: { confirmed: false } }));
+                widgetElement.remove();
+            };
+
+        } else {
+            yesButton.onclick = executeYesAction;
+            noButton.onclick = () => {
+                socket.send(JSON.stringify({ type: 'confirm_action', session_id: sessionId, data: { confirmed: false } }));
+                widgetElement.remove();
+            };
+        }
 
         messageList.appendChild(widgetElement);
         messageList.scrollTop = messageList.scrollHeight;
@@ -395,7 +450,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             };
             socket.send(JSON.stringify(message));
+            
             // Сразу после отправки показываем блок "мыслей"
+            // и сбрасываем состояние предыдущего стриминга
+            streamingMessageElement = null;
+            accumulatedStreamText = '';
             showAgentThought('Анализирую запрос...');
         }
     }
@@ -410,6 +469,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 sendMessage(true);
             } else {
                 alert('Пожалуйста, введите задачу перед запуском планирования.');
+            }
+        });
+    }
+
+    if (autoConfirmButton) {
+        autoConfirmButton.addEventListener('click', () => {
+            isAutoConfirmEnabled = !isAutoConfirmEnabled;
+            if (isAutoConfirmEnabled) {
+                autoConfirmButton.classList.add('active');
+                autoConfirmButton.title = 'Авто-подтверждение включено';
+            } else {
+                autoConfirmButton.classList.remove('active');
+                autoConfirmButton.title = 'Авто-подтверждение выключено';
             }
         });
     }

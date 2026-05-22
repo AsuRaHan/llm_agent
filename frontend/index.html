@@ -3,49 +3,104 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart Hammer Agent</title>
+    <title>LLM Agent - Frontend</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
-<body class="bg-gray-900 text-gray-300 flex items-center justify-center min-h-screen font-sans">
-    <div class="container max-w-4xl w-full mx-auto bg-gray-800 p-8 rounded-lg shadow-2xl border border-gray-700">
-        <h1 class="text-4xl font-bold text-center text-cyan-400 mb-2">Добро пожаловать в Smart Hammer!</h1>
-        <p class="text-center text-gray-400 mb-8">Ваш локальный AI-ассистент для анализа кода запущен и готов к работе.</p>
-        
-        <div class="flex justify-center gap-4 my-8">
-            <a href="/chat.html" class="px-6 py-3 bg-cyan-600 text-white font-bold rounded-lg shadow-md hover:bg-cyan-700 transition-colors duration-300">
-                🚀 Перейти в чат
-            </a>
-            <a href="/doc.html" class="px-6 py-3 bg-gray-700 text-white font-bold rounded-lg shadow-md hover:bg-gray-600 transition-colors duration-300">
-                📖 Документация
-            </a>
+<body class="bg-gray-900">
+    <div class="chat-container max-w-7xl mx-auto">
+        <div class="chat-header">
+            <div class="header-left">
+                <h1>🤖 LLM Agent</h1>
+                <span id="connection-status" class="connection-status">Подключение...</span>
+            </div>
+            <div class="header-right">
+                <button id="auto-confirm-button" class="header-btn" title="Авто-подтверждение действий">🤖⚡</button>
+                <button id="freeze-watcher-button" class="header-btn" title="Приостановить индексацию">❄️</button>
+                <a href="/" class="back-link">На главную</a>
+                <button id="clear-history-button" class="clear-btn" title="Очистить чат">🗑️</button>
+            </div>
+        </div>
+        <div id="message-list" class="message-list custom-scrollbar">
+            <!-- Сообщения будут загружены с сервера -->
         </div>
 
-        <div class="bg-gray-900 border border-gray-700 rounded-lg p-6 mt-10">
-            <h2 class="text-2xl font-semibold text-gray-200 mb-4">Информация о сервере</h2>
-            <div class="space-y-2 text-gray-400">
-                <p>
-                    <strong>WebSocket URL:</strong> 
-                    <code id="ws-url" class="bg-gray-700 text-cyan-300 px-2 py-1 rounded"></code>
-                </p>
-                <p>
-                    <strong>Frontend:</strong> 
-                    <code id="fe-url" class="bg-gray-700 text-cyan-300 px-2 py-1 rounded"></code>
-                </p>
+        <!-- Блок для мыслей агента -->
+        <div id="agent-thought-container" class="agent-thought-container hidden">
+            <div class="spinner"></div>
+            <span id="agent-thought-text">Агент думает...</span>
+        </div>
+
+        <!-- Форма отправки -->
+        <div id="chat-form" class="chat-form">
+            <textarea id="message-input" placeholder="Введите ваш вопрос... (Shift+Enter для новой строки)" rows="1" class="custom-scrollbar"></textarea>
+            <div class="form-buttons">
+                <button id="send-button" type="submit">Отправить</button>
+                <button id="plan-button" type="button" title="Запустить с планированием (📋)">📋</button>
             </div>
         </div>
     </div>
 
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const wsUrlElement = document.getElementById('ws-url');
-            const feUrlElement = document.getElementById('fe-url');
-            if (wsUrlElement && feUrlElement) {
-                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                wsUrlElement.textContent = `${protocol}//${window.location.hostname}:9000/ws`;
-                feUrlElement.textContent = window.location.origin;
-            }
-        });
-    </script>
+    <!-- ========================================================================== -->
+    <!-- WIDGET TEMPLATES                                                           -->
+    <!-- ========================================================================== -->
+
+    <template id="confirmation-widget-template">
+        <div class="message agent">
+            <div class="message-content border-l-4 border-amber-500 bg-gray-800/40 p-4">
+                <p class="font-bold text-amber-400">⚠️ Запрос на подтверждение действия:</p>
+                <p class="my-2" data-role="prompt-text"></p>
+                <pre class="bg-gray-950 p-3 rounded font-mono text-xs text-gray-300 overflow-x-auto" data-role="tool-call-json"></pre>
+                <div class="confirm-buttons flex gap-3 mt-4">
+                    <button data-role="yes-button" class="px-4 py-2 rounded-md text-white bg-green-600 hover:bg-green-700 font-bold cursor-pointer">Да, разрешить</button>
+                    <button data-role="no-button" class="px-4 py-2 rounded-md text-white bg-red-600 hover:bg-red-700 cursor-pointer">Отклонить</button>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <template id="plan-confirmation-widget-template">
+        <div class="message agent">
+            <div class="message-content border-l-4 border-cyan-500 bg-gray-800/30 p-4">
+                <p><strong>📋 Составлен пошаговый план. Вы можете отредактировать или перетащить шаги перед запуском:</strong></p>
+                <ol data-role="plan-editor-list" class="list-none p-0 m-0 space-y-2 mt-3"></ol>
+                <button data-role="add-step-button" class="ml-7 mt-3 px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs cursor-pointer">+ Добавить шаг</button>
+                <div class="confirm-buttons flex gap-3 mt-5">
+                    <button data-role="approve-plan-button" class="px-4 py-2 rounded-md text-white bg-green-600 hover:bg-green-700 font-bold cursor-pointer">🚀 Утвердить и запустить</button>
+                    <button data-role="reject-plan-button" class="px-4 py-2 rounded-md text-white bg-red-600 hover:bg-red-700 cursor-pointer">Отмена</button>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <template id="plan-step-item-template">
+        <li class="flex items-center gap-2 plan-step-item">
+            <span class="drag-handle" title="Перетащить">⠿</span>
+            <div contenteditable="true" class="plan-step-text flex-grow p-1.5 border border-dashed border-gray-600 rounded bg-gray-900/60 focus:outline-none focus:border-cyan-400 text-sm text-gray-200"></div>
+            <button class="btn-remove-step flex-shrink-0 bg-red-700 text-white rounded-full w-6 h-6 font-bold flex items-center justify-center hover:bg-red-600 cursor-pointer" title="Удалить шаг">-</button>
+        </li>
+    </template>
+
+    <template id="plan-progress-widget-template">
+        <div class="message-content border-l-4 border-green-500 bg-gray-800/40 p-4 rounded-r-lg">
+            <p class="mt-0 text-green-400 font-bold flex items-center gap-2"><span>⚡</span> Выполнение автономной кампании:</p>
+            <ul data-role="progress-list" class="list-none p-0 m-0 space-y-2.5 mt-2"></ul>
+        </div>
+    </template>
+
+    <template id="error-recovery-widget-template">
+        <div class="message agent">
+            <div class="message-content border-l-4 border-red-500 bg-gray-800/30 p-4">
+                <p class="font-bold text-red-400 flex items-center gap-1"><span>❗️</span> Ошибка выполнения кампании:</p>
+                <pre data-role="error-message" class="bg-gray-950 p-3 my-2 rounded font-mono text-xs text-red-300 overflow-x-auto whitespace-pre-wrap"></pre>
+                <p class="text-sm my-2">Выберите стратегию восстановления для 🤖 агента:</p>
+                <div data-role="button-container" class="confirm-buttons flex flex-wrap gap-2.5 mt-3"></div>
+            </div>
+        </div>
+    </template>
+
+    <script type="module" src="/js/index.js"></script>
 </body>
 </html>

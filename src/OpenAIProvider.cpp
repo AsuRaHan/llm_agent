@@ -15,15 +15,20 @@ OpenAIProvider::OpenAIProvider(const Config& config)
 AssistantResponse OpenAIProvider::processChat(
     const nlohmann::json& messages,
     const nlohmann::json& tools,
-    const std::function<void(const std::string&)>& send_thought
+    const std::function<void(const std::string&)>& send_thought,
+    const std::function<void(const std::string&)>& send_stream_chunk
 ) {
     json body = {
         {"messages", messages},
         {"model", config.chat_model_name},
-        {"tools", tools},
-        {"tool_choice", "auto"},
-        {"temperature", 0.1}
+        {"temperature", 0.1},
+        {"stream", true}
     };
+
+    if (!tools.is_null() && !tools.empty()) {
+        body["tools"] = tools;
+        body["tool_choice"] = "auto";
+    }
 
     httplib::Headers headers;
     if (!config.api_key.empty()) {
@@ -31,9 +36,94 @@ AssistantResponse OpenAIProvider::processChat(
     }
     std::string body_str = body.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
 
+    // Variables for aggregating the full response from stream chunks
+    std::string full_content;
+    json tool_calls = json::array();
+    // Helper variables to assemble a single tool_call from multiple chunks
+    std::string current_tool_id;
+    std::string current_tool_name;
+    std::string current_tool_args;
+
+    std::string sse_buffer;
+
+    auto content_receiver = [&](const char *data, size_t data_length) {
+        sse_buffer.append(data, data_length);
+
+        size_t pos;
+        // An SSE event is terminated by double newlines.
+        while ((pos = sse_buffer.find("\n\n")) != std::string::npos) { 
+            std::string event_chunk = sse_buffer.substr(0, pos);
+            sse_buffer.erase(0, pos + 2);
+
+            std::istringstream stream(event_chunk);
+            std::string line;
+            while (std::getline(stream, line)) {
+                if (line.rfind("data: ", 0) == 0) {
+                    std::string data_str = line.substr(6);
+                    if (data_str.empty() || data_str == "[DONE]") {
+                        continue;
+                    }
+
+                    try {
+                        json delta_json = json::parse(data_str);
+                        if (delta_json.contains("choices") && !delta_json["choices"].empty()) {
+                            const auto& delta = delta_json["choices"][0]["delta"];
+
+                            // 1. Aggregate and stream text tokens
+                            if (delta.contains("content") && delta["content"].is_string()) {
+                                std::string token = delta["content"].get<std::string>();
+                                if (!token.empty()) {
+                                    full_content += token;
+                                    if (send_stream_chunk) {
+                                        send_stream_chunk(token);
+                                    }
+                                }
+                            }
+
+                            // 2. Aggregate tool_calls
+                            if (delta.contains("tool_calls") && delta["tool_calls"].is_array()) {
+                                for (const auto& tool_call_delta : delta["tool_calls"]) {
+                                    // If an ID arrives, it's a new tool_call
+                                    if (tool_call_delta.contains("id")) {
+                                        // Finalize the previous tool_call if it exists
+                                        if (!current_tool_id.empty()) {
+                                            tool_calls.push_back({
+                                                {"id", current_tool_id},
+                                                {"type", "function"},
+                                                {"function", {
+                                                    {"name", current_tool_name},
+                                                    {"arguments", current_tool_args}
+                                                }}
+                                            });
+                                        }
+                                        // Start a new one
+                                        current_tool_id = tool_call_delta["id"];
+                                        current_tool_name = "";
+                                        current_tool_args = "";
+                                    }
+                                    if (tool_call_delta.contains("function")) {
+                                        if (tool_call_delta["function"].contains("name")) {
+                                            current_tool_name += tool_call_delta["function"]["name"].get<std::string>();
+                                        }
+                                        if (tool_call_delta["function"].contains("arguments")) {
+                                            current_tool_args += tool_call_delta["function"]["arguments"].get<std::string>();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } catch (const json::exception& e) {
+                        SPDLOG_WARN("Failed to parse stream chunk: {}. Chunk: {}", e.what(), data_str);
+                    }
+                }
+            }
+        }
+        return true;
+    };
+
     httplib::Result res;
     for (int attempt = 1; attempt <= config.retry_count; ++attempt) {
-        res = cli.Post("/v1/chat/completions", headers, body_str, "application/json");
+        res = cli.Post("/v1/chat/completions", headers, body_str, "application/json", content_receiver);
         if (res) break;
         SPDLOG_ERROR("Attempt {} of {} for chat completion failed. Connection error: {}. Retrying...",
                      attempt, config.retry_count, httplib::to_string(res.error()));
@@ -49,16 +139,32 @@ AssistantResponse OpenAIProvider::processChat(
         return { .step_failed = true, .error_message = "Failed to get a response from the language model." };
     }
 
-    json response_json;
-    try {
-        response_json = json::parse(res->body);
-    } catch (const json::exception& e) {
-        SPDLOG_ERROR("Failed to parse JSON response from LLM: {}. Body: {}", e.what(), res->body);
-        return { .step_failed = true, .error_message = "Failed to parse the model's response." };
+    // After stream is complete, finalize the last tool_call if it exists
+    if (!current_tool_id.empty()) {
+        tool_calls.push_back({
+            {"id", current_tool_id},
+            {"type", "function"},
+            {"function", {
+                {"name", current_tool_name},
+                {"arguments", current_tool_args}
+            }}
+        });
     }
 
-    // Return the full response message for AssistantRole to process
-    return { .llm_response = response_json };
+    // Construct the final JSON response in the format AssistantRole expects
+    json message = { {"role", "assistant"} };
+    if (!full_content.empty()) {
+        message["content"] = full_content;
+    }
+    if (!tool_calls.empty()) {
+        message["tool_calls"] = tool_calls;
+    }
+
+    json final_response = {
+        {"choices", {{{"message", message}}}}
+    };
+
+    return { .llm_response = final_response };
 }
 
 nlohmann::json OpenAIProvider::generatePlan(const std::string& user_query) {

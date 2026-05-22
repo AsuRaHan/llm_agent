@@ -22,6 +22,7 @@ FileIndexer::FileIndexer(
       fileIndexerMetadataPath(".shdata/file_indexer_meta.json") // Инициализация пути
 {
     ignoredDirectories.insert(config.ignored_directories.begin(), config.ignored_directories.end());
+    // ignoredDirectories.insert(".shdata");
     ignoredExtensions.insert(config.ignored_extensions.begin(), config.ignored_extensions.end());
     ignoredFiles.insert(config.ignored_files.begin(), config.ignored_files.end());
 

@@ -207,6 +207,9 @@ void WebSocketServer::processAgentLogic(std::shared_ptr<UserSession> session, co
         auto send_thought = [this, ws_handle](const std::string& thought) {
             sendMessage(ws_handle, {{"type", "agent_thought"}, {"data", {{"message", thought}}}});
         };
+        auto send_stream_chunk = [this, ws_handle](const std::string& token) {
+            sendMessage(ws_handle, {{"type", "llm_token"}, {"data", {{"token", token}}}});
+        };
         
         // --- ЛОГИКА ВЫПОЛНЕНИЯ ПЛАНА ---
         if (session->status == AgentStatus::EXECUTING_PLAN) {
@@ -228,21 +231,17 @@ void WebSocketServer::processAgentLogic(std::shared_ptr<UserSession> session, co
                     context = searcher.findTopK(session->original_user_query, config.top_k_results, fileIndex);
                 }
 
-                // ВАЖНО: Мы пушим ноту шага в историю ТОЛЬКО если мы не продолжаем работу после подтверждения опасного инструмента.
-                // Если мы вернулись из handleConfirmation, вызов инструмента уже сидит на вершине истории, и пушить туда системную ноту нельзя.
                 if (queryText != "CONTINUE_AFTER_TOOL" && queryText != "RETRY_STEP") {
                     session->history.push_back({{"role", "user"}, {"content", "[SYSTEM_NOTE]: Текущий шаг плана: \"" + task + "\". Используй инструменты для его реализации. По окончании шага переходи к следующему."}});
                 }
 
-                // Вызываем ассистента. userQuery пустой, так как вся цепочка и инструкции сидят в session->history.
-                // Контекст передаем только для первого шага.
-                AssistantResponse response = assistant.processQuery("", context, indexer, session->history, send_thought);
+                AssistantResponse response = assistant.processQuery("", context, indexer, session->history, send_thought, send_stream_chunk);
+                sendMessage(ws_handle, {{"type", "stream_end"}});
                 session->history = response.conversation_history;
 
-                // Если шаг плана завершился с ошибкой, прерываем выполнение всего плана
                 if (response.step_failed) {
                     SPDLOG_ERROR("Шаг плана для сессии {} завершился с ошибкой: {}", sessionId, response.error_message);
-                    session->status = AgentStatus::AWAITING_ERROR_RECOVERY_DECISION; // Не меняем на IDLE, ждем решения
+                    session->status = AgentStatus::AWAITING_ERROR_RECOVERY_DECISION;
                     sendMessage(ws_handle, {
                         {"type", "plan_error"}, 
                         {"data", {
@@ -250,33 +249,29 @@ void WebSocketServer::processAgentLogic(std::shared_ptr<UserSession> session, co
                             {"recovery_options", response.recovery_options}
                         }}
                     });
-                    return; // Полностью выходим из потока пула, ждем решения.
+                    return;
                 }
 
-                // Перехват ручного подтверждения опасного инструмента
                 if (response.requires_confirmation) {
                     SPDLOG_INFO("Выполнение плана для сессии {} приостановлено. Ожидание подтверждения операции.", sessionId);
                     session->status = AgentStatus::AWAITING_CONFIRMATION;
                     session->pending_tool_call = response.pending_tool_call;
                     sendMessage(ws_handle, {{"type", "action_required"}, {"data", {{"message", response.text}, {"tool_call", response.pending_tool_call}}}});
-                    return; // Полностью выходим из потока пула. Ждем клика в UI.
+                    return;
                 }
 
-                // Шаг успешно закрыт моделью, инкрементируем счетчик плана
                 session->current_plan_step++;
-                // Сбрасываем флаг продолжения для следующих шагов в цикле while
                 const_cast<std::string&>(queryText) = ""; 
             }
 
-            // Все шаги плана успешно исчерпаны. Запрашиваем финальный аналитический отчет.
             SPDLOG_INFO("Все задачи плана для сессии {} выполнены. Сборка итогового отчета...", sessionId);
             session->history.push_back({{"role", "user"}, {"content", "Все пункты плана успешно реализованы. Подведи итог проделанной работы, перечисли измененные компоненты и предоставь финальный ответ пользователю."}});
             
-            AssistantResponse final_response = assistant.processQuery("", {}, indexer, session->history, send_thought);
+            AssistantResponse final_response = assistant.processQuery("", {}, indexer, session->history, send_thought, send_stream_chunk);
+            sendMessage(ws_handle, {{"type", "stream_end"}});
             
+            // The final answer was streamed. Now we can set the session to idle.
             setSessionIdle(session);
-            sendMessage(ws_handle, {{"type", "query_response"}, {"data", {{"answer", final_response.text}}}});
-
         } else { 
             // --- СИНГЛ-ШОТ РЕЖИМ (ОБЫЧНЫЙ ДИАЛОГ БЕЗ ПЛАНА) ---
             std::vector<SearchResult> context;
@@ -286,10 +281,10 @@ void WebSocketServer::processAgentLogic(std::shared_ptr<UserSession> session, co
                 context = searcher.findTopK(queryText, config.top_k_results, fileIndex);
             }
 
-            AssistantResponse response = assistant.processQuery(queryText, context, indexer, session->history, send_thought);
-            // Сохраняем сессию СРАЗУ после того, как ассистент обновил историю
-            sessionManager.saveSessions();
+            AssistantResponse response = assistant.processQuery(queryText, context, indexer, session->history, send_thought, send_stream_chunk);
+            sendMessage(ws_handle, {{"type", "stream_end"}});
 
+            sessionManager.saveSessions();
             session->history = response.conversation_history;
 
             if (response.requires_confirmation) {
@@ -298,9 +293,7 @@ void WebSocketServer::processAgentLogic(std::shared_ptr<UserSession> session, co
                 sendMessage(ws_handle, {{"type", "action_required"}, {"data", {{"message", response.text}, {"tool_call", response.pending_tool_call}}}});
             } else {
                 setSessionIdle(session);
-                // Сохраняем сессию еще раз после сброса статуса в IDLE
                 sessionManager.saveSessions();
-                sendMessage(ws_handle, {{"type", "query_response"}, {"data", {{"answer", response.text}}}});
             }
         }
     } catch (const std::exception& e) {
@@ -542,7 +535,7 @@ void WebSocketServer::sendMessage(std::shared_ptr<SafeWsHandle> ws_handle, const
     }
     try {
         std::string payload_str = payload.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
-        SPDLOG_TRACE("Отправка сообщения: {}", payload_str);
+        // SPDLOG_TRACE("Отправка сообщения: {}", payload_str);
         ws_handle->ws->send(payload_str);
     } catch (const std::exception& e) {
         SPDLOG_ERROR("Не удалось отправить сообщение: {}", e.what());
