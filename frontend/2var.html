@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Hammer - AI Assistant</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        
+        .chat-bubble {
+            max-width: 70%;
+            animation: fadeIn 0.3s ease-out;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .typing-indicator {
+            display: inline-flex;
+            gap: 4px;
+            padding: 8px 16px;
+            background: #f1f5f9;
+            border-radius: 16px;
+            align-items: center;
+        }
+        
+        .typing-indicator span {
+            width: 8px;
+            height: 8px;
+            background: #64748b;
+            border-radius: 50%;
+            animation: bounce 1.4s infinite ease-in-out;
+        }
+        
+        .typing-indicator span:nth-child(1) { animation-delay: 0s; }
+        .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+        .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+        
+        @keyframes bounce {
+            0%, 80%, 100% { transform: scale(0.8); }
+            40% { transform: scale(1); }
+        }
+        
+        /* Compact input mode */
+        .input-compact {
+            min-height: 48px;
+            max-height: 48px;
+            padding: 12px 16px;
+            font-size: 14px;
+        }
+        
+        /* Editor mode */
+        .input-editor {
+            min-height: 200px;
+            max-height: 600px;
+            padding: 16px;
+            font-size: 14px;
+            line-height: 1.6;
+            border: 1px solid #475569;
+        }
+        
+        .input-editor:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+        
+        /* Toggle button */
+        .toggle-btn {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: #334155;
+            border: none;
+            color: #94a3b8;
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+        
+        .toggle-btn:hover {
+            background: #475569;
+            color: #fff;
+        }
+        
+        .toggle-btn.hidden {
+            display: none;
+        }
+        
+        /* Character counter */
+        .char-counter {
+            font-size: 12px;
+            color: #94a3b8;
+            text-align: right;
+            margin-top: 4px;
+        }
+        
+        /* Scrollbar styling */
+        textarea::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        textarea::-webkit-scrollbar-track {
+            background: #1e293b;
+        }
+        
+        textarea::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 3px;
+        }
+        
+        textarea::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 min-h-screen">
+    <div class="flex h-screen">
+        <!-- Sidebar -->
+        <aside class="w-72 bg-slate-800/50 backdrop-blur-xl border-r border-slate-700/50 flex flex-col">
+            <div class="p-6 border-b border-slate-700/50">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
+                        <i class="fas fa-robot text-white text-lg"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-white font-bold text-lg">Smart Hammer</h1>
+                        <p class="text-slate-400 text-xs">AI Assistant</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="flex-1 overflow-y-auto p-4">
+                <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Чаты</div>
+                <button class="w-full flex items-center gap-3 p-3 rounded-xl bg-blue-600/20 border border-blue-500/30 text-white mb-2 hover:bg-blue-600/30 transition-all">
+                    <i class="fas fa-plus text-blue-400"></i>
+                    <span class="text-sm">Новый чат</span>
+                </button>
+                
+                <div class="mt-4 space-y-1">
+                    <button class="w-full flex items-center gap-3 p-3 rounded-xl text-slate-300 hover:bg-slate-700/50 transition-all">
+                        <i class="fas fa-history text-slate-500"></i>
+                        <span class="text-sm">Проекты</span>
+                    </button>
+                    <button class="w-full flex items-center gap-3 p-3 rounded-xl text-slate-300 hover:bg-slate-700/50 transition-all">
+                        <i class="fas fa-bookmark text-slate-500"></i>
+                        <span class="text-sm">Избранное</span>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="p-4 border-t border-slate-700/50">
+                <div class="flex items-center gap-3 p-3 rounded-xl hover:bg-slate-700/50 transition-all cursor-pointer">
+                    <div class="w-8 h-8 bg-gradient-to-br from-green-400 to-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                        SH
+                    </div>
+                    <div class="flex-1">
+                        <p class="text-white text-sm font-medium">Smart Hammer</p>
+                        <p class="text-slate-400 text-xs">Pro Plan</p>
+                    </div>
+                    <i class="fas fa-chevron-right text-slate-500 text-xs"></i>
+                </div>
+            </div>
+        </aside>
+        
+        <!-- Main Chat Area -->
+        <main class="flex-1 flex flex-col">
+            <!-- Header -->
+            <header class="h-16 border-b border-slate-700/50 flex items-center justify-between px-6 bg-slate-800/30 backdrop-blur-sm">
+                <div class="flex items-center gap-3">
+                    <i class="fas fa-robot text-blue-400 text-xl"></i>
+                    <div>
+                        <h2 class="text-white font-semibold">LLM Agent</h2>
+                        <div class="flex items-center gap-2">
+                            <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                            <span class="text-slate-400 text-xs">Подключено</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button class="p-2 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg transition-all">
+                        <i class="fas fa-bolt"></i>
+                    </button>
+                    <button class="p-2 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg transition-all">
+                        <i class="fas fa-snowflake"></i>
+                    </button>
+                    <button class="p-2 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg transition-all">
+                        <i class="fas fa-home"></i>
+                    </button>
+                    <button class="p-2 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg transition-all">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            </header>
+            
+            <!-- Chat Messages -->
+            <div class="flex-1 overflow-y-auto p-6 space-y-4">
+                <div class="flex items-start gap-4">
+                    <div class="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center flex-shrink-0">
+                        <i class="fas fa-robot text-white text-sm"></i>
+                    </div>
+                    <div class="chat-bubble">
+                        <div class="bg-slate-800/80 backdrop-blur-sm border border-slate-700/50 rounded-2xl rounded-tl-none p-4">
+                            <p class="text-slate-200 text-base leading-relaxed">
+                                Привет! Я Smart Hammer, ваш AI-ассистент. Я проанализировал проект и готов к работе. Чем могу помочь?
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Input Area -->
+            <div class="p-6 border-t border-slate-700/50 bg-slate-800/30">
+                <div class="max-w-4xl mx-auto">
+                    <div class="relative">
+                        <!-- Compact Input Mode -->
+                        <div id="compact-input" class="input-compact">
+                            <textarea 
+                                id="message-input"
+                                placeholder="Введите ваш вопрос..."
+                                class="w-full bg-slate-800/80 backdrop-blur-sm border border-slate-600/50 rounded-2xl p-4 pr-24 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent resize-none"
+                                rows="1"
+                                maxlength="500"
+                            ></textarea>
+                            <button class="toggle-btn" id="toggle-btn" title="Развернуть редактор">
+                                <i class="fas fa-expand text-sm"></i>
+                            </button>
+                            <button class="absolute right-3 bottom-3 p-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition-all" id="send-btn">
+                                <i class="fas fa-paper-plane"></i>
+                            </button>
+                        </div>
+                        
+                        <!-- Editor Mode -->
+                        <div id="editor-input" class="input-editor hidden">
+                            <textarea 
+                                id="editor-textarea"
+                                placeholder="Напишите ваш вопрос здесь..."
+                                class="w-full bg-slate-800/80 backdrop-blur-sm border border-slate-600/50 rounded-2xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent resize-none"
+                                rows="10"
+                            ></textarea>
+                            <button class="toggle-btn" id="toggle-editor-btn" title="Свернуть в компактный режим">
+                                <i class="fas fa-compress text-sm"></i>
+                            </button>
+                            <button class="toggle-btn" id="editor-send-btn" title="Отправить">
+                                <i class="fas fa-paper-plane"></i>
+                            </button>
+                            <div class="char-counter" id="char-counter">0 / 10000</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Toolbar -->
+                    <div class="flex items-center justify-between mt-3">
+                        <div class="flex items-center gap-2">
+                            <button class="p-2 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg transition-all" title="Прикрепить файл">
+                                <i class="fas fa-paperclip"></i>
+                            </button>
+                            <button class="p-2 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg transition-all" title="Вставить изображение">
+                                <i class="fas fa-image"></i>
+                            </button>
+                            <button class="p-2 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg transition-all" title="Форматирование" id="format-btn">
+                                <i class="fas fa-bold"></i>
+                            </button>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-slate-500 text-xs">Shift + Enter для переноса строки</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    
+    <script>
+        // DOM Elements
+        const compactInput = document.getElementById('compact-input');
+        const editorInput = document.getElementById('editor-input');
+        const toggleBtn = document.getElementById('toggle-btn');
+        const toggleEditorBtn = document.getElementById('toggle-editor-btn');
+        const messageInput = document.getElementById('message-input');
+        const editorTextarea = document.getElementById('editor-textarea');
+        const charCounter = document.getElementById('char-counter');
+        const sendBtn = document.getElementById('send-btn');
+        const editorSendBtn = document.getElementById('editor-send-btn');
+        const formatBtn = document.getElementById('format-btn');
+        
+        // Toggle between compact and editor modes
+        function toggleMode() {
+            if (compactInput.classList.contains('hidden')) {
+                compactInput.classList.remove('hidden');
+                editorInput.classList.add('hidden');
+                toggleBtn.classList.remove('hidden');
+                toggleEditorBtn.classList.add('hidden');
+                messageInput.focus();
+            } else {
+                compactInput.classList.add('hidden');
+                editorInput.classList.remove('hidden');
+                toggleBtn.classList.add('hidden');
+                toggleEditorBtn.classList.remove('hidden');
+                editorTextarea.focus();
+            }
+        }
+        
+        // Auto-resize textarea
+        function autoResizeTextarea(textarea) {
+            textarea.style.height = 'auto';
+            textarea.style.height = Math.min(textarea.scrollHeight, 600) + 'px';
+        }
+        
+        // Update character counter
+        function updateCharCounter() {
+            const currentLength = editorTextarea.value.length;
+            charCounter.textContent = `${currentLength} / 10000`;
+            
+            if (currentLength >= 10000) {
+                charCounter.classList.add('text-red-400');
+            } else {
+                charCounter.classList.remove('text-red-400');
+            }
+        }
+        
+        // Sync text between inputs
+        function syncText() {
+            if (compactInput.classList.contains('hidden')) {
+                editorTextarea.value = messageInput.value;
+            } else {
+                messageInput.value = editorTextarea.value;
+            }
+        }
+        
+        // Event Listeners
+        toggleBtn.addEventListener('click', toggleMode);
+        toggleEditorBtn.addEventListener('click', toggleMode);
+        
+        messageInput.addEventListener('input', function() {
+            syncText();
+            autoResizeTextarea(this);
+        });
+        
+        editorTextarea.addEventListener('input', function() {
+            syncText();
+            autoResizeTextarea(this);
+            updateCharCounter();
+        });
+        
+        sendBtn.addEventListener('click', sendMessage);
+        editorSendBtn.addEventListener('click', sendMessage);
+        
+        formatBtn.addEventListener('click', () => {
+            alert('Функция форматирования будет доступна в полной версии');
+        });
+        
+        // Enter to send
+        messageInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+        
+        editorTextarea.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+        
+        // Send message function
+        function sendMessage() {
+            const text = messageInput.value.trim();
+            if (!text) return;
+            
+            // Add message to chat
+            const chatContainer = document.querySelector('.flex-1.overflow-y-auto');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'flex items-start gap-4';
+            messageDiv.innerHTML = `
+                <div class="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center flex-shrink-0">
+                    <i class="fas fa-robot text-white text-sm"></i>
+                </div>
+                <div class="chat-bubble">
+                    <div class="bg-slate-800/80 backdrop-blur-sm border border-slate-700/50 rounded-2xl rounded-tl-none p-4">
+                        <p class="text-slate-200 text-base leading-relaxed">${text}</p>
+                    </div>
+                </div>
+            `;
+            
+            chatContainer.appendChild(messageDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+            
+            // Clear input
+            messageInput.value = '';
+            editorTextarea.value = '';
+            autoResizeTextarea(messageInput);
+            autoResizeTextarea(editorTextarea);
+            updateCharCounter();
+            
+            // Show typing indicator
+            showTypingIndicator();
+            
+            // Simulate AI response
+            setTimeout(() => {
+                hideTypingIndicator();
+                const responseDiv = document.createElement('div');
+                responseDiv.className = 'flex items-start gap-4';
+                responseDiv.innerHTML = `
+                    <div class="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center flex-shrink-0">
+                        <i class="fas fa-robot text-white text-sm"></i>
+                    </div>
+                    <div class="chat-bubble">
+                        <div class="bg-slate-800/80 backdrop-blur-sm border border-slate-700/50 rounded-2xl rounded-tl-none p-4">
+                            <p class="text-slate-200 text-base leading-relaxed">Я получил ваше сообщение. Это пример ответа.</p>
+                        </div>
+                    </div>
+                `;
+                chatContainer.appendChild(responseDiv);
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+            }, 1000);
+        }
+        
+        // Typing indicator
+        function showTypingIndicator() {
+            const chatContainer = document.querySelector('.flex-1.overflow-y-auto');
+            const typingDiv = document.createElement('div');
+            typingDiv.className = 'flex items-start gap-4';
+            typingDiv.innerHTML = `
+                <div class="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center flex-shrink-0">
+                    <i class="fas fa-robot text-white text-sm"></i>
+                </div>
+                <div class="chat-bubble">
+                    <div class="typing-indicator">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </div>
+                </div>
+            `;
+            chatContainer.appendChild(typingDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+        
+        function hideTypingIndicator() {
+            const typingDiv = document.querySelector('.typing-indicator');
+            if (typingDiv) {
+                typingDiv.remove();
+            }
+        }
+    </script>
+</body>
+</html>
