@@ -197,6 +197,7 @@ add_executable(Agent
       src/ContextIndexerHelper/FileIndexer.cpp
       src/EmbeddingClient.cpp
       src/OpenAIProvider.cpp
+      src/AssistantRoleHelper/QueryProcessor.cpp
       src/AssistantRole.cpp
       src/Logger.cpp
       src/CodeParser.cpp
@@ -241,6 +242,7 @@ target_include_directories(Agent PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/src
   ${CMAKE_CURRENT_SOURCE_DIR}/src/tools
   ${CMAKE_CURRENT_SOURCE_DIR}/src/ContextIndexerHelper
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/AssistantRoleHelper
   $<BUILD_INTERFACE:${spdlog_SOURCE_DIR}/include>
   $<BUILD_INTERFACE:${hnswlib_SOURCE_DIR}>
   $<BUILD_INTERFACE:${tree_sitter_core_SOURCE_DIR}/lib/include> # Заголовочные файлы Tree-sitter core

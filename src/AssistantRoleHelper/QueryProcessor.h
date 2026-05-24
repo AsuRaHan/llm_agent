@@ -1,0 +1,49 @@
+#pragma once
+
+#include "AssistantRole.h" // For AssistantResponse
+#include "ToolManager.h"
+#include "LLMProvider.h"
+#include "Config.h"
+#include "ContextIndexer.h"
+#include "Searcher.h"
+#include <nlohmann/json.hpp>
+#include <functional>
+
+class QueryProcessor {
+public:
+    QueryProcessor(
+        std::shared_ptr<LLMProvider> llmProvider,
+        ToolManager& toolManager,
+        const Config& config,
+        ContextIndexer& indexer,
+        const std::function<void(const std::string&)>& send_thought,
+        const std::function<void(const std::string&)>& send_stream_chunk
+    );
+
+    AssistantResponse process(
+        const std::string& userQuery,
+        const std::vector<SearchResult>& initialContext,
+        const nlohmann::json& continuation_history
+    );
+
+private:
+    // Initialization
+    bool initializeMessages(const std::string& userQuery, const std::vector<SearchResult>& initialContext, const nlohmann::json& continuation_history);
+    void prepareNewQueryMessages(const std::vector<SearchResult>& initialContext, const nlohmann::json& continuation_history);
+
+    // Main loop and handlers
+    AssistantResponse handleContinuationAfterConfirmation();
+    AssistantResponse handleToolCalls(const nlohmann::json& message);
+    AssistantResponse executeToolCall(const nlohmann::json& call);
+    AssistantResponse forceFinalAnswer();
+
+    // Member variables
+    std::shared_ptr<LLMProvider> m_llmProvider;
+    ToolManager& m_toolManager;
+    const Config& m_config;
+    ContextIndexer& m_indexer;
+    std::function<void(const std::string&)> m_send_thought;
+    std::function<void(const std::string&)> m_send_stream_chunk;
+
+    nlohmann::json m_messages;
+};
