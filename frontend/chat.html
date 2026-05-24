@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Чат с Агентом - Smart Hammer</title>
+    <title>Чат с Агентом - Smart Hammer (СТАРАЯ ВЕРСИЯ роботает v0.1)</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/css/chat.css">
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
@@ -27,7 +27,7 @@
     <div class="chat-container flex-grow">
         <div class="chat-header">
             <div class="header-left">
-                <h1>🤖 Чат с Агентом</h1>
+                <h1>🤖</h1>
                 <span id="connection-status" class="connection-status">Подключение...</span>
                 <div id="file-watcher-status" class="file-watcher-status hidden">
                     <div class="spinner-small"></div>
@@ -35,7 +35,7 @@
                 </div>
             </div>
             <div class="header-right">
-                <button id="auto-confirm-button" class="header-btn" title="Авто-подтверждение действий">🤖⚡</button>
+                <button id="auto-confirm-button" class="header-btn" title="Авто-подтверждение действий">⚡</button>
                 <button id="freeze-watcher-button" class="header-btn" title="Приостановить индексацию">❄️</button>
                 <a href="/" class="back-link">На главную</a>
                 <button id="clear-history-button" class="clear-btn" title="Очистить чат">🗑️</button>
@@ -128,6 +128,6 @@
         </div>
     </template>
 
-    <script src="/js/chat.js"></script> <!-- type="module" не нужен, т.к. chat.js не использует импорты -->
+    <script src="/js/chat.js"></script>
 </body>
 </html>

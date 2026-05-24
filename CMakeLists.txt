@@ -197,6 +197,7 @@ add_executable(Agent
       src/ContextIndexerHelper/FileIndexer.cpp
       src/EmbeddingClient.cpp
       src/OpenAIProvider.cpp
+      src/AssistantRoleHelper/MessageBuilder.cpp
       src/AssistantRoleHelper/QueryProcessor.cpp
       src/AssistantRole.cpp
       src/Logger.cpp

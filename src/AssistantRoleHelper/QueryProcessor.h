@@ -2,7 +2,7 @@
 
 #include "AssistantRole.h" // For AssistantResponse
 #include "ToolManager.h"
-#include "LLMProvider.h"
+#include "LLMProvider.h" 
 #include "Config.h"
 #include "ContextIndexer.h"
 #include "Searcher.h"
@@ -27,15 +27,11 @@ public:
     );
 
 private:
-    // Initialization
-    bool initializeMessages(const std::string& userQuery, const std::vector<SearchResult>& initialContext, const nlohmann::json& continuation_history);
-    void prepareNewQueryMessages(const std::vector<SearchResult>& initialContext, const nlohmann::json& continuation_history);
-
     // Main loop and handlers
-    AssistantResponse handleContinuationAfterConfirmation();
-    AssistantResponse handleToolCalls(const nlohmann::json& message);
-    AssistantResponse executeToolCall(const nlohmann::json& call);
-    AssistantResponse forceFinalAnswer();
+    AssistantResponse handleContinuationAfterConfirmation(class MessageBuilder& messageBuilder);
+    AssistantResponse handleToolCalls(const nlohmann::json& message, class MessageBuilder& messageBuilder);
+    AssistantResponse executeToolCall(const nlohmann::json& call, class MessageBuilder& messageBuilder);
+    AssistantResponse forceFinalAnswer(class MessageBuilder& messageBuilder);
 
     // Member variables
     std::shared_ptr<LLMProvider> m_llmProvider;
@@ -44,6 +40,4 @@ private:
     ContextIndexer& m_indexer;
     std::function<void(const std::string&)> m_send_thought;
     std::function<void(const std::string&)> m_send_stream_chunk;
-
-    nlohmann::json m_messages;
 };
