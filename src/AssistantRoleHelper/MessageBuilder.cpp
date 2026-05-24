@@ -74,7 +74,10 @@ void MessageBuilder::addAssistantMessage(const std::string& content) {
 }
 
 void MessageBuilder::addForcedFinalAnswerMessage() {
-    m_messages.push_back({{"role", "user"}, {"content", "Ты достиг максимального количества итераций для вызова инструментов. Предоставь пользователю окончательный ответ, основываясь на уже собранной информации."}});
+    m_messages.push_back({{"role", "user"}, {"content", 
+        "Лимит вызовов инструментов исчерпан. Проанализируй всю историю диалога, "
+        "включая результат последнего вызова инструмента, и сформируй исчерпывающий финальный ответ для пользователя."
+    }});
 }
 
 void MessageBuilder::setRemainingIterationsSystemNote(int remaining_iterations) {
