@@ -25,14 +25,13 @@ public:
         ContextIndexer& indexer,
         const nlohmann::json& continuation_history,
         const std::function<void(const std::string&)>& send_thought,
-        const std::function<void(const std::string&)>& send_stream_chunk
+        const std::function<void(const std::string&)>& send_stream_chunk,
+        std::atomic<bool>& is_interrupted
     );
 
     nlohmann::json generatePlan(const std::string& user_query);
 
 private:
-    nlohmann::json parsePlanFromMarkdown(const std::string& text);
-
     const Config& config;
     std::shared_ptr<LLMProvider> llmProvider;
     std::unique_ptr<ToolManager> toolManager;

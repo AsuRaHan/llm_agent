@@ -7,6 +7,7 @@
 #include "ContextIndexer.h"
 #include "Searcher.h"
 #include <nlohmann/json.hpp>
+#include <atomic>
 #include <functional>
 
 class QueryProcessor {
@@ -17,7 +18,8 @@ public:
         const Config& config,
         ContextIndexer& indexer,
         const std::function<void(const std::string&)>& send_thought,
-        const std::function<void(const std::string&)>& send_stream_chunk
+        const std::function<void(const std::string&)>& send_stream_chunk,
+        std::atomic<bool>& is_interrupted
     );
 
     AssistantResponse process(
@@ -28,9 +30,10 @@ public:
 
 private:
     // Main loop and handlers
+    AssistantResponse runReActIteration(class MessageBuilder& messageBuilder, int iteration);
     AssistantResponse handleContinuationAfterConfirmation(class MessageBuilder& messageBuilder);
-    AssistantResponse handleToolCalls(const nlohmann::json& message, class MessageBuilder& messageBuilder);
-    AssistantResponse executeToolCall(const nlohmann::json& call, class MessageBuilder& messageBuilder);
+    AssistantResponse handleToolCalls(const nlohmann::json& message, class MessageBuilder& messageBuilder, bool skip_danger_check = false);
+    AssistantResponse executeToolCall(const nlohmann::json& call, class MessageBuilder& messageBuilder, bool skip_danger_check = false);
     AssistantResponse forceFinalAnswer(class MessageBuilder& messageBuilder);
 
     // Member variables
@@ -40,4 +43,5 @@ private:
     ContextIndexer& m_indexer;
     std::function<void(const std::string&)> m_send_thought;
     std::function<void(const std::string&)> m_send_stream_chunk;
+    std::atomic<bool>& m_is_interrupted;
 };

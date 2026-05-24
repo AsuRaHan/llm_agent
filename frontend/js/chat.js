@@ -13,6 +13,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const thoughtContainer = document.getElementById('agent-thought-container');
     const thoughtText = document.getElementById('agent-thought-text');
     const newChatButton = document.getElementById('new-chat-button');
+    const interruptButton = document.getElementById('interrupt-button'); // Находим новую кнопку
     const chatList = document.getElementById('chat-list');
 
     // --- State ---
@@ -611,6 +612,18 @@ document.addEventListener('DOMContentLoaded', () => {
                     messageList.innerHTML = '';
                     addMessage('История очищена. Готов к новым задачам!', 'agent', state.activeSessionId);
                 }
+            }
+        });
+
+        interruptButton.addEventListener('click', () => {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                console.log('Sending interrupt request...');
+                socket.send(JSON.stringify({
+                    type: 'interrupt_agent',
+                    session_id: state.activeSessionId
+                }));
+                hideAgentThought();
+                addMessage('Операция прервана пользователем.', 'agent', state.activeSessionId);
             }
         });
     }

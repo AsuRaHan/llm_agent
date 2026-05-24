@@ -16,6 +16,7 @@ struct AssistantResponse {
     // Поля для обработки ошибок
     std::string error_message = ""; // Детальное сообщение об ошибке
     std::vector<std::string> recovery_options; // Предлагаемые варианты восстановления (retry, skip, re-plan)
+    bool should_break = false; // Internal flag for loop control in QueryProcessor
 
     // Raw response from LLM
     nlohmann::json llm_response;

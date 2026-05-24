@@ -94,7 +94,13 @@ void WebSocketServer::handleMessage(const std::string& raw_message, std::shared_
         } else if (type == "clear_history") {
             handleClearHistory(msg, ws_handle);
         } else if (type == "control_file_watcher") {
-            handleControlFileWatcher(msg);
+            handleControlFileWatcher(msg);        
+        } else if (type == "interrupt_agent") { // <-- НАШ НОВЫЙ ОБРАБОТЧИК
+            std::string sessionId = msg.value("session_id", "");
+            if (!sessionId.empty()) {
+                SPDLOG_INFO("Received interrupt request for session {}", sessionId);
+                sessionManager.interruptSession(sessionId);
+            }
         } else {
             SPDLOG_WARN("Получен неизвестный тип сообщения: {}", type);
             sendMessage(ws_handle, {
@@ -235,7 +241,7 @@ void WebSocketServer::processAgentLogic(std::shared_ptr<UserSession> session, co
                     session->history.push_back({{"role", "user"}, {"content", "[SYSTEM_NOTE]: Текущий шаг плана: \"" + task + "\". Используй инструменты для его реализации. По окончании шага переходи к следующему."}});
                 }
 
-                AssistantResponse response = assistant.processQuery("", context, indexer, session->history, send_thought, send_stream_chunk);
+                AssistantResponse response = assistant.processQuery("", context, indexer, session->history, send_thought, send_stream_chunk, session->is_interrupted);
                 sendMessage(ws_handle, {{"type", "stream_end"}});
                 session->history = response.conversation_history;
 
@@ -267,7 +273,7 @@ void WebSocketServer::processAgentLogic(std::shared_ptr<UserSession> session, co
             SPDLOG_INFO("Все задачи плана для сессии {} выполнены. Сборка итогового отчета...", sessionId);
             session->history.push_back({{"role", "user"}, {"content", "Все пункты плана успешно реализованы. Подведи итог проделанной работы, перечисли измененные компоненты и предоставь финальный ответ пользователю."}});
             
-            AssistantResponse final_response = assistant.processQuery("", {}, indexer, session->history, send_thought, send_stream_chunk);
+            AssistantResponse final_response = assistant.processQuery("", {}, indexer, session->history, send_thought, send_stream_chunk, session->is_interrupted);
             sendMessage(ws_handle, {{"type", "stream_end"}});
             
             // The final answer was streamed. Now we can set the session to idle.
@@ -281,7 +287,7 @@ void WebSocketServer::processAgentLogic(std::shared_ptr<UserSession> session, co
                 context = searcher.findTopK(queryText, config.top_k_results, fileIndex);
             }
 
-            AssistantResponse response = assistant.processQuery(queryText, context, indexer, session->history, send_thought, send_stream_chunk);
+            AssistantResponse response = assistant.processQuery(queryText, context, indexer, session->history, send_thought, send_stream_chunk, session->is_interrupted);
             sendMessage(ws_handle, {{"type", "stream_end"}});
 
             sessionManager.saveSessions();
@@ -316,6 +322,7 @@ void WebSocketServer::handleQuery(const nlohmann::json& msg, std::shared_ptr<Saf
     }
 
     auto session = sessionManager.getSession(sessionId);
+    session->is_interrupted = false; // Сбрасываем флаг прерывания перед новой задачей
     
     if (session->status != AgentStatus::IDLE) {
         sendMessage(ws_handle, {{"type", "error"}, {"data", {{"message", "Агент занят. Пожалуйста, подождите."}}}});

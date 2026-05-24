@@ -32,6 +32,17 @@ std::shared_ptr<UserSession> SessionManager::getSession(const std::string& sessi
     return newSession;
 }
 
+void SessionManager::interruptSession(const std::string& sessionId) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = sessions_.find(sessionId);
+    if (it != sessions_.end()) {
+        it->second->is_interrupted = true;
+        SPDLOG_INFO("Сессия {} помечена для прерывания.", sessionId);
+    } else {
+        SPDLOG_WARN("Попытка прервать несуществующую сессию: {}", sessionId);
+    }
+}
+
 void SessionManager::clearSession(const std::string& sessionId) {
     std::lock_guard<std::mutex> lock(mutex_);
     auto it = sessions_.find(sessionId);
@@ -112,4 +123,3 @@ void SessionManager::loadSessions() {
         SPDLOG_ERROR("Ошибка парсинга файла сессий '{}': {}", session_db_path, e.what());
     }
 }
-

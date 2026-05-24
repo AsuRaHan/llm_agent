@@ -367,41 +367,168 @@ body {
 }
 
 /* Action button configurations inside loops */
-.btn-remove-step {
+/* ==========================================================================
+   Chat Form Control Input
+   ========================================================================== */
+.chat-form {
+    display: flex;
+    flex-direction: column;
+    padding: 15px;
+    border-top: 1px solid #4a5568; /* border-gray-700 */
+    background-color: #2d3748; /* bg-gray-800 */
     flex-shrink: 0;
-    background-color: #991b1b;
-    color: white;
+    gap: 10px;
+}
+
+#message-input {
+    flex-grow: 1;
+    padding: 14px 16px;
+    background-color: #4a5568; /* bg-gray-700 */
+    border: 2px solid #718096; /* border-gray-500 */
+    border-radius: 8px;
+    color: #e2e8f0; /* text-gray-200 */
+    font-size: 1em;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    resize: none;
+    font-family: inherit;
+    line-height: 1.6;
+    min-height: 80px;
+    max-height: 250px;
+    overflow-y: auto;
+}
+
+#message-input:focus {
+    border-color: #4299e1; /* border-blue-400 */
+    box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.2);
+}
+
+#message-input:disabled {
+    background-color: #2d3748; /* bg-gray-800 */
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+#message-input::placeholder {
+    color: #718096;
+    font-style: italic;
+}
+
+/* Line numbers for code input */
+#message-input.line-numbers {
+    position: relative;
+}
+
+#message-input.line-numbers::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 40px;
+    background-color: #374151;
+    color: #6b7280;
+    text-align: right;
+    padding-right: 8px;
+    padding-top: 14px;
+    border-right: 1px solid #4b5563;
+    font-family: 'Fira Code', 'Courier New', monospace;
+    font-size: 1em;
+    line-height: 1.6;
+    pointer-events: none;
+    user-select: none;
+}
+
+/* Line numbers styling */
+#message-input.line-numbers::before {
+    counter-reset: line;
+}
+
+#message-input.line-numbers::before {
+    content: counter(line);
+    counter-increment: line;
+}
+
+/* Form buttons container */
+.form-buttons {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+/* Paste button */
+.paste-btn {
+    padding: 12px 16px;
+    background-color: #7c3aed; /* bg-violet-600 */
     border: none;
-    border-radius: 50%;
-    width: 24px;
-    height: 24px;
-    font-weight: bold;
+    border-radius: 8px;
+    color: white;
+    font-size: 1.2em;
+    cursor: pointer;
+    transition: background-color 0.2s, transform 0.1s;
     display: flex;
     align-items: center;
     justify-content: center;
-    cursor: pointer;
-    transition: background-color 0.2s;
+    min-width: 44px;
 }
 
-.btn-remove-step:hover {
-    background-color: #dc2626;
+.paste-btn:hover {
+    background-color: #6d28d9;
+    transform: scale(1.05);
 }
 
-#btn-add-step {
-    margin-left: 30px;
-    margin-top: 10px;
-    padding: 4px 12px;
-    background-color: #2563eb;
-    color: white;
+.paste-btn:active {
+    transform: scale(0.95);
+}
+
+/* Send button */
+.chat-form button {
+    padding: 12px 24px;
+    background-color: #3182ce; /* bg-blue-600 */
     border: none;
-    border-radius: 4px;
-    font-size: 0.75rem;
+    border-radius: 8px;
+    color: white;
+    font-size: 1em;
+    font-weight: bold;
     cursor: pointer;
-    transition: background-color 0.2s;
+    transition: background-color 0.2s, transform 0.1s, box-shadow 0.2s;
 }
 
-#btn-add-step:hover {
-    background-color: #3b82f6;
+.chat-form button:hover {
+    background-color: #2c5282;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(49, 130, 206, 0.3);
+}
+
+.chat-form button:active {
+    transform: translateY(0);
+}
+
+#send-button {
+    flex-grow: 1;
+}
+
+#plan-button {
+    background-color: #7c3aed; /* bg-violet-600 */
+    padding: 12px 16px;
+    min-width: 50px;
+    font-size: 1.2em;
+}
+
+/* Auto-resize helper */
+#message-input.auto-resize {
+    height: auto !important;
+}
+
+/* Focus ring animation */
+@keyframes focusRing {
+    0% { box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.2); }
+    50% { box-shadow: 0 0 0 6px rgba(66, 153, 225, 0.1); }
+    100% { box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.2); }
+}
+
+#message-input:focus {
+    animation: focusRing 0.3s ease-out;
 }
 
 /* Flex utilities for button groups */

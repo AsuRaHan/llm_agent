@@ -57,7 +57,7 @@ void ApiHandlers::setupRoutes() {
 }
 
 void ApiHandlers::start(const std::string& projectDir) {
-    fileWatcher.start(projectDir);
+    // fileWatcher.start(projectDir);
     SPDLOG_INFO("Запуск веб-сервера на {}:{}", config.web_server_host, config.web_server_port);
     svr.listen(config.web_server_host.c_str(), config.web_server_port);
     SPDLOG_INFO("Веб-сервер остановлен.");
@@ -66,7 +66,7 @@ void ApiHandlers::start(const std::string& projectDir) {
 void ApiHandlers::stop() {
     // Проверяем, запущен ли сервер, чтобы избежать ошибок при повторном вызове
     if (svr.is_running()) {
-        fileWatcher.stop();
+        // fileWatcher.stop();
         svr.stop();
     }
 }

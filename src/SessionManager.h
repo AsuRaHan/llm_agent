@@ -11,6 +11,7 @@ public:
     SessionManager();
     ~SessionManager();
     std::shared_ptr<UserSession> getSession(const std::string& sessionId);
+    void interruptSession(const std::string& sessionId);
     void clearSession(const std::string& sessionId);
     void saveSessions();
     void loadSessions();

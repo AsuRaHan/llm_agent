@@ -50,6 +50,24 @@ struct UserSession {
     nlohmann::json plan_steps = nlohmann::json::array(); // JSON-массив шагов
     int current_plan_step = -1;          // Номер текущей задачи (-1 — план еще не создан)
     std::string original_user_query;     // Глобальная цель пользователя
+    std::atomic<bool> is_interrupted{false};
+
+    // Default constructor
+    UserSession() = default;
+
+    // Custom copy constructor to handle the non-copyable std::atomic member.
+    // This is required for nlohmann::json deserialization (e.g., .get<UserSession>()).
+    // The is_interrupted flag is a transient runtime state and should not be copied.
+    // It will be default-initialized to 'false' by its member initializer.
+    UserSession(const UserSession& other)
+        : id(other.id),
+          history(other.history),
+          status(other.status),
+          pending_tool_call(other.pending_tool_call),
+          plan_steps(other.plan_steps),
+          current_plan_step(other.current_plan_step),
+          original_user_query(other.original_user_query)
+    {}
 };
 
 // --- JSON Serialization ---
