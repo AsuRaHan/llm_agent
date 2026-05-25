@@ -249,9 +249,10 @@ void WebSocketServer::processAgentLogic(std::shared_ptr<UserSession> session, co
                     SPDLOG_ERROR("Шаг плана для сессии {} завершился с ошибкой: {}", sessionId, response.error_message);
                     session->status = AgentStatus::AWAITING_ERROR_RECOVERY_DECISION;
                     sendMessage(ws_handle, {
-                        {"type", "plan_error"}, 
+                        {"type", "step_error"}, 
                         {"data", {
-                            {"error_message", response.error_message}, 
+                            {"title", "❗️ Ошибка выполнения шага плана:"},
+                            {"error_message", response.error_message},
                             {"recovery_options", response.recovery_options}
                         }}
                     });
@@ -293,7 +294,28 @@ void WebSocketServer::processAgentLogic(std::shared_ptr<UserSession> session, co
             sessionManager.saveSessions();
             session->history = response.conversation_history;
 
-            if (response.requires_confirmation) {
+            if (response.step_failed) {
+                SPDLOG_ERROR("Шаг для сессии {} завершился с ошибкой: {}", sessionId, response.error_message);
+                session->status = AgentStatus::AWAITING_ERROR_RECOVERY_DECISION;
+
+                // В одношаговом режиме опция "re-plan" не имеет смысла. Отфильтруем ее.
+                nlohmann::json filtered_options = nlohmann::json::array();
+                for (const auto& option : response.recovery_options) {
+                    if (option != "re-plan") {
+                        filtered_options.push_back(option);
+                    }
+                }
+
+                sendMessage(ws_handle, {
+                    {"type", "step_error"},
+                    {"data", {
+                        {"title", "❗️ Ошибка обработки запроса:"},
+                        {"error_message", response.error_message}, 
+                        {"recovery_options", filtered_options}
+                    }}
+                });
+                // Не переводим в IDLE, ждем решения пользователя
+            } else if (response.requires_confirmation) {
                 session->status = AgentStatus::AWAITING_CONFIRMATION;
                 session->pending_tool_call = response.pending_tool_call;
                 sendMessage(ws_handle, {{"type", "action_required"}, {"data", {{"message", response.text}, {"tool_call", response.pending_tool_call}}}});

@@ -27,7 +27,12 @@ public:
         const std::vector<SearchResult>& initialContext,
         const nlohmann::json& continuation_history
     );
-
+    // === НОВЫЙ ПРОДВИНУТЫЙ МЕТОД ===
+    AssistantResponse processAdvanced(
+        const std::string& userQuery,
+        const std::vector<SearchResult>& initialContext,
+        const nlohmann::json& continuation_history
+    );
 private:
     // Main loop and handlers
     AssistantResponse runReActIteration(class MessageBuilder& messageBuilder, int iteration);
@@ -35,6 +40,8 @@ private:
     AssistantResponse handleToolCalls(const nlohmann::json& message, class MessageBuilder& messageBuilder, bool skip_danger_check = false);
     AssistantResponse executeToolCall(const nlohmann::json& call, class MessageBuilder& messageBuilder, bool skip_danger_check = false);
     AssistantResponse forceFinalAnswer(class MessageBuilder& messageBuilder);
+    // === НОВЫЙ МЕТОД ===
+    AssistantResponse runThinkingPhase(MessageBuilder& messageBuilder, int iteration, const std::string& userQuery, const std::vector<SearchResult>& initialContext);
 
     // Member variables
     std::shared_ptr<LLMProvider> m_llmProvider;

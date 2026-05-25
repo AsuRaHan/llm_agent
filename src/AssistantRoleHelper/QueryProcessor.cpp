@@ -122,6 +122,100 @@ AssistantResponse QueryProcessor::runReActIteration(MessageBuilder& messageBuild
     return {.is_final = false, .should_break = true}; // Signal to break
 }
 
+AssistantResponse QueryProcessor::runThinkingPhase(MessageBuilder& messageBuilder, int iteration, const std::string& userQuery, const std::vector<SearchResult>& initialContext) {
+    SPDLOG_INFO("=== Фаза мышления модели ===");
+
+    if (m_is_interrupted.load()) {
+        SPDLOG_INFO("Agent interruption detected during thinking. Stopping.");
+        return { .text = "Задача прервана пользователем.", .is_final = true, .conversation_history = messageBuilder.getMessages() };
+    }
+
+    // === ШАГ 1: Анализ запроса и контекста ===
+    // Создаем временное сообщение для LLM, чтобы она "подумала"
+    json thinking_messages = messageBuilder.getMessages();
+    std::string thinking_prompt = "You are an expert AI assistant. Your goal is to answer the user's request. Analyze the request and context. "
+                                  "Decide if you can answer directly without tools, or if you need to use tools. "
+                                  "If you can provide a complete answer without tools (e.g., the context is sufficient, or the user asks for something you know, like how to use `git`), "
+                                  "then provide the complete, final answer directly in Markdown. Your response should be ONLY the markdown answer. "
+                                  "If you need tools, respond with a JSON object `{\"plan\": [\"step 1\", \"step 2\"]}` detailing the steps. Your response should be ONLY the JSON plan.\n\n"
+                                  "Запрос: " + userQuery + "\n"
+                                  "Контекст: " + std::to_string(initialContext.size()) + " источников";
+    thinking_messages.push_back({{"role", "user"}, {"content", thinking_prompt}});
+
+
+    if (m_send_thought) {
+        m_send_thought("Анализирую и планирую шаги...");
+    }
+
+    // Call LLM without tools to get a plan or a direct answer.
+    auto thinking_response = m_llmProvider->processChat(
+        thinking_messages,
+        json::array(), // No tools for this thinking step
+        nullptr, // No thought streaming for this internal step
+        nullptr  // No token streaming for this internal step
+    );
+
+    if (thinking_response.step_failed || !thinking_response.llm_response.contains("choices") || thinking_response.llm_response["choices"].empty()) {
+        SPDLOG_WARN("Ошибка на этапе мышления: {}", thinking_response.error_message);
+        // Let the main loop try to handle it.
+        return { .is_final = false };
+    }
+
+    const auto& thinking_message = thinking_response.llm_response["choices"][0]["message"];
+    std::string thinking_content = thinking_message.value("content", "");
+    SPDLOG_INFO("Мысль модели: {}", thinking_content);
+
+    // Check if the response is a plan (JSON) or a direct answer (Markdown).
+    try {
+        json content_json = json::parse(thinking_content);
+        if (content_json.is_object() && content_json.contains("plan")) {
+            SPDLOG_INFO("Модель сгенерировала план. Продолжаем с циклом ReAct.");
+            messageBuilder.addAssistantMessage("[Внутренний план]:\n" + thinking_content);
+            return { .is_final = false }; // It's a plan, so continue to ReAct loop.
+        }
+    } catch (const json::exception& e) {
+        // Not a JSON, so it's a direct answer.
+    }
+
+    // It's a direct answer. Stream it and finish.
+    SPDLOG_INFO("Фаза мышления дала прямой ответ. Отправка пользователю.");
+    m_send_stream_chunk(thinking_content);
+    messageBuilder.addAssistantMessage(thinking_content);
+    return { .text = thinking_content, .is_final = true, .conversation_history = messageBuilder.getMessages() };
+}
+
+AssistantResponse QueryProcessor::processAdvanced(
+    const std::string& userQuery,
+    const std::vector<SearchResult>& initialContext,
+    const nlohmann::json& continuation_history
+) {
+    MessageBuilder messageBuilder(continuation_history, m_config);
+    bool is_continuation = !continuation_history.empty() && userQuery.empty();
+
+    if (is_continuation) {
+        messageBuilder.initialize(initialContext);
+        auto response = handleContinuationAfterConfirmation(messageBuilder);
+        if (response.step_failed) {
+            response.conversation_history = messageBuilder.getMessages();
+            return response;
+        }
+    }
+
+    for (int i = 0; i < m_config.max_tool_calls; ++i) {
+        if (i == 0 && !is_continuation) {
+            messageBuilder.initialize(initialContext);
+            auto thinking_response = runThinkingPhase(messageBuilder, i, userQuery, initialContext);
+            if (thinking_response.is_final) return thinking_response;
+        }
+        
+        auto action_response = runReActIteration(messageBuilder, i);
+        if (action_response.should_break) break;
+        if (action_response.is_final || action_response.requires_confirmation || action_response.step_failed) return action_response;
+    }
+
+    return forceFinalAnswer(messageBuilder);
+}
+
 AssistantResponse QueryProcessor::handleContinuationAfterConfirmation(MessageBuilder& messageBuilder) {
     const auto& last_message = messageBuilder.getMessages().back();
 
@@ -189,10 +283,17 @@ AssistantResponse QueryProcessor::executeToolCall(const nlohmann::json& call, Me
     try {
          json result_json = json::parse(result);
          if (result_json.contains("error")) {
-             SPDLOG_ERROR("Инструмент '{}' завершился с ошибкой: {}", tool_name, result_json["error"].get<std::string>());
+             std::string error_msg = result_json["error"].get<std::string>();
+             SPDLOG_ERROR("Инструмент '{}' завершился с ошибкой: {}", tool_name, error_msg);
+             messageBuilder.addToolResultError(tool_id, error_msg);
+             return {
+                 .text = "", .is_final = true, .conversation_history = messageBuilder.getMessages(), .step_failed = true,
+                 .error_message = "Инструмент '" + tool_name + "' вернул ошибку: " + error_msg,
+                 .recovery_options = {"retry", "skip"} // Позволяем пользователю повторить или пропустить
+             };
          }
      } catch (const json::exception& e) {
-         // Not a JSON error, which is fine. It's just a string result.
+         // Not a JSON error, which is fine. It's just a plain string result.
      }
     messageBuilder.addToolResultMessage(tool_id, result);
 

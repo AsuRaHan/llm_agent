@@ -34,7 +34,8 @@ struct Config {
     // Tools settings
     bool enable_dangerous_tools = true; // Set to true to enable tools that can modify the filesystem (e.g., WriteFileTool)
     std::vector<std::string> dangerous_tools;
-
+    
+    bool enable_self_correction = true; // Включает самокоррекцию модели
     // Web Search settings
     std::string web_search_api_key = ""; // API key for a search service like Serper.dev
 

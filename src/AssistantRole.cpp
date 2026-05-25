@@ -27,7 +27,9 @@ AssistantResponse AssistantRole::processQuery(
     std::atomic<bool>& is_interrupted
 ) {
     QueryProcessor processor(llmProvider, *toolManager, config, indexer, send_thought, send_stream_chunk, is_interrupted);
-    return processor.process(userQuery, initialContext, continuation_history);
+    // return processor.process(userQuery, initialContext, continuation_history);
+    // Используем новый продвинутый метод
+    return processor.processAdvanced(userQuery, initialContext, continuation_history);
 }
 
 

@@ -149,8 +149,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Во время выполнения плана блок мыслей и так должен быть виден
                     updatePlanProgress(msg.data.current_step, msg.data.steps);
                     break;
-                case 'plan_error':
-                    addErrorRecoveryWidget(msg.data.error_message, msg.data.recovery_options);
+                case 'step_error':
+                    addErrorRecoveryWidget(msg.data.title, msg.data.error_message, msg.data.recovery_options);
                     break;
                 case 'error':
                     addMessage(`Ошибка: ${msg.data.message}`, 'error', state.activeSessionId);
@@ -362,11 +362,12 @@ document.addEventListener('DOMContentLoaded', () => {
         messageList.scrollTop = messageList.scrollHeight;
     }
 
-    function addErrorRecoveryWidget(errorMessage, recoveryOptions) {
+    function addErrorRecoveryWidget(title, errorMessage, recoveryOptions) {
         const template = document.getElementById('error-recovery-widget-template');
         const widgetFragment = template.content.cloneNode(true);
         const widgetElement = widgetFragment.querySelector('.message');
 
+        widgetElement.querySelector('[data-role="title"]').innerHTML = `<span>❗️</span> ${escapeHTML(title) || 'Ошибка выполнения:'}`;
         widgetElement.querySelector('[data-role="error-message"]').textContent = errorMessage;
         const buttonContainer = widgetElement.querySelector('[data-role="button-container"]');
 
