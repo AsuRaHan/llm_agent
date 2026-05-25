@@ -48,8 +48,10 @@ void SessionManager::clearSession(const std::string& sessionId) {
     auto it = sessions_.find(sessionId);
     if (it != sessions_.end()) {
         SPDLOG_INFO("Очистка истории для сессии: {}", sessionId);
-        it->second->history = nlohmann::json::array();
-        // Статус и другие поля сессии сбрасываются в WebSocketServer, чтобы корректно управлять состоянием (например, FileWatcher)
+        auto& session = it->second;
+        session->history = nlohmann::json::array();
+        session->status = AgentStatus::IDLE;
+        session->pending_tool_call = nullptr;
         saveSessions_nolock(); // Сохраняем сессии после очистки, без повторной блокировки
     }
 }
@@ -113,9 +115,6 @@ void SessionManager::loadSessions() {
             // Сбрасываем статус в IDLE, чтобы избежать зависания.
             session->status = AgentStatus::IDLE;
             session->pending_tool_call = nullptr;
-            session->plan_steps = nlohmann::json::array();
-            session->current_plan_step = -1;
-            session->original_user_query = "";
             sessions_[id] = session;
         }
         SPDLOG_INFO("Загружено {} сессий из '{}'.", sessions_.size(), session_db_path);

@@ -25,7 +25,7 @@ struct Config {
     // Timeout settings
     int embedding_timeout_sec = 300;
     int chat_completion_timeout_sec = 300;
-    int max_tool_calls = 50;    
+    int max_tool_calls = 150;    
     std::string embedding_model_name = "any";
     std::string chat_model_name = "any";
     int embedding_max_text_length = 1500;

@@ -87,8 +87,6 @@ void WebSocketServer::handleMessage(const std::string& raw_message, std::shared_
             handleQuery(msg, ws_handle);
         } else if (type == "confirm_action") {
             handleConfirmation(msg, ws_handle);
-        } else if (type == "confirm_plan") {
-            handlePlanConfirmation(msg, ws_handle);
         } else if (type == "confirm_error_recovery") {
             handleErrorRecoveryConfirmation(msg, ws_handle);
         } else if (type == "clear_history") {
@@ -136,10 +134,6 @@ void WebSocketServer::handleSyncSession(const nlohmann::json& msg, std::shared_p
             response_data["confirmation_data"]["message"] = "Я собираюсь использовать инструмент '" + session->pending_tool_call["function"]["name"].get<std::string>() + "'. Разрешить выполнение?";
             response_data["confirmation_data"]["tool_call"] = session->pending_tool_call;
         }
-    } else if (session->status == AgentStatus::AWAITING_PLAN_CONFIRMATION) {
-        // This case is handled by the frontend receiving 'plan_generated'
-        // But if a reconnect happens, we might need to resend the plan.
-        // For now, we just indicate the status.
     }
 
     if (session->history.empty()) {
@@ -164,46 +158,10 @@ void WebSocketServer::setSessionIdle(std::shared_ptr<UserSession> session) {
 
     SPDLOG_INFO("Сессия {} переходит в состояние IDLE. Снятие блокировок.", session->id);
     session->status = AgentStatus::IDLE;
-    session->plan_steps = nlohmann::json::array();
-    session->current_plan_step = -1;
-    session->original_user_query = "";
     session->pending_tool_call = nullptr;
 
     if (file_watcher_control_callback) {
         file_watcher_control_callback("unfreeze");
-    }
-}
-
-void WebSocketServer::processPlanGeneration(std::shared_ptr<UserSession> session, const std::string& queryText, std::shared_ptr<SafeWsHandle> ws_handle) {
-    std::string sessionId = session->id;
-    try {
-        auto plan_steps = assistant.generatePlan(queryText);
-        
-        if (plan_steps.is_array() && !plan_steps.empty() && plan_steps[0].is_string() && plan_steps[0].get<std::string>().rfind("Ошибка:", 0) == 0) {
-             SPDLOG_ERROR("Ошибка при генерации плана для сессии {}: {}", sessionId, plan_steps[0].get<std::string>());
-             setSessionIdle(session);
-             if (!session->history.empty() && session->history.back()["role"] == "user") {
-                 session->history.erase(session->history.size() - 1);
-             }
-             sendMessage(ws_handle, {{"type", "query_response"}, {"data", {{"answer", plan_steps[0].get<std::string>()}}}});
-             return;
-        }
-
-        session->plan_steps = plan_steps;
-        session->status = AgentStatus::AWAITING_PLAN_CONFIRMATION;
-
-        sendMessage(ws_handle, {
-            {"type", "plan_generated"},
-            {"data", {{"steps", plan_steps}}}
-        });
-
-    } catch (const std::exception& e) {
-        SPDLOG_ERROR("Исключение при генерации плана для сессии {}: {}", sessionId, e.what());
-        setSessionIdle(session);
-        sendMessage(ws_handle, {
-            {"type", "error"},
-            {"data", {{"message", "Внутренняя ошибка сервера при генерации плана: " + std::string(e.what())}}}
-        });
     }
 }
 
@@ -217,112 +175,40 @@ void WebSocketServer::processAgentLogic(std::shared_ptr<UserSession> session, co
             sendMessage(ws_handle, {{"type", "llm_token"}, {"data", {{"token", token}}}});
         };
         
-        // --- ЛОГИКА ВЫПОЛНЕНИЯ ПЛАНА ---
-        if (session->status == AgentStatus::EXECUTING_PLAN) {
-            // Сбор RAG-контекста выполняется только один раз в самом начале плана
+        // --- ЕДИНЫЙ ЦИКЛ ReAct ---
+        std::vector<SearchResult> context;
+        if (!queryText.empty()) {
+            auto& searcher = indexer.getSearcher();
+            auto& fileIndex = indexer.getFileIndexer().getFileIndex();
+            context = searcher.findTopK(queryText, config.top_k_results, fileIndex);
+        }
 
-            // Итерируемся по шагам плана
-            while (session->current_plan_step < (int)session->plan_steps.size()) {
-                int current_step_idx = session->current_plan_step;
-                std::string task = session->plan_steps[current_step_idx].get<std::string>();
+        AssistantResponse response = assistant.processQuery(queryText, context, indexer, session->history, send_thought, send_stream_chunk, session->is_interrupted);
+        sendMessage(ws_handle, {{"type", "stream_end"}});
 
-                SPDLOG_INFO("Сессия {}: выполнение шага {}/{} плана: {}", sessionId, current_step_idx + 1, session->plan_steps.size(), task);
-                sendMessage(ws_handle, {{"type", "plan_update"}, {"data", {{"current_step", current_step_idx}, {"steps", session->plan_steps}}}});
+        session->history = response.conversation_history;
+        sessionManager.saveSessions();
 
-                // Для первого шага ищем RAG-контекст по оригинальному запросу. Для последующих - не ищем.
-                std::vector<SearchResult> context;
-                if (current_step_idx == 0) {
-                    auto& searcher = indexer.getSearcher();
-                    auto& fileIndex = indexer.getFileIndexer().getFileIndex();
-                    context = searcher.findTopK(session->original_user_query, config.top_k_results, fileIndex);
-                }
+        if (response.step_failed) {
+            SPDLOG_ERROR("Шаг для сессии {} завершился с ошибкой: {}", sessionId, response.error_message);
+            session->status = AgentStatus::AWAITING_ERROR_RECOVERY_DECISION;
 
-                if (queryText != "CONTINUE_AFTER_TOOL" && queryText != "RETRY_STEP") {
-                    session->history.push_back({{"role", "user"}, {"content", "[SYSTEM_NOTE]: Текущий шаг плана: \"" + task + "\". Используй инструменты для его реализации. По окончании шага переходи к следующему."}});
-                }
-
-                AssistantResponse response = assistant.processQuery("", context, indexer, session->history, send_thought, send_stream_chunk, session->is_interrupted);
-                sendMessage(ws_handle, {{"type", "stream_end"}});
-                session->history = response.conversation_history;
-
-                if (response.step_failed) {
-                    SPDLOG_ERROR("Шаг плана для сессии {} завершился с ошибкой: {}", sessionId, response.error_message);
-                    session->status = AgentStatus::AWAITING_ERROR_RECOVERY_DECISION;
-                    sendMessage(ws_handle, {
-                        {"type", "step_error"}, 
-                        {"data", {
-                            {"title", "❗️ Ошибка выполнения шага плана:"},
-                            {"error_message", response.error_message},
-                            {"recovery_options", response.recovery_options}
-                        }}
-                    });
-                    return;
-                }
-
-                if (response.requires_confirmation) {
-                    SPDLOG_INFO("Выполнение плана для сессии {} приостановлено. Ожидание подтверждения операции.", sessionId);
-                    session->status = AgentStatus::AWAITING_CONFIRMATION;
-                    session->pending_tool_call = response.pending_tool_call;
-                    sendMessage(ws_handle, {{"type", "action_required"}, {"data", {{"message", response.text}, {"tool_call", response.pending_tool_call}}}});
-                    return;
-                }
-
-                session->current_plan_step++;
-                const_cast<std::string&>(queryText) = ""; 
-            }
-
-            SPDLOG_INFO("Все задачи плана для сессии {} выполнены. Сборка итогового отчета...", sessionId);
-            session->history.push_back({{"role", "user"}, {"content", "Все пункты плана успешно реализованы. Подведи итог проделанной работы, перечисли измененные компоненты и предоставь финальный ответ пользователю."}});
-            
-            AssistantResponse final_response = assistant.processQuery("", {}, indexer, session->history, send_thought, send_stream_chunk, session->is_interrupted);
-            sendMessage(ws_handle, {{"type", "stream_end"}});
-            
-            // The final answer was streamed. Now we can set the session to idle.
+            sendMessage(ws_handle, {
+                {"type", "step_error"},
+                {"data", {
+                    {"title", "❗️ Ошибка обработки запроса:"},
+                    {"error_message", response.error_message}, 
+                    {"recovery_options", response.recovery_options}
+                }}
+            });
+            // Не переводим в IDLE, ждем решения пользователя
+        } else if (response.requires_confirmation) {
+            session->status = AgentStatus::AWAITING_CONFIRMATION;
+            session->pending_tool_call = response.pending_tool_call;
+            sendMessage(ws_handle, {{"type", "action_required"}, {"data", {{"message", response.text}, {"tool_call", response.pending_tool_call}}}});
+        } else {
             setSessionIdle(session);
-        } else { 
-            // --- СИНГЛ-ШОТ РЕЖИМ (ОБЫЧНЫЙ ДИАЛОГ БЕЗ ПЛАНА) ---
-            std::vector<SearchResult> context;
-            if (!queryText.empty()) {
-                auto& searcher = indexer.getSearcher();
-                auto& fileIndex = indexer.getFileIndexer().getFileIndex();
-                context = searcher.findTopK(queryText, config.top_k_results, fileIndex);
-            }
-
-            AssistantResponse response = assistant.processQuery(queryText, context, indexer, session->history, send_thought, send_stream_chunk, session->is_interrupted);
-            sendMessage(ws_handle, {{"type", "stream_end"}});
-
             sessionManager.saveSessions();
-            session->history = response.conversation_history;
-
-            if (response.step_failed) {
-                SPDLOG_ERROR("Шаг для сессии {} завершился с ошибкой: {}", sessionId, response.error_message);
-                session->status = AgentStatus::AWAITING_ERROR_RECOVERY_DECISION;
-
-                // В одношаговом режиме опция "re-plan" не имеет смысла. Отфильтруем ее.
-                nlohmann::json filtered_options = nlohmann::json::array();
-                for (const auto& option : response.recovery_options) {
-                    if (option != "re-plan") {
-                        filtered_options.push_back(option);
-                    }
-                }
-
-                sendMessage(ws_handle, {
-                    {"type", "step_error"},
-                    {"data", {
-                        {"title", "❗️ Ошибка обработки запроса:"},
-                        {"error_message", response.error_message}, 
-                        {"recovery_options", filtered_options}
-                    }}
-                });
-                // Не переводим в IDLE, ждем решения пользователя
-            } else if (response.requires_confirmation) {
-                session->status = AgentStatus::AWAITING_CONFIRMATION;
-                session->pending_tool_call = response.pending_tool_call;
-                sendMessage(ws_handle, {{"type", "action_required"}, {"data", {{"message", response.text}, {"tool_call", response.pending_tool_call}}}});
-            } else {
-                setSessionIdle(session);
-                sessionManager.saveSessions();
-            }
         }
     } catch (const std::exception& e) {
         SPDLOG_ERROR("Ошибка при обработке логики агента для сессии {}: {}", sessionId, e.what());
@@ -357,46 +243,15 @@ void WebSocketServer::handleQuery(const nlohmann::json& msg, std::shared_ptr<Saf
         file_watcher_control_callback("freeze");
     }
 
-    // Лингвистическая эвристика на запуск автономного планирования
-    const std::vector<std::string> plan_keywords = {"исправь", "реализуй", "перепиши", "добавь", "удали", "рефактор", "оптимизируй", "создай", "fix", "implement", "rewrite", "add", "refactor"};
-    bool needs_plan = msg.value("data", nlohmann::json::object()).value("force_plan", false);
-    
-    if (!needs_plan) {
-        std::string lower_query = queryText;
-        std::transform(lower_query.begin(), lower_query.end(), lower_query.begin(),
-            [](unsigned char c){ return std::tolower(c); });
-
-        for (const auto& keyword : plan_keywords) {
-            // Ищем ключевое слово в любой части строки (не только в начале)
-            if (lower_query.find(keyword) != std::string::npos) {
-                needs_plan = true;
-                SPDLOG_DEBUG("Обнаружено ключевое слово '{}' в запросе. Запуск планирования.", keyword);
-                break;
-            }
-        }
-    } else {
-        SPDLOG_INFO("Пользователь явно запросил планирование (force_plan=true).");
-    }
-
     session->history.push_back({{"role", "user"}, {"content", queryText}});
     // Сохраняем сессию сразу после добавления сообщения пользователя в историю
     SPDLOG_DEBUG("Сохранение сессии {} после получения нового запроса от пользователя.", sessionId);
     sessionManager.saveSessions();
 
-    if (needs_plan) {
-        SPDLOG_INFO("Запрос требует планирования. Запуск генерации плана для сессии {}.", sessionId);
-        session->status = AgentStatus::GENERATING_PLAN;
-        session->original_user_query = queryText;
-        sendMessage(ws_handle, {{"type", "agent_thought"}, {"data", {{"message", "Запрос требует планирования. Составляю пошаговый план..."}}}});
-        threadPool.enqueue([this, session, queryText, ws_handle] {
-            processPlanGeneration(session, queryText, ws_handle);
-        });
-    } else {
-        session->status = AgentStatus::THINKING;
-        threadPool.enqueue([this, session, queryText, ws_handle] {
-            processAgentLogic(session, queryText, ws_handle);
-        });
-    }
+    session->status = AgentStatus::THINKING;
+    threadPool.enqueue([this, session, queryText, ws_handle] {
+        processAgentLogic(session, queryText, ws_handle);
+    });
 }
 
 void WebSocketServer::handleConfirmation(const nlohmann::json& msg, std::shared_ptr<SafeWsHandle> ws_handle) {
@@ -419,23 +274,15 @@ void WebSocketServer::handleConfirmation(const nlohmann::json& msg, std::shared_
     if (!confirmed) {
         SPDLOG_INFO("Пользователь отклонил действие для сессии {}", sessionId);
         session->history.push_back({{"role", "tool"}, {"tool_call_id", pending_call["id"]}, {"content", "{\"result\": \"Error: User explicitly denied execution of this tool.\"}"}});
-        
-        setSessionIdle(session);
-        sendMessage(ws_handle, {{"type", "query_response"}, {"data", {{"answer", "Действие отклонено. Автономный план отменен по требованию пользователя."}}}});
-        return;
+        // The agent needs to know the user denied it, so we continue the logic loop.
     }
 
     // Сценарий 2: Человек ОДОБРИЛ вызов опасного инструмента
     SPDLOG_INFO("Пользователь подтвердил действие для сессии {}", sessionId);
     
-    std::string pipeline_signal = "";
-    if (!session->plan_steps.empty() && session->current_plan_step != -1) {
-        session->status = AgentStatus::EXECUTING_PLAN;
-        // Маркерный флаг, чтобы предохранить step_history от раздувания лишними системными нотами
-        pipeline_signal = "CONTINUE_AFTER_TOOL"; 
-    } else {
-        session->status = AgentStatus::THINKING;
-    }
+    // We continue the agent logic. The query text is empty, which signals a continuation.
+    std::string pipeline_signal = ""; 
+    session->status = AgentStatus::THINKING;
 
     // Отправляем выполнение обратно в пул потоков
     threadPool.enqueue([this, session, pipeline_signal, ws_handle] {
@@ -457,77 +304,21 @@ void WebSocketServer::handleErrorRecoveryConfirmation(const nlohmann::json& msg,
     }
 
     if (option == "retry") {
-        SPDLOG_INFO("Пользователь выбрал 'retry' для сессии {}. Возобновление выполнения плана.", sessionId);
-        session->status = AgentStatus::EXECUTING_PLAN;
-        // The current_plan_step is not incremented. We just re-run the logic for the same step.
+        SPDLOG_INFO("Пользователь выбрал 'retry' для сессии {}. Возобновление выполнения.", sessionId);
+        session->status = AgentStatus::THINKING;
         threadPool.enqueue([this, session, ws_handle] {
-            processAgentLogic(session, "RETRY_STEP", ws_handle);
+            // Pass an empty query to signal a continuation of the previous failed step. processAgentLogic(session, "RETRY_STEP", ws_handle);
+            // The agent logic will pick up the existing history and re-try the last LLM call.
+            processAgentLogic(session, "", ws_handle);
         });
     } else if (option == "skip") {
-        SPDLOG_INFO("Пользователь выбрал 'skip' для сессии {}. Переход к следующему шагу.", sessionId);
-        session->current_plan_step++; // Move to the next step
-        session->status = AgentStatus::EXECUTING_PLAN;
-        threadPool.enqueue([this, session, ws_handle] {
-            processAgentLogic(session, "", ws_handle);
-        });
-    } else if (option == "re-plan") {
-        SPDLOG_INFO("Пользователь выбрал 're-plan' для сессии {}. Запуск перепланирования.", sessionId);
-        session->status = AgentStatus::GENERATING_PLAN;
-        std::string new_query = session->original_user_query + "\n\n[SYSTEM_NOTE]: Предыдущая попытка выполнения плана провалилась на шаге " 
-                              + std::to_string(session->current_plan_step + 1) + ". Учти это при создании нового плана.";
-        
-        sendMessage(ws_handle, {{"type", "agent_thought"}, {"data", {{"message", "План провалился. Запускаю перепланирование с учетом ошибки..."}}}});
-        threadPool.enqueue([this, session, new_query, ws_handle] {
-            processPlanGeneration(session, new_query, ws_handle);
-        });
+        SPDLOG_INFO("Пользователь выбрал 'skip' для сессии {}. Отмена текущей задачи.", sessionId);
+        setSessionIdle(session);
+        sendMessage(ws_handle, {{"type", "query_response"}, {"data", {{"answer", "Хорошо, текущая задача отменена. Чем я могу помочь?"}}}});
     } else { // "abort" or any other unknown option
-        SPDLOG_INFO("Пользователь выбрал 'abort' для сессии {}. План отменен.", sessionId);
+        SPDLOG_INFO("Пользователь выбрал 'abort' для сессии {}. Задача отменена.", sessionId);
         setSessionIdle(session);
-        sendMessage(ws_handle, {{"type", "query_response"}, {"data", {{"answer", "Хорошо, план отменен. Чем я могу помочь?"}}}});
-    }
-}
-
-void WebSocketServer::handlePlanConfirmation(const nlohmann::json& msg, std::shared_ptr<SafeWsHandle> ws_handle) {
-    std::string sessionId = msg.value("session_id", "");
-    const auto& data = msg.value("data", nlohmann::json::object());
-    bool confirmed = data.value("confirmed", false);
-    
-    if (sessionId.empty()) return;
-
-    auto session = sessionManager.getSession(sessionId);
-
-    if (session->status != AgentStatus::AWAITING_PLAN_CONFIRMATION) {
-        sendMessage(ws_handle, {{"type", "error"}, {"data", {{"message", "Нет плана, ожидающего подтверждения."}}}});
-        return;
-    }
-
-    if (confirmed) {
-        // Проверяем, прислал ли клиент отредактированный список шагов
-        if (data.contains("steps") && data["steps"].is_array()) {
-            session->plan_steps = data["steps"];
-            SPDLOG_INFO("Пользователь утвердил и отредактировал план для сессии {}", sessionId);
-        } else {
-            SPDLOG_INFO("Пользователь утвердил план для сессии {}", sessionId);
-        }
-
-        // Проверяем, не оказался ли план пустым после редактирования
-        if (session->plan_steps.empty()) {
-            SPDLOG_WARN("Пользователь утвердил пустой план для сессии {}. План отменен.", sessionId);
-            setSessionIdle(session);
-            sendMessage(ws_handle, {{"type", "query_response"}, {"data", {{"answer", "План пуст. Задачи для выполнения отсутствуют."}}}});
-            return;
-        }
-
-        session->status = AgentStatus::EXECUTING_PLAN;
-        session->current_plan_step = 0;
-
-        threadPool.enqueue([this, session, ws_handle] {
-            processAgentLogic(session, "", ws_handle);
-        });
-    } else {
-        SPDLOG_INFO("Пользователь отклонил план для сессии {}", sessionId);
-        setSessionIdle(session);
-        sendMessage(ws_handle, {{"type", "query_response"}, {"data", {{"answer", "Хорошо, план отменен. Чем я могу помочь?"}}}});
+        sendMessage(ws_handle, {{"type", "query_response"}, {"data", {{"answer", "Хорошо, задача отменена. Чем я могу помочь?"}}}});
     }
 }
 
@@ -551,9 +342,12 @@ void WebSocketServer::handleClearHistory(const nlohmann::json& msg, std::shared_
     if (sessionId.empty()) return;
 
     auto session = sessionManager.getSession(sessionId);
+    // Clear history and reset state
     sessionManager.clearSession(sessionId);
-    // Сбрасываем состояние сессии в IDLE и размораживаем FileWatcher
-    setSessionIdle(session);
+    // Unfreeze the file watcher if it was frozen
+    if (file_watcher_control_callback) {
+        file_watcher_control_callback("unfreeze");
+    }
 }
 
 void WebSocketServer::sendMessage(std::shared_ptr<SafeWsHandle> ws_handle, const nlohmann::json& payload) {

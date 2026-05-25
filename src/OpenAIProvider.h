@@ -15,8 +15,6 @@ public:
         const std::function<void(const std::string&)>& send_stream_chunk
     ) override;
 
-    nlohmann::json generatePlan(const std::string& user_query) override;
-
     std::vector<float> createEmbedding(const std::string& text) override;
 
     std::string generateChunkSummary(const std::string& code_chunk, const std::string& chunk_name) override;
@@ -26,5 +24,4 @@ public:
 private:
     const Config& config;
     httplib::Client cli;
-    bool probeEmbeddingEndpoint() const;
 };

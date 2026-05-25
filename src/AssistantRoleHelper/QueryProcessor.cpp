@@ -93,15 +93,8 @@ AssistantResponse QueryProcessor::runReActIteration(MessageBuilder& messageBuild
 
     const auto& message = response_json["choices"][0]["message"];
 
-    // Case 1: Direct answer
-    if (message.contains("content") && message["content"].is_string() && !message.value("tool_calls", json::array()).is_array()) {
-        SPDLOG_INFO("LLM предоставил прямой ответ (потоково). Завершение цикла.");
-        messageBuilder.addAssistantMessage(message["content"]);
-        return {.text = "", .is_final = true, .conversation_history = messageBuilder.getMessages()};
-    }
-
     // Case 2: Tool calls
-    if (message.contains("tool_calls") && message["tool_calls"].is_array()) {
+    if (message.contains("tool_calls") && message["tool_calls"].is_array() && !message["tool_calls"].empty()) {
         SPDLOG_INFO("LLM запросил вызов инструментов.");
         messageBuilder.addToolCallMessage(message); // Add assistant's turn with tool_calls to history
         
@@ -110,110 +103,22 @@ AssistantResponse QueryProcessor::runReActIteration(MessageBuilder& messageBuild
         if (tool_response.requires_confirmation || tool_response.step_failed) {
             return tool_response;
         }
-
         // All tools executed, continue the loop.
         int remaining_iterations = m_config.max_tool_calls - (iteration + 1);
         messageBuilder.setRemainingIterationsSystemNote(remaining_iterations);
         return {.is_final = false}; // Signal to continue
     }
-
+    // Case 1: Direct answer
+    else if (message.contains("content") && message["content"].is_string()) {
+        SPDLOG_INFO("LLM предоставил прямой ответ (потоково). Завершение цикла.");
+        messageBuilder.addAssistantMessage(message["content"]);
+        return {.text = "", .is_final = true, .conversation_history = messageBuilder.getMessages()};
+    }
     // Fallback: Empty response, break loop to force final answer.
-    SPDLOG_INFO("LLM вернул пустой ответ, завершаем цикл и переходим к подведению итогов.");
-    return {.is_final = false, .should_break = true}; // Signal to break
-}
-
-AssistantResponse QueryProcessor::runThinkingPhase(MessageBuilder& messageBuilder, int iteration, const std::string& userQuery, const std::vector<SearchResult>& initialContext) {
-    SPDLOG_INFO("=== Фаза мышления модели ===");
-
-    if (m_is_interrupted.load()) {
-        SPDLOG_INFO("Agent interruption detected during thinking. Stopping.");
-        return { .text = "Задача прервана пользователем.", .is_final = true, .conversation_history = messageBuilder.getMessages() };
+    else {
+        SPDLOG_INFO("LLM вернул пустой ответ, завершаем цикл и переходим к подведению итогов.");
+        return {.is_final = false, .should_break = true}; // Signal to break
     }
-
-    // === ШАГ 1: Анализ запроса и контекста ===
-    // Создаем временное сообщение для LLM, чтобы она "подумала"
-    json thinking_messages = messageBuilder.getMessages();
-    std::string thinking_prompt = "You are an expert AI assistant. Your goal is to answer the user's request. Analyze the request and context. "
-                                  "Decide if you can answer directly without tools, or if you need to use tools. "
-                                  "If you can provide a complete answer without tools (e.g., the context is sufficient, or the user asks for something you know, like how to use `git`), "
-                                  "then provide the complete, final answer directly in Markdown. Your response should be ONLY the markdown answer. "
-                                  "If you need tools, respond with a JSON object `{\"plan\": [\"step 1\", \"step 2\"]}` detailing the steps. Your response should be ONLY the JSON plan.\n\n"
-                                  "Запрос: " + userQuery + "\n"
-                                  "Контекст: " + std::to_string(initialContext.size()) + " источников";
-    thinking_messages.push_back({{"role", "user"}, {"content", thinking_prompt}});
-
-
-    if (m_send_thought) {
-        m_send_thought("Анализирую и планирую шаги...");
-    }
-
-    // Call LLM without tools to get a plan or a direct answer.
-    auto thinking_response = m_llmProvider->processChat(
-        thinking_messages,
-        json::array(), // No tools for this thinking step
-        nullptr, // No thought streaming for this internal step
-        nullptr  // No token streaming for this internal step
-    );
-
-    if (thinking_response.step_failed || !thinking_response.llm_response.contains("choices") || thinking_response.llm_response["choices"].empty()) {
-        SPDLOG_WARN("Ошибка на этапе мышления: {}", thinking_response.error_message);
-        // Let the main loop try to handle it.
-        return { .is_final = false };
-    }
-
-    const auto& thinking_message = thinking_response.llm_response["choices"][0]["message"];
-    std::string thinking_content = thinking_message.value("content", "");
-    SPDLOG_INFO("Мысль модели: {}", thinking_content);
-
-    // Check if the response is a plan (JSON) or a direct answer (Markdown).
-    try {
-        json content_json = json::parse(thinking_content);
-        if (content_json.is_object() && content_json.contains("plan")) {
-            SPDLOG_INFO("Модель сгенерировала план. Продолжаем с циклом ReAct.");
-            messageBuilder.addAssistantMessage("[Внутренний план]:\n" + thinking_content);
-            return { .is_final = false }; // It's a plan, so continue to ReAct loop.
-        }
-    } catch (const json::exception& e) {
-        // Not a JSON, so it's a direct answer.
-    }
-
-    // It's a direct answer. Stream it and finish.
-    SPDLOG_INFO("Фаза мышления дала прямой ответ. Отправка пользователю.");
-    m_send_stream_chunk(thinking_content);
-    messageBuilder.addAssistantMessage(thinking_content);
-    return { .text = thinking_content, .is_final = true, .conversation_history = messageBuilder.getMessages() };
-}
-
-AssistantResponse QueryProcessor::processAdvanced(
-    const std::string& userQuery,
-    const std::vector<SearchResult>& initialContext,
-    const nlohmann::json& continuation_history
-) {
-    MessageBuilder messageBuilder(continuation_history, m_config);
-    bool is_continuation = !continuation_history.empty() && userQuery.empty();
-
-    if (is_continuation) {
-        messageBuilder.initialize(initialContext);
-        auto response = handleContinuationAfterConfirmation(messageBuilder);
-        if (response.step_failed) {
-            response.conversation_history = messageBuilder.getMessages();
-            return response;
-        }
-    }
-
-    for (int i = 0; i < m_config.max_tool_calls; ++i) {
-        if (i == 0 && !is_continuation) {
-            messageBuilder.initialize(initialContext);
-            auto thinking_response = runThinkingPhase(messageBuilder, i, userQuery, initialContext);
-            if (thinking_response.is_final) return thinking_response;
-        }
-        
-        auto action_response = runReActIteration(messageBuilder, i);
-        if (action_response.should_break) break;
-        if (action_response.is_final || action_response.requires_confirmation || action_response.step_failed) return action_response;
-    }
-
-    return forceFinalAnswer(messageBuilder);
 }
 
 AssistantResponse QueryProcessor::handleContinuationAfterConfirmation(MessageBuilder& messageBuilder) {
@@ -226,6 +131,102 @@ AssistantResponse QueryProcessor::handleContinuationAfterConfirmation(MessageBui
     }
     // Should not happen, but as a fallback, indicate success to continue to ReAct loop
     return {.is_final = false};
+}
+
+AssistantResponse QueryProcessor::processAdvanced(
+    const std::string& userQuery,
+    const std::vector<SearchResult>& initialContext,
+    const nlohmann::json& continuation_history
+) {
+    SPDLOG_DEBUG("processAdvanced: начало обработки. userQuery: '{}'", userQuery);
+    MessageBuilder messageBuilder(continuation_history, m_config);
+    bool is_continuation = !continuation_history.empty() && userQuery.empty();
+
+    if (!is_continuation) {
+        // This is a new query from the user.
+        messageBuilder.initialize(initialContext);
+    } else {
+        // This is a continuation. The history is already prepared by the caller.
+        // We just need to load it into the builder.
+        messageBuilder.initialize({}); 
+    }
+
+    // Main agent loop
+    for (int i = 0; i < m_config.max_tool_calls; ++i) {
+        SPDLOG_INFO("Итерация {}/{} цикла обработки запроса...", i + 1, m_config.max_tool_calls);
+
+        if (m_is_interrupted.load()) {
+            SPDLOG_INFO("Agent interruption detected. Stopping processing.");
+            return { .text = "Задача прервана пользователем.", .is_final = true, .conversation_history = messageBuilder.getMessages() };
+        }
+
+        // If this is a continuation from a user confirmation, execute the pending tool call directly.
+        if (i == 0 && is_continuation) {
+            const auto& last_message = messageBuilder.getMessages().back();
+            if (last_message.value("role", "") == "assistant" && last_message.contains("tool_calls")) {
+                SPDLOG_INFO("Продолжение после подтверждения. Выполнение отложенного инструмента...");
+                // User has already confirmed, so skip danger check.
+                auto tool_response = handleToolCalls(last_message, messageBuilder, true);
+                if (tool_response.requires_confirmation || tool_response.step_failed) {
+                    return tool_response;
+                }
+                // After handling, we continue to the next LLM call within this loop.
+            }
+        }
+
+        // Call LLM for the next step
+        AssistantResponse llm_response = m_llmProvider->processChat(messageBuilder.getMessages(), m_toolManager.getToolsSpecification(), m_send_thought, m_send_stream_chunk);
+
+        if (m_is_interrupted.load()) {
+            SPDLOG_INFO("Agent interruption detected after LLM call. Stopping.");
+            return { .text = "Задача прервана пользователем.", .is_final = true, .conversation_history = messageBuilder.getMessages() };
+        }
+
+        if (llm_response.step_failed) {
+            llm_response.conversation_history = messageBuilder.getMessages();
+            llm_response.recovery_options = {"retry"};
+            return llm_response;
+        }
+
+        json response_json = llm_response.llm_response;
+        if (!response_json.contains("choices") || response_json["choices"].empty()) {
+            SPDLOG_ERROR("Ответ LLM не содержит 'choices'. Тело: {}", response_json.dump(2));
+            return { .text = "", .is_final = true, .conversation_history = messageBuilder.getMessages(), .step_failed = true, .error_message = "Получен некорректный ответ от модели (отсутствует поле 'choices').", .recovery_options = {"retry"} };
+        }
+
+        const auto& message = response_json["choices"][0]["message"];
+
+        // Case 2: Tool calls requested
+        if (message.contains("tool_calls") && message["tool_calls"].is_array() && !message["tool_calls"].empty()) {
+            SPDLOG_INFO("LLM запросил вызов инструментов.");
+            messageBuilder.addToolCallMessage(message);
+            
+            auto tool_response = handleToolCalls(message, messageBuilder, false); // Not a continuation, so do danger check
+            
+            if (tool_response.requires_confirmation || tool_response.step_failed) {
+                return tool_response;
+            }
+
+            int remaining_iterations = m_config.max_tool_calls - (i + 1);
+            messageBuilder.setRemainingIterationsSystemNote(remaining_iterations);
+            continue; // Continue to the next iteration of the loop
+        }
+        // Case 1: Final answer (content without tool calls)
+        else if (message.contains("content") && message["content"].is_string()) {
+            SPDLOG_INFO("LLM предоставил финальный ответ. Завершение цикла.");
+            // The content was already streamed by processChat. We just need to update history and return.
+            messageBuilder.addAssistantMessage(message["content"]);
+            return {.text = "", .is_final = true, .conversation_history = messageBuilder.getMessages()};
+        }
+        // Case 3: Empty or unexpected response - THIS IS THE FIX FOR THE BUG
+        else {
+            SPDLOG_INFO("LLM вернул пустой ответ. Запрашиваем итоговый ответ.");
+            return getSummaryAnswer(messageBuilder);
+        }
+    }
+
+    // Loop finished, max_tool_calls reached
+    return forceFinalAnswer(messageBuilder);
 }
 
 AssistantResponse QueryProcessor::handleToolCalls(const nlohmann::json& message, MessageBuilder& messageBuilder, bool skip_danger_check) {
@@ -317,5 +318,30 @@ AssistantResponse QueryProcessor::forceFinalAnswer(MessageBuilder& messageBuilde
         .text = "", .is_final = true, .conversation_history = messageBuilder.getMessages(), .step_failed = true,
         .error_message = "Превышен лимит итераций для вызова инструментов (" + std::to_string(m_config.max_tool_calls) + ").",
         .recovery_options = {"re-plan"}
+    };
+}
+
+AssistantResponse QueryProcessor::getSummaryAnswer(MessageBuilder& messageBuilder) {
+    SPDLOG_INFO("Запрос итогового ответа на основе текущей истории.");
+    
+    auto messages = messageBuilder.getMessages();
+    messages.push_back({
+        {"role", "user"}, 
+        {"content", "Подведи итог и дай финальный ответ пользователю на основе всей предыдущей переписки."}
+    });
+
+    auto final_llm_response = m_llmProvider->processChat(messages, json::array(), m_send_thought, m_send_stream_chunk);
+
+    if (!final_llm_response.step_failed && final_llm_response.llm_response.contains("choices") && !final_llm_response.llm_response["choices"].empty()) {
+        std::string final_text = final_llm_response.llm_response["choices"][0]["message"]["content"];
+        messages.push_back({{"role", "assistant"}, {"content", final_text}});
+        return { .text = "", .is_final = true, .conversation_history = messages };
+    }
+
+    return {
+        .text = "", .is_final = true, .conversation_history = messageBuilder.getMessages(), // Return original history on failure
+        .step_failed = true,
+        .error_message = "Не удалось получить итоговый ответ от модели.",
+        .recovery_options = {"retry"}
     };
 }

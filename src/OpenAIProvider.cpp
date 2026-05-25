@@ -167,60 +167,6 @@ AssistantResponse OpenAIProvider::processChat(
     return { .llm_response = final_response };
 }
 
-nlohmann::json OpenAIProvider::generatePlan(const std::string& user_query) {
-    SPDLOG_INFO("Generating plan for query: '{}'", user_query);
-
-    std::string system_prompt_text =
-        "You are the Smart Hammer AI architect. Your task is to break down the user's request into "
-        "minimal atomic steps. Each step should be accomplishable in one or two tool calls.\\n"
-        "Provide the response STRICTLY in a JSON object format with a 'plan' key, which contains an array of strings. "
-        "Do not add any other text or markdown formatting.\\n"
-        "Example: {\\\"plan\\\": [\\\"Examine the structure of CodeParser.cpp\\\", \\\"Find memory leaks\\\", \\\"Apply a diff patch\\\"]}";
-
-    json messages = {
-        {{"role", "system"}, {"content", system_prompt_text}},
-        {{"role", "user"}, {"content", "Task: " + user_query}}
-    };
-
-    json body = {
-        {"messages", messages},
-        {"model", config.chat_model_name},
-        {"temperature", 0.0},
-        {"response_format", { {"type", "json_object"} }}
-    };
-
-    httplib::Headers headers;
-    if (!config.api_key.empty()) {
-        headers.emplace("Authorization", "Bearer " + config.api_key);
-    }
-    std::string body_str = body.dump(-1, ' ', false, json::error_handler_t::replace);
-
-    httplib::Result res;
-    for (int attempt = 1; attempt <= config.retry_count; ++attempt) {
-        res = cli.Post("/v1/chat/completions", headers, body_str, "application/json");
-        if (res) break;
-        SPDLOG_ERROR("Attempt {} of {} for plan generation failed. Connection error: {}. Retrying...",
-                    attempt, config.retry_count, httplib::to_string(res.error()));
-        std::this_thread::sleep_for(std::chrono::milliseconds(config.retry_delay_ms));
-    }
-
-    if (!res || res->status != 200) {
-        if (res) {
-            SPDLOG_ERROR("Error from LLM on plan generation. Status: {}. Body: {}", res->status, res->body);
-        } else {
-            SPDLOG_ERROR("Connection error to LLM on plan generation: {}", httplib::to_string(res.error()));
-        }
-        return {{"error", "Failed to generate plan."}};
-    }
-
-    try {
-        return json::parse(res->body);
-    } catch (const json::exception& e) {
-        SPDLOG_ERROR("Failed to parse plan generation response: {}", e.what());
-        return {{"error", "Model returned invalid JSON."}};
-    }
-}
-
 std::vector<float> OpenAIProvider::createEmbedding(const std::string& text) {
     SPDLOG_DEBUG("Generating embedding for text (size: {} chars)...", text.length());
 
