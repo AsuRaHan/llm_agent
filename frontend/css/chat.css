@@ -12,7 +12,7 @@ body {
    Chat Container
    ========================================================================== */
 .chat-container {
-    height: 95vh;
+    height: 100vh;
     background-color: #2d3748; /* bg-gray-800 */
     border: 1px solid #4a5568; /* border-gray-700 */
     border-radius: 8px;
@@ -812,4 +812,8 @@ body {
 .custom-scrollbar::-webkit-scrollbar-thumb {
     background-color: #4a5568;
     border-radius: 4px;
+}
+
+#image-preview-container .flex-shrink-0 {
+    flex-shrink: 0;
 }

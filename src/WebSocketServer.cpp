@@ -222,10 +222,12 @@ void WebSocketServer::processAgentLogic(std::shared_ptr<UserSession> session, co
 
 void WebSocketServer::handleQuery(const nlohmann::json& msg, std::shared_ptr<SafeWsHandle> ws_handle) {
     std::string sessionId = msg.value("session_id", "");
-    std::string queryText = msg.value("data", nlohmann::json::object()).value("text", "");
+    auto data = msg.value("data", nlohmann::json::object());
+    std::string queryText = data.value("text", "");
+    nlohmann::json images = data.value("images", nlohmann::json::array());
 
-    if (sessionId.empty() || queryText.empty()) {
-        sendMessage(ws_handle, {{"type", "error"}, {"data", {{"message", "session_id and text are required for query."}}}});
+    if (sessionId.empty() || (queryText.empty() && images.empty())) {
+        sendMessage(ws_handle, {{"type", "error"}, {"data", {{"message", "Для запроса требуется session_id и текст или изображение."}}}});
         return;
     }
 
@@ -243,7 +245,31 @@ void WebSocketServer::handleQuery(const nlohmann::json& msg, std::shared_ptr<Saf
         file_watcher_control_callback("freeze");
     }
 
-    session->history.push_back({{"role", "user"}, {"content", queryText}});
+    // Construct the user message
+    if (images.empty()) {
+        // Simple text message
+        session->history.push_back({{"role", "user"}, {"content", queryText}});
+    } else {
+        // Multi-part message with text and images
+        nlohmann::json user_message_content = nlohmann::json::array();
+        if (!queryText.empty()) {
+            user_message_content.push_back({{"type", "text"}, {"text", queryText}});
+        }
+        for (const auto& image_obj : images) {
+            if (image_obj.is_object() && image_obj.contains("type") && image_obj.contains("data")) {
+                std::string mime_type = image_obj.value("type", "image/jpeg");
+                std::string base64_data = image_obj.value("data", "");
+                if (!base64_data.empty()) {
+                    user_message_content.push_back({
+                        {"type", "image_url"},
+                        {"image_url", {{"url", "data:" + mime_type + ";base64," + base64_data}}}
+                    });
+                }
+            }
+        }
+        session->history.push_back({{"role", "user"}, {"content", user_message_content}});
+    }
+
     // Сохраняем сессию сразу после добавления сообщения пользователя в историю
     SPDLOG_DEBUG("Сохранение сессии {} после получения нового запроса от пользователя.", sessionId);
     sessionManager.saveSessions();

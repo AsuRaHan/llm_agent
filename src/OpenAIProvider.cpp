@@ -132,11 +132,13 @@ AssistantResponse OpenAIProvider::processChat(
 
     if (!res || res->status != 200) {
         if (res) {
+            // Log the full error body from the LLM for better diagnostics.
             SPDLOG_ERROR("Error from LLM. Status: {}. Body: {}", res->status, res->body);
         } else {
             SPDLOG_ERROR("Connection error to LLM: {}", httplib::to_string(res.error()));
         }
-        return { .step_failed = true, .error_message = "Failed to get a response from the language model." };
+        // Provide a more specific error message to the user.
+        return { .step_failed = true, .error_message = "Ошибка от языковой модели (HTTP " + std::to_string(res ? res->status : 0) + "). Проверьте, поддерживает ли ваша модель анализ изображений." };
     }
 
     // After stream is complete, finalize the last tool_call if it exists

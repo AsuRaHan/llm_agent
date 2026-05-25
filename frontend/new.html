@@ -386,6 +386,9 @@
             <!-- Input Area -->
             <div class="p-6 border-t border-slate-700/50 bg-slate-800/30">
                 <div class="max-w-4xl mx-auto">
+                    <!-- Image Preview Container -->
+                    <div id="image-preview-container" class="flex gap-2 mb-2 overflow-x-auto pb-2"></div>
+
                     <div class="relative">
                         <!-- Compact Input Mode -->
                         <div id="compact-input" class="input-compact">
@@ -425,12 +428,10 @@
                     <!-- Toolbar -->
                     <div class="flex items-center justify-between mt-3">
                         <div class="flex items-center gap-2">
-                            <button class="p-2 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg transition-all" title="Прикрепить файл">
+                            <button id="attach-file-button" class="p-2 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg transition-all" title="Прикрепить изображение">
                                 <i class="fas fa-paperclip"></i>
                             </button>
-                            <button class="p-2 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg transition-all" title="Вставить изображение">
-                                <i class="fas fa-image"></i>
-                            </button>
+                            <input type="file" id="file-input" class="hidden" accept="image/*" multiple>
                             <button class="p-2 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg transition-all" title="Форматирование">
                                 <i class="fas fa-bold"></i>
                             </button>

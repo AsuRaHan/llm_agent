@@ -4,7 +4,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const chatForm = document.getElementById('chat-form');
     const messageInput = document.getElementById('message-input');
     const sendButton = document.getElementById('send-button');
-    const planButton = document.getElementById('plan-button');
     const clearHistoryButton = document.getElementById('clear-history-button');
     const autoConfirmButton = document.getElementById('auto-confirm-button');
     const connectionStatus = document.getElementById('connection-status');
@@ -13,8 +12,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const thoughtContainer = document.getElementById('agent-thought-container');
     const thoughtText = document.getElementById('agent-thought-text');
     const newChatButton = document.getElementById('new-chat-button');
-    const interruptButton = document.getElementById('interrupt-button'); // Находим новую кнопку
+    const interruptButton = document.getElementById('interrupt-button');
     const chatList = document.getElementById('chat-list');
+    const attachFileButton = document.getElementById('attach-file-button');
+    const fileInput = document.getElementById('file-input');
+    const imagePreviewContainer = document.getElementById('image-preview-container');
 
     // --- State ---
     let socket;
@@ -88,6 +90,58 @@ document.addEventListener('DOMContentLoaded', () => {
         thoughtContainer.classList.add('hidden');
         chatForm.classList.remove('hidden');
         messageInput.focus();
+    }
+    
+    // Функция для создания миниатюры предпросмотра
+    // Сделаем ее глобальной, чтобы InputHandler мог ее использовать
+    window.createImagePreview = function(imageUrl, onRemoveCallback) {
+        const previewWrapper = document.createElement('div');
+        previewWrapper.className = 'relative group w-20 h-20 rounded-lg overflow-hidden flex-shrink-0';
+
+        const img = document.createElement('img');
+        img.src = imageUrl;
+        img.className = 'w-full h-full object-cover';
+
+        const removeButton = document.createElement('button');
+        removeButton.innerHTML = '&times;';
+        removeButton.className = 'absolute top-1 right-1 w-5 h-5 bg-black/50 text-white rounded-full flex items-center justify-center text-xs font-bold opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer';
+        removeButton.title = 'Удалить изображение';
+
+        // Обрабатываем удаление изображения из предпросмотра
+        removeButton.addEventListener('click', () => {
+            // Удаляем из DOM
+            previewWrapper.remove();
+            // Вызываем callback, чтобы удалить данные из InputHandler
+            if (typeof onRemoveCallback === 'function') {
+                onRemoveCallback();
+            }
+        });
+
+        previewWrapper.appendChild(img);
+        previewWrapper.appendChild(removeButton);
+        imagePreviewContainer.appendChild(previewWrapper);
+    }
+
+    function handleSessionState(data) {
+        messageList.innerHTML = ''; 
+        
+        if (data.history && data.history.length > 0) {
+            data.history.forEach(msg => {
+                if (msg.role === 'user' || (msg.role === 'assistant' && msg.content)) {
+                    addMessage(msg.content, msg.role, state.activeSessionId);
+                }
+            });
+            // Update chat title with the first user message if it's a "New Chat"
+            updateChatTitle(state.activeSessionId, data.history[0]?.content);
+        } else if (data.greeting) {
+            addMessage(data.greeting, 'agent', state.activeSessionId);
+        }
+
+        if (data.status === 'AWAITING_CONFIRMATION') {
+            addConfirmationWidget(data.confirmation_data.message, data.confirmation_data.tool_call);
+        } else {
+            hideAgentThought();
+        }
     }
 
     function connect() {
@@ -410,50 +464,33 @@ document.addEventListener('DOMContentLoaded', () => {
         messageList.scrollTop = messageList.scrollHeight;
     }
 
-    function handleSessionState(data) {
-        messageList.innerHTML = ''; 
-        
-        if (data.history && data.history.length > 0) {
-            data.history.forEach(msg => {
-                if (msg.role === 'user' || (msg.role === 'assistant' && msg.content)) {
-                    addMessage(msg.content, msg.role, state.activeSessionId);
-                }
-            });
-            // Update chat title with the first user message if it's a "New Chat"
-            updateChatTitle(state.activeSessionId, data.history[0]?.content);
-        } else if (data.greeting) {
-            addMessage(data.greeting, 'agent', state.activeSessionId);
-        }
+    /**
+     * Отправляет данные, полученные от InputHandler, на WebSocket сервер.
+     * @param {{text: string, images: object[]}} payload 
+     */
+    function sendMessage(payload) {
+        const { text, images } = payload;
 
-        if (data.status === 'AWAITING_CONFIRMATION') {
-            addConfirmationWidget(data.confirmation_data.message, data.confirmation_data.tool_call);
-        } else {
-            hideAgentThought();
-        }
-    }
+        const messagePayload = {
+            type: 'query',
+            session_id: state.activeSessionId, 
+            data: {
+                text: text,
+                images: images
+            }
+        };
 
-    function sendMessage(forcePlan = false) {
-        const text = messageInput.value.trim();
-        if (text && socket && socket.readyState === WebSocket.OPEN) {
-            addMessage(text, 'user', state.activeSessionId);
-            messageInput.value = '';
-            messageInput.style.height = 'auto'; // Сброс высоты
-
-            const message = {
-                type: 'query',
-                session_id: state.activeSessionId,
-                data: { 
-                    text: text,
-                    force_plan: forcePlan
-                }
-            };
-            socket.send(JSON.stringify(message));
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            // Отображаем текстовую часть сообщения пользователя в UI
+            if (text || images.length > 0) {
+                 // Если есть картинки, добавляем к тексту плейсхолдер
+                 const messageText = text + (images.length > 0 ? `\n[Прикреплено изображений: ${images.length}]` : '');
+                 addMessage(messageText || '[Отправлено изображение]', 'user', state.activeSessionId);
+            }
+            socket.send(JSON.stringify(messagePayload));
+            updateChatTitle(state.activeSessionId, text || 'Чат с изображением');
             
-            // Update chat title if it's a new chat
-            updateChatTitle(state.activeSessionId, text);
-
-            // Сразу после отправки показываем блок "мыслей"
-            // и сбрасываем состояние предыдущего стриминга
+            // Show thinking indicator
             streamingMessageElement = null;
             accumulatedStreamText = '';
             showAgentThought('Анализирую запрос...');
@@ -525,7 +562,9 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateChatTitle(sessionId, firstMessage) {
         const session = state.sessions.find(s => s.id === sessionId);
         if (session && session.title === 'Новый чат' && firstMessage) {
-            session.title = firstMessage.substring(0, 30) + (firstMessage.length > 30 ? '...' : '');
+            // Ensure firstMessage is a string before calling substring
+            const messageText = typeof firstMessage === 'string' ? firstMessage : 'Чат с изображением';
+            session.title = messageText.substring(0, 30) + (messageText.length > 30 ? '...' : '');
             renderChatList();
             saveSessions();
         }
@@ -557,14 +596,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Event Listeners Setup ---
     function setupEventListeners() {
-        sendButton.addEventListener('click', () => sendMessage(false));
-        planButton.addEventListener('click', () => {
-            if (messageInput.value.trim()) {
-                sendMessage(true);
-            } else {
-                alert('Пожалуйста, введите задачу перед запуском планирования.');
-            }
-        });
         newChatButton.addEventListener('click', () => createNewChat());
         autoConfirmButton.addEventListener('click', () => {
             state.isAutoConfirmEnabled = !state.isAutoConfirmEnabled;
@@ -596,16 +627,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 freezeWatcherButton.title = 'Приостановить индексацию';
             }
         });
-        messageInput.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault(); 
-                sendMessage(false);
-            }
-        });
-        messageInput.addEventListener('input', () => {
-            messageInput.style.height = 'auto';
-            messageInput.style.height = (messageInput.scrollHeight) + 'px';
-        });
         clearHistoryButton.addEventListener('click', () => {
             if (confirm('Вы уверены, что хотите очистить историю текущего чата?')) {
                 if (socket && socket.readyState === WebSocket.OPEN) {
@@ -632,6 +653,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- App Start ---
     loadSessions();
     renderChatList();
+    
+    // Инициализируем новый обработчик ввода
+    const inputHandler = new InputHandler({
+        messageInput, sendButton, attachFileButton, fileInput, imagePreviewContainer,
+        onSend: sendMessage // Передаем нашу функцию отправки как callback
+    });
+
     setupEventListeners();
     connect(); // Connect WebSocket
 });

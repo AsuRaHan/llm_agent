@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Чат с Агентом - Smart Hammer (СТАРАЯ ВЕРСИЯ роботает v0.1)</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="/css/chat.css">
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -55,11 +56,32 @@
         </div>
 
         <!-- Форма отправки -->
-        <div id="chat-form" class="chat-form">
-            <textarea id="message-input" placeholder="Введите ваш вопрос... (Shift+Enter для новой строки)" rows="1" class="custom-scrollbar"></textarea>
-            <div class="form-buttons">
-                <button id="send-button" type="submit">Отправить</button>
-                <button id="plan-button" type="button" title="Запустить с планированием (📋)">📋</button>
+        <div id="chat-form" class="p-6 border-t border-slate-700/50 bg-slate-800/30">
+            <div class="max-w-4xl mx-auto">
+                <!-- Image Preview Container -->
+                <div id="image-preview-container" class="flex gap-2 mb-2 overflow-x-auto pb-2"></div>
+
+                <div class="relative">
+                    <textarea 
+                        id="message-input"
+                        placeholder="Введите ваш вопрос... (Shift+Enter для новой строки)"
+                        class="w-full bg-slate-800/80 backdrop-blur-sm border border-slate-600/50 rounded-2xl p-4 pr-24 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent resize-none"
+                        rows="1"
+                    ></textarea>
+                    <button class="absolute right-3 bottom-3 p-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition-all" id="send-button">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </div>
+                <!-- Toolbar -->
+                <div class="flex items-center justify-between mt-3">
+                    <div class="flex items-center gap-2">
+                        <button id="attach-file-button" class="p-2 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg transition-all" title="Прикрепить изображение">
+                            <i class="fas fa-paperclip"></i>
+                        </button>
+                        <input type="file" id="file-input" class="hidden" accept="image/*" multiple>
+                    </div>
+                    <span class="text-slate-500 text-xs">Shift + Enter для переноса строки</span>
+                </div>
             </div>
         </div>
     </div>
@@ -131,6 +153,7 @@
         </div>
     </template>
 
+    <script src="/js/input-handler.js"></script>
     <script src="/js/chat.js"></script>
 </body>
 </html>
