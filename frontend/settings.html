@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Настройки — Smart Hammer</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    
+    <!-- Custom Styles -->
+    <style>
+        :root {
+            --primary: #3b82f6;
+            --primary-hover: #2563eb;
+            --bg-dark: #0f172a;
+            --bg-card: #1e293b;
+            --border: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+        
+        .mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: var(--bg-dark);
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+        
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .animate-fade-in {
+            animation: fadeIn 0.3s ease-out;
+        }
+        
+        /* Glassmorphism */
+        .glass {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+        }
+        
+        /* Toggle switch */
+        .toggle-checkbox:checked {
+            right: 0;
+            border-color: #3b82f6;
+        }
+        
+        .toggle-checkbox:checked + .toggle-label {
+            background-color: #3b82f6;
+        }
+        
+        /* Input focus */
+        .input-field:focus,
+        .select-field:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+        }
+        
+        /* Tab active */
+        .tab-active {
+            border-bottom: 2px solid #3b82f6;
+            color: #3b82f6;
+        }
+    </style>
+</head>
+<body class="antialiased">
+    
+    <!-- Header -->
+    <header class="fixed top-0 left-0 right-0 z-50 glass border-b border-white/5">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <!-- Logo -->
+                <div class="flex items-center gap-3">
+                    <a href="/" class="flex items-center gap-2">
+                        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg">
+                            <i class="fas fa-robot text-white text-lg"></i>
+                        </div>
+                        <div>
+                            <h1 class="text-xl font-bold text-gradient">Smart Hammer</h1>
+                            <p class="text-xs text-secondary hidden sm:block">Локальный AI-ассистент</p>
+                        </div>
+                    </a>
+                </div>
+                
+                <!-- Navigation -->
+                <nav class="hidden md:flex items-center gap-6">
+                    <a href="/" class="text-secondary hover:text-white transition-colors text-sm font-medium">
+                        <i class="fas fa-home mr-1"></i> Главная
+                    </a>
+                    <a href="/doc.html" class="text-secondary hover:text-white transition-colors text-sm font-medium">
+                        <i class="fas fa-book mr-1"></i> Документация
+                    </a>
+                    <a href="/settings" class="text-white font-medium transition-colors text-sm flex items-center gap-1">
+                        <i class="fas fa-cog mr-1"></i> Настройки
+                    </a>
+                </nav>
+                
+                <!-- Mobile Menu Button -->
+                <button class="md:hidden p-2 text-secondary hover:text-white">
+                    <i class="fas fa-bars text-lg"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+    
+    <!-- Main Content -->
+    <main class="pt-24 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+        
+        <!-- Page Header -->
+        <div class="mb-8 animate-fade-in">
+            <h1 class="text-3xl font-bold mb-2">Настройки</h1>
+            <p class="text-secondary">Настройте поведение AI-ассистента и параметры системы</p>
+        </div>
+        
+        <!-- Settings Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            
+            <!-- Sidebar Navigation -->
+            <aside class="lg:col-span-1">
+                <nav class="glass rounded-xl p-4 border border-white/10 sticky top-24">
+                    <div class="space-y-1">
+                        <a href="#server" class="nav-item tab-active flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all">
+                            <i class="fas fa-server w-5 text-center"></i>
+                            Сервер
+                        </a>
+                        <a href="#embedding" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-secondary hover:text-white hover:bg-white/5 transition-all">
+                            <i class="fas fa-brain w-5 text-center"></i>
+                            Эмбеддинги
+                        </a>
+                        <a href="#indexing" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-secondary hover:text-white hover:bg-white/5 transition-all">
+                            <i class="fas fa-database w-5 text-center"></i>
+                            Индексация
+                        </a>
+                        <a href="#tools" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-secondary hover:text-white hover:bg-white/5 transition-all">
+                            <i class="fas fa-tools w-5 text-center"></i>
+                            Инструменты
+                        </a>
+                        <a href="#logging" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-secondary hover:text-white hover:bg-white/5 transition-all">
+                            <i class="fas fa-file-alt w-5 text-center"></i>
+                            Логирование
+                        </a>
+                        <a href="#about" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-secondary hover:text-white hover:bg-white/5 transition-all">
+                            <i class="fas fa-info-circle w-5 text-center"></i>
+                            О системе
+                        </a>
+                    </div>
+                </nav>
+            </aside>
+            
+            <!-- Settings Content -->
+            <div class="lg:col-span-3 space-y-6">
+                
+                <!-- Server Settings -->
+                <section id="server" class="glass rounded-xl p-6 border border-white/10">
+                    <h2 class="text-xl font-bold mb-6 flex items-center gap-3">
+                        <i class="fas fa-server text-blue-400"></i>
+                        Настройки сервера
+                    </h2>
+                    
+                    <div class="space-y-5">
+                        <!-- LLM Server -->
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                            <div>
+                                <label class="block text-sm font-medium text-secondary mb-2">
+                                    <i class="fas fa-server mr-1.5"></i>Хост LLM сервера
+                                </label>
+                                <input type="text" value="localhost" class="input-field w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white placeholder-secondary">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-secondary mb-2">
+                                    <i class="fas fa-port mr-1.5"></i>Порт LLM сервера
+                                </label>
+                                <input type="number" value="8080" class="input-field w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white placeholder-secondary">
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-secondary mb-2">
+                                <i class="fas fa-key mr-1.5"></i>API ключ (опционально)
+                            </label>
+                            <input type="password" value="" placeholder="Оставьте пустым для локального доступа" class="input-field w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white placeholder-secondary">
+                            <p class="text-xs text-secondary mt-1.5">Требуется для аутентификации на удалённом сервере</p>
+                        </div>
+                        
+                        <div class="flex items-center justify-between p-4 rounded-lg bg-white/5 border border-white/10">
+                            <div>
+                                <p class="font-medium text-sm">Включить эмбеддинги</p>
+                                <p class="text-xs text-secondary">Необходимо для работы ассистента</p>
+                            </div>
+                            <div class="relative inline-block w-12 mr-2 align-middle select-none transition duration-200 ease-in">
+                                <input type="checkbox" name="toggle" id="embedding-toggle" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer border-gray-300 checked:right-0 checked:border-blue-500"/>
+                                <label for="embedding-toggle" class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-600 cursor-pointer"></label>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+                
+                <!-- Embedding Settings -->
+                <section id="embedding" class="glass rounded-xl p-6 border border-white/10">
+                    <h2 class="text-xl font-bold mb-6 flex items-center gap-3">
+                        <i class="fas fa-brain text-purple-400"></i>
+                        Настройки эмбеддингов
+                    </h2>
+                    
+                    <div class="space-y-5">
+                        <div>
+                            <label class="block text-sm font-medium text-secondary mb-2">
+                                <i class="fas fa-book mr-1.5"></i>Модель эмбеддингов
+                            </label>
+                            <select class="select-field w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white">
+                                <option value="any">any (по умолчанию)</option>
+                                <option value="all-MiniLM-L6-v2">all-MiniLM-L6-v2</option>
+                                <option value="sentence-transformers/all-mpnet-base-v2">all-mpnet-base-v2</option>
+                                <option value="BAAI/bge-small-en-v1.5">BAAI/bge-small-en-v1.5</option>
+                            </select>
+                        </div>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                            <div>
+                                <label class="block text-sm font-medium text-secondary mb-2">
+                                    <i class="fas fa-ruler-vertical mr-1.5"></i>Макс. длина текста
+                                </label>
+                                <input type="number" value="1500" class="input-field w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white placeholder-secondary">
+                                <p class="text-xs text-secondary mt-1.5">Максимальное количество символов в запросе</p>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-secondary mb-2">
+                                    <i class="fas fa-layer-group mr-1.5"></i>Пересечение чанков
+                                </label>
+                                <input type="number" value="200" class="input-field w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white placeholder-secondary">
+                                <p class="text-xs text-secondary mt-1.5">Пересечение между соседними чанками</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+                
+                <!-- Indexing Settings -->
+                <section id="indexing" class="glass rounded-xl p-6 border border-white/10">
+                    <h2 class="text-xl font-bold mb-6 flex items-center gap-3">
+                        <i class="fas fa-database text-green-400"></i>
+                        Настройки индексации
+                    </h2>
+                    
+                    <div class="space-y-5">
+                        <div>
+                            <label class="block text-sm font-medium text-secondary mb-2">
+                                <i class="fas fa-cogs mr-1.5"></i>Стратегия разбивки
+                            </label>
+                            <select class="select-field w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white">
+                                <option value="tree-sitter-hybrid">tree-sitter-hybrid (рекомендуется)</option>
+                                <option value="tree-sitter">tree-sitter</option>
+                                <option value="fixed">fixed</option>
+                            </select>
+                        </div>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                            <div>
+                                <label class="block text-sm font-medium text-secondary mb-2">
+                                    <i class="fas fa-list-ol mr-1.5"></i>Количество результатов (top_k)
+                                </label>
+                                <input type="number" value="5" class="input-field w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white placeholder-secondary">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-secondary mb-2">
+                                    <i class="fas fa-folder mr-1.5"></i>Игнорируемые директории
+                               

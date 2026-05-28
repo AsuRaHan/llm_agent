@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI-Агент — Smart Hammer</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    
+    <!-- Custom Styles -->
+    <style>
+        :root {
+            --primary: #3b82f6;
+            --primary-hover: #2563eb;
+            --bg-dark: #0f172a;
+            --bg-card: #1e293b;
+            --border: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+        
+        .mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: var(--bg-dark);
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+        
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(-20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .animate-fade-in {
+            animation: fadeIn 0.3s ease-out;
+        }
+        
+        .animate-slide-in {
+            animation: slideIn 0.3s ease-out;
+        }
+        
+        .animate-pulse-slow {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        
+        /* Glassmorphism */
+        .glass {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+        }
+        
+        /* Message bubbles */
+        .message-user {
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+        }
+        
+        .message-agent {
+            background: rgba(59, 130, 246, 0.1);
+            border-left: 3px solid #3b82f6;
+        }
+        
+        .message-tool {
+            background: rgba(245, 158, 11, 0.1);
+            border-left: 3px solid #f59e0b;
+        }
+        
+        .message-error {
+            background: rgba(239, 68, 68, 0.1);
+            border-left: 3px solid #ef4444;
+        }
+        
+        /* Status dots */
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        
+        .status-connected {
+            background: #22c55e;
+            box-shadow: 0 0 8px rgba(34, 197, 94, 0.5);
+        }
+        
+        .status-disconnected {
+            background: #ef4444;
+        }
+        
+        .status-connecting {
+            background: #f59e0b;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+        
+        /* Spinner */
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid var(--border);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Code block */
+        .code-block {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 0.5rem;
+            overflow-x: auto;
+        }
+        
+        .code-block pre {
+            margin: 0;
+            padding: 1rem;
+            color: #c9d1d9;
+            font-size: 0.875rem;
+            line-height: 1.5;
+        }
+        
+        /* File attachment */
+        .file-attachment {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+        }
+        
+        /* Image preview */
+        .image-preview {
+            position: relative;
+            border: 2px dashed rgba(148, 163, 184, 0.3);
+            border-radius: 0.5rem;
+            overflow: hidden;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .image-preview:hover {
+            border-color: #3b82f6;
+        }
+        
+        .image-preview img {
+            max-width: 100px;
+            max-height: 100px;
+            object-fit: cover;
+        }
+        
+        .image-preview .remove-btn {
+            position: absolute;
+            top: 0.25rem;
+            right: 0.25rem;
+            width: 1.5rem;
+            height: 1.5rem;
+            background: rgba(239, 68, 68, 0.9);
+            border: none;
+            border-radius: 50%;
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        /* Input area */
+        .input-container {
+            position: relative;
+        }
+        
+        .message-input {
+            width: 100%;
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(51, 65, 85, 0.5);
+            border-radius: 1rem;
+            padding: 1rem 3rem 1rem 1.25rem;
+            color: white;
+            resize: none;
+            min-height: 56px;
+            max-height: 200px;
+            font-size: 0.9375rem;
+            line-height: 1.5;
+            transition: all 0.2s;
+        }
+        
+        .message-input:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+        }
+        
+        .send-button {
+            position: absolute;
+            right: 0.75rem;
+            bottom: 0.75rem;
+            width: 2.5rem;
+            height: 2.5rem;
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            border: none;
+            border-radius: 0.75rem;
+            color: white;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .send-button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+        }
+        
+        .send-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        /* Toolbar */
+        .toolbar {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1rem;
+            background: rgba(15, 23, 42, 0.5);
+            border-radius: 0 0 1rem 1rem;
+            border: 1px solid rgba(51, 65, 85, 0.5);
+            border-top: none;
+        }
+        
+        .toolbar-btn {
+            width: 2.5rem;
+            height: 2.5rem;
+            background: transparent;
+            border: none;
+            border-radius: 0.5rem;
+            color: #94a3b8;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .toolbar-btn:hover {
+            background: rgba(51, 65, 85, 0.5);
+            color: white;
+        }
+        
+        /* Agent thought */
+        .agent-thought {
+            background: rgba(148, 163, 184, 0.1);
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            border-radius: 0.75rem;
+            padding: 1rem;
+            margin: 1rem 0;
+        }
+        
+        /* Widget templates */
+        .confirmation-widget {
+            background: rgba(245, 158, 11, 0.1);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+            border-left: 4px solid #f59e0b;
+            border-radius: 0.75rem;
+            padding: 1rem;
+        }
+        
+        .error-widget {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-left: 4px solid #ef4444;
+            border-radius: 0.75rem;
+            padding: 1rem;
+        }
+        
+        .plan-widget {
+            background: rgba(34, 211, 238, 0.1);
+            border: 1px solid rgba(34, 211, 238, 0.3);
+            border-left: 4px solid #22d3ee;
+            border-radius: 0.75rem;
+            padding: 1rem;
+        }
+        
+        /* Buttons */
+        .btn-primary {
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            transition: all 0.2s;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+        }
+        
+        .btn-secondary {
+            background: rgba(51, 65, 85, 0.5);
+            border: 1px solid rgba(51, 65, 85, 0.5);
+        }
+        
+        .btn-secondary:hover {
+            background: rgba(51, 65, 85, 0.8);
+        }
+        
+        /* Typing indicator */
+        .typing-indicator {
+            display: flex;
+            gap: 0.25rem;
+            padding: 0.5rem 0;
+        }
+        
+        .typing-dot {
+            width: 6px;
+            height: 6px;
+            background: #94a3b8;
+            border-radius: 50%;
+            animation: typing 1.4s infinite;
+        }
+        
+        .typing-dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+        
+        .typing-dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+        
+        @keyframes typing {
+            0%, 60%, 100% { transform: translateY(0); }
+            30% { transform: translateY(-4px); }
+        }
+    </style>
+</head>
+<body class="antialiased h-screen flex">
+    
+    <!-- Sidebar -->
+    <aside class="w-72 glass border-r border-white/5 flex flex-col flex-shrink-0">
+        <!-- Sidebar Header -->
+        <div class="p-4 border-b border-white/5">
+            <button id="new-chat-btn" class="w-full px-4 py-2.5 rounded-lg text-white bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 font-semibold text-sm transition-all flex items-center justify-center gap-2">
+                <i class="fas fa-plus"></i>
+                Новый чат
+            </button>
+        </div>
+        
+        <!-- Chat List -->
+        <div class="flex-grow overflow-y-auto p-2">
+            <div class="text-xs font-medium text-secondary px-3 py-2 mb-2">
+                ИСТОРИЯ
+            </div>
+            <ul id="chat-list" class="space-y-1">
+                <!-- Chat items will be added dynamically -->
+                <li class="chat-item group flex items-center justify-between p-2.5 rounded-lg cursor-pointer hover:bg-white/5 transition-all" data-session-id="session-1">
+                    <div class="flex items-center gap-3 flex-grow">
+                        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center flex-shrink-0">
+                            <i class="fas fa-robot text-white text-sm"></i>
+                        </div>
+                        <span class="chat-title truncate text-sm font-medium">Анализ проекта</span>
+                    </div>
+                    <button class="delete-chat-btn group-hover:block text-gray-500 hover:text-red-500 text-xs p-1" title="Удалить чат">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </li>
+            </ul>
+        </div>
+        
+        <!-- Sidebar Footer -->
+        <div class="p-3 border-t border-white/5">
+            <button id="clear-history-btn" class="w-full px-3 py-2 rounded-lg text-secondary hover:text-white hover:bg-white/5 text-sm transition-all flex items-center justify-center gap-2">
+                <i class="fas fa-trash-alt"></i>
+                Очистить историю
+            </button>
+        </div>
+    </aside>
+    
+    <!-- Main Chat Area -->
+    <main class="flex-grow flex flex-col h-screen">
+        
+        <!-- Header -->
+        <header class="glass border-b border-white/5 px-4 sm:px-6 py-3">
+            <div class="max-w-6xl mx-auto flex items-center justify-between">
+                <!-- Left: Logo & Status -->
+                <div class="flex items-center gap-4">
+                    <div class="flex items-center gap-3">
+                        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg">
+                            <i class="fas fa-robot text-white text-lg"></i>
+                        </div>
+                        <div>
+                            <h1 class="text-base font-bold text-gradient">Smart Hammer</h1>
+                            <div class="flex items-center gap-2">
+                                <span id="connection-status-dot" class="status-dot status-disconnected"></span>
+                                <span id="connection-status-text" class="text-xs text-secondary">Подключение...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Right: Controls -->
+                <div class="flex items-center gap-2">
+                    <!-- Auto-confirm -->
+                    <button id="auto-confirm-btn" class="p-2 rounded-lg text-secondary hover:text-white hover:bg-white/5 transition-all" title="Авто-подтверждение">
+                        <i class="fas fa-bolt"></i>
+                    </button>
+                    
+                    <!-- Freeze watcher -->
+                    <button id="freeze-watcher-btn" class="p-2 rounded-lg text-secondary hover:text-white hover:bg-white/5 transition-all" title="Приостановить индексацию">
+                        <i class="fas fa-snowflake"></i>
+                    </button>
+                    
+                    <!-- File watcher status -->
+                    <div id="file-watcher-status" class="hidden flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10">
+                        <div class="spinner-small w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+                        <span class="text-xs text-secondary">Индексация...</span>
+                    </div>
+                    
+                    <!-- Clear history -->
+                    <button id="clear-session-btn" class="p-2 rounded-lg text-secondary hover:text-red-400 hover:bg-white/5 transition-all" title="Очистить сессию">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                    
+                    <!-- Back to home -->
+                    <a href="/" class="p-2 rounded-lg text-secondary hover:text-white hover:bg-white/5 transition-all">
+                        <i class="fas fa-home"></i>
+                    </a>
+                </div>
+            </div>
+        </header>
+        
+        <!-- Messages Area -->
+        <div id="messages-container" class="flex-grow overflow-y-auto p-4 sm:p-6 space-y-4">
+            <!-- Welcome message -->
+            <div class="message agent animate-fade-in">
+                <div class="message-content border-l-4 border-blue-500 bg-white/5 p-4 rounded-r-lg">
+                    <p class="font-semibold text-blue-400 mb-2">🤖 Привет! Я Smart Hammer</p>
+                    <p class="text-secondary">Я ваш локальный AI-ассистент, готовый помочь с анализом, поиском и редактированием кода. Чем могу помочь?</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Agent Thought Section -->
+        <div id="agent-thought-section" class="hidden px-4 sm:px-6 pb-2">
+            <div class="max-w-6xl mx-auto">
+                <div class="agent-thought glass rounded-lg p-4 flex items-start gap-3">
+                    <div class="spinner mt-0.5"></div>
+                    <div class="flex-grow">
+                        <p class="text-sm font-medium mb-1">Агент думает...</p>
+                        <p id="agent-thought-text" class="text-sm text-secondary">Анализирую запрос...</p>
+                    </div>
+                    <button id="interrupt-btn" class="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-lg transition-all">
+                        <i class="fas fa-stop mr-1"></i> Прервать
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Input Area -->
+        <div class="border-t border-white/5 bg-white/5 p-4 sm:p-6">
+            <div class="max-w-6xl mx-auto">
+                
+                <!-- Image Preview Container -->
+                <div id="image-preview-container" class="flex gap-2 mb-3 overflow-x-auto pb-2 hidden">
+                    <!-- Image previews will be added here -->
+                </div>
+                
+                <!-- Input Container -->
+                <div class="input-container">
+                    <textarea 
+                        id="message-input"
+                        placeholder="Введите ваш вопрос... (Shift+Enter для новой строки)"
+                        class="message-input"
+                        rows="1"
+                    ></textarea>
+                    
+                    <!-- Send Button -->
+                    <button class="send-button" id="send-btn" disabled>
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </div>
+                
+                <!-- Toolbar -->
+                <div class="toolbar">
+                    <!-- Attach file -->
+                    <button id="attach-file-btn" class="toolbar-btn" title="Прикрепить изображение">
+                        <i class="fas fa-paperclip"></i>
+                    </button>
+                    
+                    <!-- File input -->
+                    <input type="file" id="file-input" class="hidden" accept="image/*" multiple>
+                    
+                    <!-- Divider -->
+                    <div class="w-px h-6 bg-white/10 mx-2"></div>
+                    
+                    <!-- Clear input -->
+                    <button id="clear-input-btn" class="toolbar-btn" title="Очистить ввод">
+                        <i class="fas fa-times"></i>
+                    </button>
+                    
+                    <!-- Info -->
+                    <span class="text-xs text-secondary ml-2">Shift + Enter для переноса строки</span>
+                </div>
+            </div>
+        </div>
+    </main>
+    
+    <!-- Widget Templates -->
+    
+    <!-- Confirmation Widget -->
+    <template id="confirmation-widget-template">
+        <div class="message agent">
+            <div class="confirmation-widget">
+                <p class="font-semibold text-amber-400 mb-2 flex items-center gap-2">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    Запрос на подтверждение действия
+                </p>
+                <p class="text-sm text-secondary mb-3" data-role="prompt-text"></p>
+                <pre class="code-block text-xs text-gray-300 overflow-x-auto mb-4" data-role="tool-call-json"></pre>
+                <div class="flex flex-wrap gap-3">
+                    <button data-role="yes-btn" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold text-white flex items-center gap-2">
+                        <i class="fas fa-check"></i> Разрешить
+                    </button>
+                    <button data-role="no-btn" class="btn-secondary px-4 py-2 rounded-lg text-sm font-semibold text-white hover:bg-red-600/20 transition-all">
+                        <i class="fas fa-times"></i> Отклонить
+                    </button>
+                </div>
+            </div>
+        </div>
+    </template>
+    
+    <!-- Error Recovery Widget -->
+    <template id="error-widget-template">
+        <div class="message agent">
+            <div class="error-widget">
+                <p class="font-semibold text-red-400 mb-2 flex items-center gap-2">
+                    <i class="fas fa-exclamation-circle"></i>
+                    Ошибка выполнения
+                </p>
+                <pre class="code-block text-xs text-red-300 overflow-x-auto mb-3" data-role="error-message"></pre>
+                <p class="text-sm text-secondary mb-3">Выберите стратегию восстановления:</p>
+                <div data-role="button-container" class="flex flex-wrap gap-2"></div>
+            </div>
+        </div>
+    </template>
+    
+    <!-- Plan Widget -->
+    <template id="plan-widget-template">
+        <div class="message agent">
+            <div class="plan-widget">
+                <p class="font-semibold text-cyan-400 mb-3 flex items-center gap-2">
+                    <i class="fas fa-list-check"></i>
+                    Составлен пошаговый план
+                </p>
+                <ol data-role="plan-list" class="list-decimal list-inside space-y-2 text-sm text-secondary"></ol>
+                <div class="flex flex-wrap gap-3 mt-4">
+                    <button data-role="approve-btn" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold text-white flex items-center gap-2">
+                        <i class="fas fa-rocket"></i> Утвердить и запустить
+                    </button>
+                    <button data-role="edit-btn" class="btn-secondary px-4 py-2 rounded-lg text-sm font-semibold text-white hover:bg-cyan-600/20 transition-all">
+                        <i class="fas fa-edit"></i> Редактировать
+                    </button>
+                </div>
+            </div>
+        </div>
+    </template>
+    
+    <!-- Progress Widget -->
+    <template id="progress-widget-template">
+        <div class="message-content border-l-4 border-green-500 bg-white/5 p-4 rounded-r-lg">
+            <p class="font-semibold text-green-400 mb-2 flex items-center gap-2">
+                <i class="fas fa-bolt"></i>
+                Выполнение задачи
+            </p>
+            <ul data-role="progress-list" class="space-y-2 text-sm text-secondary"></ul>
+        </div>
+    </template>
+    
+    <!-- Stream End Widget -->
+    <template id="stream-end-widget">
+        <div class="message-content border-l-4 border-blue-500 bg-white/5 p-4 rounded-r-lg">
+            <p class="text-sm text-secondary">Ответ сгенерирован</p>
+        </div>
+    </template>
+    
+    <!-- Scripts -->
+    <script>
+        // WebSocket connection placeholder
+        console.log('Smart Hammer Agent initialized');
+        
+        // Connection status
+        const connectionStatusDot = document.getElementById('connection-status-dot');
+        const connectionStatusText = document.getElementById('connection-status-text');
+        
+        function updateConnectionStatus(status) {
+            switch(status) {
+                case 'connected':
+                    connectionStatusDot.className = 'status-dot status-connected';
+                    connectionStatusText.textContent = 'Подключено';
+                    break;
+                case 'disconnected':
+                    connectionStatusDot.className = 'status-dot status-disconnected';
+                    connectionStatusText.textContent = 'Отключено';
+                    break;
+                case 'connecting':
+                    connectionStatusDot.className = 'status-dot status-connecting';
+                    connectionStatusText.textContent = 'Подключение...';
+                    break;
+            }
+        }
+        
+        updateConnectionStatus('disconnected');
+        
+        // Auto-resize textarea
+        const messageInput = document.getElementById('message-input');
+        messageInput.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = Math.min(this.scrollHeight, 200) + 'px';
+            document.getElementById('send-btn').disabled = this.value.trim() === '';
+        });
+        
+        // Send on Enter (Shift+Enter for new line)
+        messageInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                if (!this.value.trim()) return;
+                
+                // Send message logic here
+                console.log('Sending message:', this.value);
+                this.value = '';
+                this.style.height = 'auto';
+                document.getElementById('send-btn').disabled = true;
+            }
+        });
+        
+        // Send button click
+        document.getElementById('send-btn').addEventListener('click', function() {
+            if (!messageInput.value.trim()) return;
+            
+            console.log('Sending message:', messageInput.value);
+            messageInput.value = '';
+            messageInput.style.height = 'auto';
+            this.disabled = true;
+        });
+        
+        // File attachment
+        document.getElementById('attach-file-btn').addEventListener('click', function() {
+            document.getElementById('file-input').click();
+        });
+        
+        document.getElementById('file-input').addEventListener('change', function(e) {
+            const files = e.target.files;
+            const container = document.getElementById('image-preview-container');
+            container.innerHTML = '';
+            
+            if (files.length > 0) {
+                container.classList.remove('hidden');
+                
+                for (let file of files) {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        const preview = document.createElement('div');
+                        preview.className = 'image-preview relative';
+                        preview.innerHTML = `
+                            <img src="${e.target.result}" alt="${file.name}">
+                            <button class="remove-btn" onclick="this.parentElement.remove()">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        `;
+                        container.appendChild(preview);
+                    };
+                    reader.readAsDataURL(file);
+                }
+            }
+        });
+        
+        // Clear input
+        document.getElementById('clear-input-btn').addEventListener('click', function() {
+            messageInput.value = '';
+            messageInput.style.height = 'auto';
+            document.getElementById('send-btn').disabled = true;
+        });
+        
+        // New chat
+        document.getElementById('new-chat-btn').addEventListener('click', function() {
+            console.log('Creating new chat');
+        });
+        
+        // Clear history
+        document.getElementById('clear-history-btn').addEventListener('click', function() {
+            if (confirm('Вы уверены, что хотите очистить всю историю чатов?')) {
+                console.log('Clearing chat history');
+            }
+        });
+        
+        // Clear session
+        document.getElementById('clear-session-btn').addEventListener('click', function() {
+            if (confirm('Вы уверены, что хотите очистить текущую сессию?')) {
+                console.log('Clearing current session');
+            }
+        });
+        
+        // Interrupt agent
+        document.getElementById('interrupt-btn').addEventListener('click', function() {
+            console.log('Interrupting agent');
+            document.getElementById('agent-thought-section').classList.add('hidden');
+        });
+        
+        // Auto-confirm
+        document.getElementById('auto-confirm-btn').addEventListener('click', function() {
+            console.log('Toggle auto-confirm');
+        });
+        
+        // Freeze watcher
+        document.getElementById('freeze-watcher-btn').addEventListener('click', function() {
+            console.log('Toggle freeze watcher');
+        });
+    </script>
+</body>
+</html>

@@ -3,130 +3,377 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LLM Agent - Frontend</title>
+    <title>Smart Hammer — Локальный AI-ассистент</title>
+    
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="/css/style.css">
-    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    
+    <!-- Custom Styles -->
+    <style>
+        :root {
+            --primary: #3b82f6;
+            --primary-hover: #2563eb;
+            --bg-dark: #0f172a;
+            --bg-card: #1e293b;
+            --border: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+        
+        .mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: var(--bg-dark);
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+        
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .animate-fade-in {
+            animation: fadeIn 0.3s ease-out;
+        }
+        
+        .animate-pulse-slow {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        
+        /* Gradient text */
+        .text-gradient {
+            background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 50%, #2563eb 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        /* Glassmorphism */
+        .glass {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+        }
+        
+        /* Button hover effects */
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
+            transition: all 0.2s ease;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+        }
+        
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+        
+        /* Loading spinner */
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid var(--border);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Connection status */
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        
+        .status-connected {
+            background: #22c55e;
+            box-shadow: 0 0 8px rgba(34, 197, 94, 0.5);
+        }
+        
+        .status-disconnected {
+            background: #ef4444;
+        }
+        
+        .status-connecting {
+            background: #f59e0b;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+    </style>
 </head>
-<body class="bg-gray-900 text-gray-200 flex h-screen">
+<body class="antialiased">
+    
+    <!-- Header -->
+    <header class="fixed top-0 left-0 right-0 z-50 glass border-b border-white/5">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <!-- Logo -->
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg">
+                        <i class="fas fa-robot text-white text-lg"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-xl font-bold text-gradient">Smart Hammer</h1>
+                        <p class="text-xs text-secondary">Локальный AI-ассистент</p>
+                    </div>
+                </div>
+                
+                <!-- Navigation -->
+                <nav class="hidden md:flex items-center gap-6">
+                    <a href="/" class="text-secondary hover:text-white transition-colors text-sm font-medium">
+                        <i class="fas fa-home mr-1"></i> Главная
+                    </a>
 
-    <!-- Sidebar for Chat List -->
-    <div id="chat-sidebar" class="w-64 bg-gray-950 flex flex-col border-r border-gray-800 flex-shrink-0">
-        <div class="p-3 border-b border-gray-800">
-            <button id="new-chat-button" class="w-full px-4 py-2 rounded-md text-white bg-sky-600 hover:bg-sky-700 font-bold cursor-pointer text-sm transition-colors">
-                + Новый чат
-            </button>
-        </div>
-        <ul id="chat-list" class="flex-grow overflow-y-auto custom-scrollbar p-2 space-y-1">
-            <!-- Элементы списка чатов будут добавлены сюда динамически -->
-        </ul>
-    </div>
-
-    <!-- Main Chat Container -->
-    <div class="chat-container flex-grow">
-        <div class="chat-header">
-            <div class="header-left">
-                <h1>🤖 LLM Agent</h1>
-                <span id="connection-status" class="connection-status">Подключение...</span>
-            </div>
-            <div class="header-right">
-                <button id="auto-confirm-button" class="header-btn" title="Авто-подтверждение действий">🤖⚡</button>
-                <button id="freeze-watcher-button" class="header-btn" title="Приостановить индексацию">❄️</button>
-                <a href="/" class="back-link">На главную</a>
-                <button id="clear-history-button" class="clear-btn" title="Очистить чат">🗑️</button>
-            </div>
-        </div>
-        <div id="message-list" class="message-list custom-scrollbar">
-            <!-- Сообщения будут загружены с сервера -->
-        </div>
-
-        <!-- Блок для мыслей агента -->
-        <div id="agent-thought-container" class="agent-thought-container hidden">
-            <div class="spinner"></div>
-            <span id="agent-thought-text">Агент думает...</span>
-        </div>
-
-        <!-- Форма отправки -->
-        <div id="chat-form" class="chat-form">
-            <div id="indicator-container" class="w-full">
-                <!-- Streaming indicator will be injected here -->
-            </div>
-            <textarea id="message-input" placeholder="Введите ваш вопрос... (Shift+Enter для новой строки)" rows="1" class="custom-scrollbar"></textarea>
-            <div class="form-buttons">
-                <button id="send-button" type="submit">Отправить</button>
-                <button id="plan-button" type="button" title="Запустить с планированием (📋)">📋</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- ========================================================================== -->
-    <!-- WIDGET TEMPLATES                                                           -->
-    <!-- ========================================================================== -->
-
-    <template id="chat-list-item-template">
-        <li class="chat-list-item group flex items-center justify-between p-2 rounded-md cursor-pointer hover:bg-gray-800" data-session-id="">
-            <span class="chat-title truncate flex-grow text-sm"></span>
-            <button class="delete-chat-button group-hover:block text-gray-500 hover:text-red-500 text-xs" title="Удалить чат">
-                🗑️
-            </button>
-        </li>
-    </template>
-
-    <template id="confirmation-widget-template">
-        <div class="message agent">
-            <div class="message-content border-l-4 border-amber-500 bg-gray-800/40 p-4">
-                <p class="font-bold text-amber-400">⚠️ Запрос на подтверждение действия:</p>
-                <p class="my-2" data-role="prompt-text"></p>
-                <pre class="bg-gray-950 p-3 rounded font-mono text-xs text-gray-300 overflow-x-auto" data-role="tool-call-json"></pre>
-                <div class="confirm-buttons flex gap-3 mt-4">
-                    <button data-role="yes-button" class="px-4 py-2 rounded-md text-white bg-green-600 hover:bg-green-700 font-bold cursor-pointer">Да, разрешить</button>
-                    <button data-role="no-button" class="px-4 py-2 rounded-md text-white bg-red-600 hover:bg-red-700 cursor-pointer">Отклонить</button>
+                    <a href="/doc.html" class="text-secondary hover:text-white transition-colors text-sm font-medium">
+                        <i class="fas fa-book mr-1"></i> Документация
+                    </a>
+                    <a href="/settings.html" class="text-secondary hover:text-white transition-colors text-sm font-medium">
+                        <i class="fas fa-cog mr-1"></i> Настройки
+                    </a>
+                    <a href="/agent.html" class="text-secondary hover:text-white transition-colors text-sm font-medium">
+                        <i class="fas fa-robot mr-1"></i> AI-ассистент
+                    </a>
+                </nav>
+                
+                <!-- Connection Status & Actions -->
+                <div class="flex items-center gap-4">
+                    <!-- Connection Status -->
+                    <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10">
+                        <div id="connection-status-dot" class="status-dot status-disconnected"></div>
+                        <span id="connection-status-text" class="text-xs text-secondary">Подключение...</span>
+                    </div>
+                    
+                    <!-- New Chat Button -->
+                    <button id="new-chat-btn" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold text-white flex items-center gap-2">
+                        <i class="fas fa-plus"></i>
+                        <span class="hidden sm:inline">Новый чат</span>
+                    </button>
+                    
+                    <!-- Mobile Menu Button -->
+                    <button id="mobile-menu-btn" class="md:hidden p-2 text-secondary hover:text-white">
+                        <i class="fas fa-bars text-lg"></i>
+                    </button>
                 </div>
             </div>
         </div>
-    </template>
-
-    <template id="plan-confirmation-widget-template">
-        <div class="message agent">
-            <div class="message-content border-l-4 border-cyan-500 bg-gray-800/30 p-4">
-                <p><strong>📋 Составлен пошаговый план. Вы можете отредактировать или перетащить шаги перед запуском:</strong></p>
-                <ol data-role="plan-editor-list" class="list-none p-0 m-0 space-y-2 mt-3"></ol>
-                <button data-role="add-step-button" class="ml-7 mt-3 px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs cursor-pointer">+ Добавить шаг</button>
-                <div class="confirm-buttons flex gap-3 mt-5">
-                    <button data-role="approve-plan-button" class="px-4 py-2 rounded-md text-white bg-green-600 hover:bg-green-700 font-bold cursor-pointer">🚀 Утвердить и запустить</button>
-                    <button data-role="reject-plan-button" class="px-4 py-2 rounded-md text-white bg-red-600 hover:bg-red-700 cursor-pointer">Отмена</button>
+    </header>
+    
+    <!-- Main Content -->
+    <main class="pt-24 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+        
+        <!-- Hero Section -->
+        <section class="text-center py-16 animate-fade-in">
+            <div class="max-w-3xl mx-auto">
+                <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-blue-500/10 border border-blue-500/20 mb-6">
+                    <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
+                    <span class="text-sm text-blue-400 font-medium">Готов к работе</span>
+                </div>
+                
+                <h2 class="text-4xl sm:text-5xl lg:text-6xl font-bold mb-6">
+                    Ваш <span class="text-gradient">AI-ассистент</span> для кода
+                </h2>
+                
+                <p class="text-lg text-secondary mb-8 max-w-2xl mx-auto">
+                    Анализ, поиск и редактирование кода с помощью локального LLM. 
+                    Поддержка C++, JavaScript, Python и других языков.
+                </p>
+                
+                <!-- Quick Actions -->
+                <div class="flex flex-wrap justify-center gap-4 mb-12">
+                    <button id="start-chat-btn" class="btn-primary px-8 py-3 rounded-xl text-base font-semibold text-white flex items-center gap-2">
+                        <i class="fas fa-comment-dots"></i>
+                        AI-ассистент
+                    </button>
+                    
+                    <button class="px-8 py-3 rounded-xl text-base font-semibold text-white bg-white/5 hover:bg-white/10 border border-white/10 transition-all flex items-center gap-2">
+                        <i class="fas fa-book"></i>
+                        Документация
+                    </button>
+                    
+                    <button class="px-8 py-3 rounded-xl text-base font-semibold text-white bg-white/5 hover:bg-white/10 border border-white/10 transition-all flex items-center gap-2">
+                        <i class="fas fa-cog"></i>
+                        Настройки
+                    </button>
+                </div>
+                
+                <!-- Features Grid -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-left">
+                    <div class="p-4 rounded-xl bg-white/5 border border-white/10 hover:border-blue-500/30 transition-all">
+                        <div class="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center mb-3">
+                            <i class="fas fa-search text-blue-400"></i>
+                        </div>
+                        <h3 class="font-semibold mb-1">Семантический поиск</h3>
+                        <p class="text-sm text-secondary">Умный поиск по коду с эмбеддингами</p>
+                    </div>
+                    
+                    <div class="p-4 rounded-xl bg-white/5 border border-white/10 hover:border-blue-500/30 transition-all">
+                        <div class="w-10 h-10 rounded-lg bg-green-500/20 flex items-center justify-center mb-3">
+                            <i class="fas fa-code text-green-400"></i>
+                        </div>
+                        <h3 class="font-semibold mb-1">Редактирование</h3>
+                        <p class="text-sm text-secondary">Безопасное редактирование файлов</p>
+                    </div>
+                    
+                    <div class="p-4 rounded-xl bg-white/5 border border-white/10 hover:border-blue-500/30 transition-all">
+                        <div class="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center mb-3">
+                            <i class="fas fa-bolt text-purple-400"></i>
+                        </div>
+                        <h3 class="font-semibold mb-1">Реальное время</h3>
+                        <p class="text-sm text-secondary">Мгновенная обратная связь</p>
+                    </div>
+                    
+                    <div class="p-4 rounded-xl bg-white/5 border border-white/10 hover:border-blue-500/30 transition-all">
+                        <div class="w-10 h-10 rounded-lg bg-orange-500/20 flex items-center justify-center mb-3">
+                            <i class="fas fa-shield-alt text-orange-400"></i>
+                        </div>
+                        <h3 class="font-semibold mb-1">Безопасность</h3>
+                        <p class="text-sm text-secondary">Локальная обработка данных</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Quick Start Card -->
+        <section class="max-w-4xl mx-auto">
+            <div class="glass rounded-2xl p-6 sm:p-8 border border-white/10">
+                <div class="flex items-start gap-4">
+                    <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center flex-shrink-0">
+                        <i class="fas fa-robot text-white text-xl"></i>
+                    </div>
+                    <div class="flex-grow">
+                        <h3 class="text-xl font-bold mb-2">Привет! Я Smart Hammer 🤖</h3>
+                        <p class="text-secondary mb-4">
+                            Я ваш локальный AI-ассистент, готовый помочь с анализом, поиском и редактированием кода. 
+                            Задайте мне любой вопрос о вашем проекте!
+                        </p>
+                        
+                        <!-- Quick prompts -->
+                        <div class="flex flex-wrap gap-2">
+                            <span class="text-sm text-secondary">Попробуйте:</span>
+                            <button class="px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-secondary transition-all">
+                                Найти все функции в C++
+                            </button>
+                            <button class="px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-secondary transition-all">
+                                Объяснить этот код
+                            </button>
+                            <button class="px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-secondary transition-all">
+                                Найти баги
+                            </button>
+                            <button class="px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-secondary transition-all">
+                                Написать тесты
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+    </main>
+    
+    <!-- Footer -->
+    <footer class="border-t border-white/5 py-8">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center">
+                        <i class="fas fa-robot text-white text-sm"></i>
+                    </div>
+                    <span class="text-sm text-secondary">Smart Hammer © 2024</span>
+                </div>
+                
+                <div class="flex items-center gap-6">
+                    <a href="#" class="text-secondary hover:text-white transition-colors text-sm">
+                        <i class="fab fa-github mr-1"></i> GitHub
+                    </a>
+                    <a href="#" class="text-secondary hover:text-white transition-colors text-sm">
+                        <i class="fab fa-discord mr-1"></i> Discord
+                    </a>
+                    <a href="#" class="text-secondary hover:text-white transition-colors text-sm">
+                        <i class="fas fa-file-alt mr-1"></i> Документация
+                    </a>
                 </div>
             </div>
         </div>
-    </template>
-
-    <template id="plan-step-item-template">
-        <li class="flex items-center gap-2 plan-step-item">
-            <span class="drag-handle" title="Перетащить">⠿</span>
-            <div contenteditable="true" class="plan-step-text flex-grow p-1.5 border border-dashed border-gray-600 rounded bg-gray-900/60 focus:outline-none focus:border-cyan-400 text-sm text-gray-200"></div>
-            <button class="btn-remove-step flex-shrink-0 bg-red-700 text-white rounded-full w-6 h-6 font-bold flex items-center justify-center hover:bg-red-600 cursor-pointer" title="Удалить шаг">-</button>
-        </li>
-    </template>
-
-    <template id="plan-progress-widget-template">
-        <div class="message-content border-l-4 border-green-500 bg-gray-800/40 p-4 rounded-r-lg">
-            <p class="mt-0 text-green-400 font-bold flex items-center gap-2"><span>⚡</span> Выполнение автономной кампании:</p>
-            <ul data-role="progress-list" class="list-none p-0 m-0 space-y-2.5 mt-2"></ul>
-        </div>
-    </template>
-
-    <template id="error-recovery-widget-template">
-        <div class="message agent">
-            <div class="message-content border-l-4 border-red-500 bg-gray-800/30 p-4">
-                <p class="font-bold text-red-400 flex items-center gap-1"><span>❗️</span> Ошибка выполнения кампании:</p>
-                <pre data-role="error-message" class="bg-gray-950 p-3 my-2 rounded font-mono text-xs text-red-300 overflow-x-auto whitespace-pre-wrap"></pre>
-                <p class="text-sm my-2">Выберите стратегию восстановления для 🤖 агента:</p>
-                <div data-role="button-container" class="confirm-buttons flex flex-wrap gap-2.5 mt-3"></div>
-            </div>
-        </div>
-    </template>
-
-    <script type="module" src="/js/index.js"></script>
+    </footer>
+    
+    <!-- WebSocket Connection Script (placeholder) -->
+    <script>
+        // WebSocket connection placeholder
+        // Будет реализовано позже
+        console.log('Smart Hammer Frontend initialized');
+        
+        // Connection status update
+        const connectionStatusDot = document.getElementById('connection-status-dot');
+        const connectionStatusText = document.getElementById('connection-status-text');
+        
+        function updateConnectionStatus(status) {
+            switch(status) {
+                case 'connected':
+                    connectionStatusDot.className = 'status-dot status-connected';
+                    connectionStatusText.textContent = 'Подключено';
+                    break;
+                case 'disconnected':
+                    connectionStatusDot.className = 'status-dot status-disconnected';
+                    connectionStatusText.textContent = 'Отключено';
+                    break;
+                case 'connecting':
+                    connectionStatusDot.className = 'status-dot status-connecting';
+                    connectionStatusText.textContent = 'Подключение...';
+                    break;
+            }
+        }
+        
+        // Initialize
+        updateConnectionStatus('disconnected');
+    </script>
 </body>
 </html>
