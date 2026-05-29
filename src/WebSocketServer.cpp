@@ -256,16 +256,9 @@ void WebSocketServer::handleQuery(const nlohmann::json& msg, std::shared_ptr<Saf
             user_message_content.push_back({{"type", "text"}, {"text", queryText}});
         }
         for (const auto& image_obj : images) {
-            if (image_obj.is_object() && image_obj.contains("type") && image_obj.contains("data")) {
-                std::string mime_type = image_obj.value("type", "image/jpeg");
-                std::string base64_data = image_obj.value("data", "");
-                if (!base64_data.empty()) {
-                    user_message_content.push_back({
-                        {"type", "image_url"},
-                        {"image_url", {{"url", "data:" + mime_type + ";base64," + base64_data}}}
-                    });
-                }
-            }
+            // Фронтенд уже отправляет объект в правильном формате OpenAI.
+            // Просто добавляем его в массив контента, без лишней обработки.
+            user_message_content.push_back(image_obj);
         }
         session->history.push_back({{"role", "user"}, {"content", user_message_content}});
     }

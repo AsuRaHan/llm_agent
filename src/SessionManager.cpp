@@ -2,11 +2,22 @@
 #include "Logger.h"
 #include <fstream>
 #include <filesystem>
+#include <sstream>
 
 using json = nlohmann::json;
 
+// Каждая сессия будет храниться в отдельном файле в этой директории.
+const std::string sessions_dir = ".shdata/sessions";
+
 SessionManager::SessionManager() {
     SPDLOG_INFO("SessionManager initialized.");
+    // Убедимся, что директория для хранения сессий существует.
+    try {
+        std::filesystem::create_directories(sessions_dir);
+        SPDLOG_INFO("Директория сессий '{}' готова.", sessions_dir);
+    } catch (const std::filesystem::filesystem_error& e) {
+        SPDLOG_ERROR("Не удалось создать директорию сессий '{}': {}", sessions_dir, e.what());
+    }
     loadSessions();
 }
 
@@ -28,7 +39,7 @@ std::shared_ptr<UserSession> SessionManager::getSession(const std::string& sessi
     auto newSession = std::make_shared<UserSession>();
     newSession->id = sessionId;
     sessions_[sessionId] = newSession;
-    saveSessions_nolock(); // Сохраняем сессии сразу после создания новой, без повторной блокировки
+    saveSession_nolock(*newSession); // Сохраняем новую сессию в ее собственный файл
     return newSession;
 }
 
@@ -52,33 +63,76 @@ void SessionManager::clearSession(const std::string& sessionId) {
         session->history = nlohmann::json::array();
         session->status = AgentStatus::IDLE;
         session->pending_tool_call = nullptr;
-        saveSessions_nolock(); // Сохраняем сессии после очистки, без повторной блокировки
+        saveSession_nolock(*session); // Сохраняем очищенную сессию
     }
 }
 
-// Приватный метод, который выполняет сохранение без блокировки мьютекса.
+// Приватный метод для сохранения истории сессии в читаемом Markdown формате.
+// Вызывается из saveSession_nolock.
+void SessionManager::saveSessionHistoryAsMarkdown_nolock(const UserSession& session) {
+    std::filesystem::path md_path = std::filesystem::path(sessions_dir) / (session.id + ".md");
+    std::stringstream md_content;
+    md_content << "# История чата для сессии: " << session.id << "\n\n";
+
+    try {
+        for (const auto& message : session.history) {
+            std::string role = message.value("role", "unknown");
+            std::string content_str;
+
+            // Содержимое может быть строкой или JSON-объектом/массивом (для tool_calls)
+            if (message.contains("content") && message["content"].is_string()) {
+                content_str = message["content"].get<std::string>();
+            } else if (message.contains("content")) {
+                // Красиво форматируем JSON для сложных типов контента
+                content_str = "```json\n" + message["content"].dump(2) + "\n```";
+            } else {
+                content_str = "*(Нет содержимого)*";
+            }
+
+            md_content << "## " << role << "\n\n";
+            md_content << content_str << "\n\n";
+            md_content << "---\n\n";
+        }
+
+        std::ofstream f(md_path);
+        f << md_content.str();
+        SPDLOG_DEBUG("История сессии {} сохранена в '{}'.", session.id, md_path.string());
+
+    } catch (const std::exception& e) {
+        SPDLOG_ERROR("Не удалось сохранить историю сессии {} в markdown-файл '{}': {}", session.id, md_path.string(), e.what());
+    }
+}
+
+// Приватный метод для сохранения одной сессии в JSON-файл.
+// Вызывается из публичных методов, которые уже захватили блокировку.
+void SessionManager::saveSession_nolock(const UserSession& session) {
+    std::filesystem::path json_path = std::filesystem::path(sessions_dir) / (session.id + ".json");
+    json data = session;
+
+    try {
+        std::ofstream f(json_path);
+        f << data.dump(4);
+        SPDLOG_DEBUG("Сессия {} сохранена в '{}'.", session.id, json_path.string());
+        // Также дублируем историю в Markdown
+        saveSessionHistoryAsMarkdown_nolock(session);
+    } catch (const std::exception& e) {
+        SPDLOG_ERROR("Не удалось сохранить сессию '{}' в '{}': {}", session.id, json_path.string(), e.what());
+    }
+}
+
+// Приватный метод, который выполняет сохранение всех сессий без блокировки мьютекса.
 // Вызывается из публичных методов, которые уже захватили блокировку.
 void SessionManager::saveSessions_nolock() {
     if (sessions_.empty()) {
-        if (std::filesystem::exists(session_db_path)) {
-            std::filesystem::remove(session_db_path);
-            SPDLOG_INFO("Нет активных сессий, файл '{}' удален.", session_db_path);
-        }
+        SPDLOG_INFO("Нет активных сессий для сохранения.");
         return;
     }
     
-    json data;
+    SPDLOG_INFO("Сохранение {} сессий в директорию '{}'...", sessions_.size(), sessions_dir);
     for (const auto& [id, session_ptr] : sessions_) {
-        data[id] = *session_ptr;
+        saveSession_nolock(*session_ptr);
     }
-    
-    try {
-        std::ofstream f(session_db_path);
-        f << data.dump(4);
-        SPDLOG_INFO("Сохранено {} сессий в '{}'.", sessions_.size(), session_db_path);
-    } catch (const std::exception& e) {
-        SPDLOG_ERROR("Не удалось сохранить сессии в '{}': {}", session_db_path, e.what());
-    }
+    SPDLOG_INFO("Все сессии сохранены.");
 }
 
 void SessionManager::saveSessions() {
@@ -88,37 +142,64 @@ void SessionManager::saveSessions() {
 
 void SessionManager::loadSessions() {
     std::lock_guard<std::mutex> lock(mutex_);
-
-    // 1. Явная проверка на существование файла
-    if (!std::filesystem::exists(session_db_path)) {
-        SPDLOG_INFO("Файл сессий '{}' не найден. Будет создан новый при необходимости.", session_db_path);
-        return;
-    }
-
-    std::ifstream f(session_db_path);
-    if (!f.is_open()) {
-        SPDLOG_ERROR("Файл сессий '{}' существует, но не может быть открыт для чтения (проверьте права доступа).", session_db_path);
-        return;
-    }
-
-    // 2. Проверка на пустой файл, чтобы избежать ошибки парсинга
-    if (f.peek() == std::ifstream::traits_type::eof()) {
-        SPDLOG_INFO("Файл сессий '{}' пуст. Загрузка пропущена.", session_db_path);
-        return;
-    }
+    
+    SPDLOG_INFO("Загрузка сессий из директории '{}'...", sessions_dir);
+    int loaded_count = 0;
 
     try {
-        json data = json::parse(f);
-        for (auto& [id, session_json] : data.items()) {
-            auto session = std::make_shared<UserSession>(session_json.get<UserSession>());
-            // Важно: после перезапуска ни один агент не может находиться в "занятом" состоянии.
-            // Сбрасываем статус в IDLE, чтобы избежать зависания.
-            session->status = AgentStatus::IDLE;
-            session->pending_tool_call = nullptr;
-            sessions_[id] = session;
+        if (!std::filesystem::exists(sessions_dir) || !std::filesystem::is_directory(sessions_dir)) {
+            SPDLOG_INFO("Директория сессий '{}' не найдена или не является директорией. Загрузка пропущена.", sessions_dir);
+            return;
         }
-        SPDLOG_INFO("Загружено {} сессий из '{}'.", sessions_.size(), session_db_path);
-    } catch (const json::exception& e) {
-        SPDLOG_ERROR("Ошибка парсинга файла сессий '{}': {}", session_db_path, e.what());
+
+        for (const auto& entry : std::filesystem::directory_iterator(sessions_dir)) {
+            if (entry.is_regular_file() && entry.path().extension() == ".json") {
+                const auto& path = entry.path();
+                std::string sessionId = path.stem().string();
+
+                std::ifstream f(path);
+                if (!f.is_open()) {
+                    SPDLOG_ERROR("Не удалось открыть файл сессии '{}' для чтения.", path.string());
+                    continue;
+                }
+
+                if (f.peek() == std::ifstream::traits_type::eof()) {
+                    SPDLOG_WARN("Файл сессии '{}' пуст. Пропускаем.", path.string());
+                    continue;
+                }
+
+                try {
+                    json data = json::parse(f);
+                    auto session = std::make_shared<UserSession>(data.get<UserSession>());
+                    
+                    if (session->id != sessionId) {
+                        SPDLOG_WARN("Несоответствие ID сессии в файле '{}' (содержимое: '{}', имя файла: '{}'). Используется ID из имени файла.", path.string(), session->id, sessionId);
+                        session->id = sessionId;
+                    }
+
+                    // Важно: после перезапуска ни один агент не может находиться в "занятом" состоянии.
+                    // Сбрасываем статус в IDLE, чтобы избежать зависания.
+                    session->status = AgentStatus::IDLE;
+                    session->pending_tool_call = nullptr;
+                    session->is_interrupted = false; // Также сбрасываем флаг прерывания
+
+                    sessions_[sessionId] = session;
+                    loaded_count++;
+                    SPDLOG_DEBUG("Сессия '{}' успешно загружена.", sessionId);
+
+                } catch (const json::exception& e) {
+                    SPDLOG_ERROR("Ошибка парсинга файла сессии '{}': {}", path.string(), e.what());
+                }
+            }
+        }
+
+        if (loaded_count > 0) {
+            SPDLOG_INFO("Загружено {} сессий из '{}'.", loaded_count, sessions_dir);
+        } else {
+            SPDLOG_INFO("В директории '{}' не найдено сессий для загрузки.", sessions_dir);
+        }
+
+    } catch (const std::filesystem::filesystem_error& e) {
+        SPDLOG_ERROR("Ошибка при доступе к директории сессий '{}': {}", sessions_dir, e.what());
     }
 }

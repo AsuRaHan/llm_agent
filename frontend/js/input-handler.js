@@ -1,5 +1,9 @@
 /**
- * Класс для управления формой ввода в чате, включая текст, прикрепление файлов и вставку из буфера обмена.
+ * Исправленный класс для управления формой ввода в чате, включая текст, прикрепление файлов и вставку из буфера обмена.
+ * 
+ * Исправление: Формат данных изображения теперь соответствует OpenAI API.
+ * Вместо { type: file.type, data: base64String } используется:
+ * { type: "image_url", image_url: { url: fullDataUrl } }
  */
 class InputHandler {
     /**
@@ -121,15 +125,28 @@ class InputHandler {
             console.warn(`Файл ${file.name} не является изображением и был проигнорирован.`);
             return;
         }
+        const MAX_FILE_SIZE_MB = 20; // Лимит OpenAI для gpt-4o
+        if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+            // TODO: Заменить alert на более красивое уведомление в UI
+            alert(`Файл "${file.name}" слишком большой. Максимальный размер: ${MAX_FILE_SIZE_MB}MB.`);
+            return;
+        }
         const reader = new FileReader();
         reader.onload = (e) => {
             const fullDataUrl = e.target.result;
-            const base64String = fullDataUrl.split(',')[1];
-            const imageData = { type: file.type, data: base64String };
+            
+            // ✅ Исправление: Формат данных соответствует OpenAI API
+            const imageData = {
+                type: "image_url",
+                image_url: {
+                    url: fullDataUrl
+                }
+            };
             this.attachedImages.push(imageData);
             
             const onRemove = () => {
-                const index = this.attachedImages.findIndex(img => img.data === imageData.data);
+                // ✅ Исправление: Поиск по image_url.url вместо img.data
+                const index = this.attachedImages.findIndex(img => img.image_url?.url === fullDataUrl);
                 if (index > -1) {
                     this.attachedImages.splice(index, 1);
                 }

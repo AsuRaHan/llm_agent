@@ -16,10 +16,11 @@ public:
     void saveSessions();
     void loadSessions();
 private:
-
+    // Сохраняет одну сессию в .json и .md файлы без блокировки мьютекса
+    void saveSession_nolock(const UserSession& session);
+    void saveSessionHistoryAsMarkdown_nolock(const UserSession& session);
     void saveSessions_nolock();
 
-    const std::string session_db_path = ".shdata/sessions.json";
     std::mutex mutex_;
     std::unordered_map<std::string, std::shared_ptr<UserSession>> sessions_;
 };
