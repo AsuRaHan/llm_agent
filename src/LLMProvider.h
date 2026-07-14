@@ -13,8 +13,7 @@ public:
     virtual ~LLMProvider() = default;
 
     struct ServerProperties {
-        std::string name;
-        std::string version;
+        std::vector<std::string> models;
         // Add other relevant properties
     };
 

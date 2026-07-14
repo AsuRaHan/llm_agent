@@ -138,7 +138,7 @@ AssistantResponse OpenAIProvider::processChat(
             SPDLOG_ERROR("Connection error to LLM: {}", httplib::to_string(res.error()));
         }
         // Provide a more specific error message to the user.
-        return { .step_failed = true, .error_message = "Ошибка от языковой модели (HTTP " + std::to_string(res ? res->status : 0) + "). Проверьте, поддерживает ли ваша модель анализ изображений." };
+        return { .step_failed = true, .error_message = "Ошибка при обращении к языковой модели (HTTP " + std::to_string(res ? res->status : 0) + "). Проверьте лог-файл для деталей." };
     }
 
     // After stream is complete, finalize the last tool_call if it exists
@@ -223,11 +223,111 @@ std::vector<float> OpenAIProvider::createEmbedding(const std::string& text) {
 }
 
 std::string OpenAIProvider::generateChunkSummary(const std::string& code_chunk, const std::string& chunk_name) {
-    SPDLOG_WARN("generateChunkSummary is not implemented for OpenAIProvider.");
+    SPDLOG_DEBUG("Generating summary for chunk '{}'", chunk_name);
+
+    json messages = json::array({
+        {
+            {"role", "system"},
+            {"content", "Ты — эксперт по программированию. Твоя задача — создать очень краткое, однострочное описание (summary) для предоставленного фрагмента кода на русском языке. Описание должно отражать основное назначение этого кода."}
+        },
+        {
+            {"role", "user"},
+            {"content", "Вот фрагмент кода для анализа:\n```\n" + code_chunk + "\n```"}
+        }
+    });
+
+    json body = {
+        {"messages", messages},
+        {"model", config.chat_model_name},
+        {"temperature", 0.0},
+        {"stream", false}
+    };
+
+    httplib::Headers headers;
+    if (!config.api_key.empty()) {
+        headers.emplace("Authorization", "Bearer " + config.api_key);
+    }
+    std::string body_str = body.dump();
+
+    httplib::Client summary_cli(config.server_host, config.server_port);
+    summary_cli.set_connection_timeout(5, 0);
+    summary_cli.set_read_timeout(config.summary_generation_timeout_sec, 0); 
+
+    httplib::Result res;
+    for (int attempt = 1; attempt <= config.retry_count; ++attempt) {
+        res = summary_cli.Post("/v1/chat/completions", headers, body_str, "application/json");
+        if (res) break;
+        SPDLOG_WARN("Summary generation attempt {}/{} failed. Connection error: {}. Retrying in {} ms...",
+                    attempt, config.retry_count, httplib::to_string(res.error()), config.retry_delay_ms);
+        std::this_thread::sleep_for(std::chrono::milliseconds(config.retry_delay_ms));
+    }
+
+    if (!res || res->status != 200) {
+        if (res) {
+            SPDLOG_ERROR("Failed to generate chunk summary for '{}'. Status: {}. Body: {}", chunk_name, res->status, res->body);
+        } else {
+            SPDLOG_ERROR("Connection failed during summary generation for '{}'. Details: {}", chunk_name, httplib::to_string(res.error()));
+        }
+        return "";
+    }
+
+    try {
+        auto json_body = json::parse(res->body);
+        if (json_body.contains("choices") && !json_body["choices"].empty()) {
+            const auto& first_choice = json_body["choices"][0];
+            if (first_choice.contains("message") && first_choice["message"].contains("content")) {
+                std::string summary = first_choice["message"]["content"].get<std::string>();
+                SPDLOG_DEBUG("Generated summary for '{}': {}", chunk_name, summary);
+                return summary;
+            }
+        }
+        SPDLOG_ERROR("Unexpected JSON structure in summary response for '{}'. Body: {}", chunk_name, res->body);
+    } catch (const json::exception& e) {
+        SPDLOG_ERROR("Failed to parse JSON response for summary of '{}'. Details: {}. Body: {}", chunk_name, e.what(), res->body);
+    }
+
     return "";
 }
 
 std::optional<LLMProvider::ServerProperties> OpenAIProvider::fetchServerProperties() const {
-    SPDLOG_WARN("fetchServerProperties is not implemented for OpenAIProvider.");
+    SPDLOG_INFO("Fetching server properties from LLM provider...");
+
+    httplib::Client props_cli(config.server_host, config.server_port);
+    props_cli.set_connection_timeout(5, 0);
+    props_cli.set_read_timeout(10, 0); // 10 seconds should be plenty
+
+    httplib::Headers headers;
+    if (!config.api_key.empty()) {
+        headers.emplace("Authorization", "Bearer " + config.api_key);
+    }
+
+    auto res = props_cli.Get("/v1/models", headers);
+
+    if (!res || res->status != 200) {
+        if (res) {
+            SPDLOG_ERROR("Failed to fetch server properties. Status: {}. Body: {}", res->status, res->body);
+        } else {
+            SPDLOG_ERROR("Connection failed while fetching server properties. Details: {}", httplib::to_string(res.error()));
+        }
+        return std::nullopt;
+    }
+
+    try {
+        auto json_body = json::parse(res->body);
+        if (json_body.contains("data") && json_body["data"].is_array()) {
+            LLMProvider::ServerProperties props;
+            for (const auto& model_obj : json_body["data"]) {
+                if (model_obj.contains("id") && model_obj["id"].is_string()) {
+                    props.models.push_back(model_obj["id"].get<std::string>());
+                }
+            }
+            SPDLOG_INFO("Successfully fetched {} models from the server.", props.models.size());
+            return props;
+        }
+        SPDLOG_ERROR("Unexpected JSON structure in /v1/models response. Body: {}", res->body);
+    } catch (const json::exception& e) {
+        SPDLOG_ERROR("Failed to parse JSON response from /v1/models. Details: {}. Body: {}", e.what(), res->body);
+    }
+
     return std::nullopt;
 }

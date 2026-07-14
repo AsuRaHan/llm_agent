@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI-Агент — Smart Hammer</title>
+    <title>Smart Hammer Agent — Vanilla JS</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -638,137 +638,43 @@
     </template>
     
     <!-- Scripts -->
-    <script>
-        // WebSocket connection placeholder
-        console.log('Smart Hammer Agent initialized');
-        
-        // Connection status
-        const connectionStatusDot = document.getElementById('connection-status-dot');
-        const connectionStatusText = document.getElementById('connection-status-text');
-        
-        function updateConnectionStatus(status) {
-            switch(status) {
-                case 'connected':
-                    connectionStatusDot.className = 'status-dot status-connected';
-                    connectionStatusText.textContent = 'Подключено';
-                    break;
-                case 'disconnected':
-                    connectionStatusDot.className = 'status-dot status-disconnected';
-                    connectionStatusText.textContent = 'Отключено';
-                    break;
-                case 'connecting':
-                    connectionStatusDot.className = 'status-dot status-connecting';
-                    connectionStatusText.textContent = 'Подключение...';
-                    break;
-            }
-        }
-        
-        updateConnectionStatus('disconnected');
-        
-        // Auto-resize textarea
-        const messageInput = document.getElementById('message-input');
-        messageInput.addEventListener('input', function() {
-            this.style.height = 'auto';
-            this.style.height = Math.min(this.scrollHeight, 200) + 'px';
-            document.getElementById('send-btn').disabled = this.value.trim() === '';
+    <script type="module">
+        // Загрузка модулей
+        import WebSocketManager from './js/agent/ws-manager.js';
+        import SessionManager from './js/agent/session-manager.js';
+        import MessageRenderer from './js/agent/message-renderer.js';
+        import WidgetRenderer from './js/agent/widget-renderer.js';
+        import InputHandler from './js/input-handler.js';
+        import StorageManager from './js/storage.js';
+        import Agent from '/js/agent.js';
+
+        // Создание экземпляра Agent
+        const wsManager = new WebSocketManager('ws://127.0.0.1:9000');
+        const sessionManager = new SessionManager();
+        const messageRenderer = new MessageRenderer(document.getElementById('messages-container'));
+        const widgetRenderer = new WidgetRenderer(document.getElementById('messages-container'));
+        const inputHandler = new InputHandler({
+            sendMessage: (msg) => wsManager.send('query', msg),
+            confirmAction: (data) => widgetRenderer.emit('confirmation', data),
+            rejectAction: (data) => widgetRenderer.emit('confirmation', data),
+            executePlan: (data) => widgetRenderer.emit('plan_approved', data),
+            editPlan: (data) => widgetRenderer.emit('plan_edit', data),
+            recoverFromError: (data) => widgetRenderer.emit('error_recovery', data)
         });
-        
-        // Send on Enter (Shift+Enter for new line)
-        messageInput.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                if (!this.value.trim()) return;
-                
-                // Send message logic here
-                console.log('Sending message:', this.value);
-                this.value = '';
-                this.style.height = 'auto';
-                document.getElementById('send-btn').disabled = true;
-            }
-        });
-        
-        // Send button click
-        document.getElementById('send-btn').addEventListener('click', function() {
-            if (!messageInput.value.trim()) return;
-            
-            console.log('Sending message:', messageInput.value);
-            messageInput.value = '';
-            messageInput.style.height = 'auto';
-            this.disabled = true;
-        });
-        
-        // File attachment
-        document.getElementById('attach-file-btn').addEventListener('click', function() {
-            document.getElementById('file-input').click();
-        });
-        
-        document.getElementById('file-input').addEventListener('change', function(e) {
-            const files = e.target.files;
-            const container = document.getElementById('image-preview-container');
-            container.innerHTML = '';
-            
-            if (files.length > 0) {
-                container.classList.remove('hidden');
-                
-                for (let file of files) {
-                    const reader = new FileReader();
-                    reader.onload = function(e) {
-                        const preview = document.createElement('div');
-                        preview.className = 'image-preview relative';
-                        preview.innerHTML = `
-                            <img src="${e.target.result}" alt="${file.name}">
-                            <button class="remove-btn" onclick="this.parentElement.remove()">
-                                <i class="fas fa-times"></i>
-                            </button>
-                        `;
-                        container.appendChild(preview);
-                    };
-                    reader.readAsDataURL(file);
-                }
-            }
-        });
-        
-        // Clear input
-        document.getElementById('clear-input-btn').addEventListener('click', function() {
-            messageInput.value = '';
-            messageInput.style.height = 'auto';
-            document.getElementById('send-btn').disabled = true;
-        });
-        
-        // New chat
-        document.getElementById('new-chat-btn').addEventListener('click', function() {
-            console.log('Creating new chat');
-        });
-        
-        // Clear history
-        document.getElementById('clear-history-btn').addEventListener('click', function() {
-            if (confirm('Вы уверены, что хотите очистить всю историю чатов?')) {
-                console.log('Clearing chat history');
-            }
-        });
-        
-        // Clear session
-        document.getElementById('clear-session-btn').addEventListener('click', function() {
-            if (confirm('Вы уверены, что хотите очистить текущую сессию?')) {
-                console.log('Clearing current session');
-            }
-        });
-        
-        // Interrupt agent
-        document.getElementById('interrupt-btn').addEventListener('click', function() {
-            console.log('Interrupting agent');
-            document.getElementById('agent-thought-section').classList.add('hidden');
-        });
-        
-        // Auto-confirm
-        document.getElementById('auto-confirm-btn').addEventListener('click', function() {
-            console.log('Toggle auto-confirm');
-        });
-        
-        // Freeze watcher
-        document.getElementById('freeze-watcher-btn').addEventListener('click', function() {
-            console.log('Toggle freeze watcher');
-        });
+        const storage = new StorageManager();
+
+        // Создание экземпляра Agent
+        const agent = new Agent(
+            wsManager,
+            sessionManager,
+            messageRenderer,
+            widgetRenderer,
+            inputHandler,
+            storage
+        );
+
+        // Начало работы
+        agent.start();
     </script>
 </body>
 </html>

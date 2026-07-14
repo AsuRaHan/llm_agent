@@ -208,7 +208,9 @@ std::vector<ChunkToAdd> FileIndexer::processFileChunks(const std::string& path)
 
             if (config.chunking_strategy == "tree-sitter-hybrid" && llmProvider) {
                 std::string summary = llmProvider->generateChunkSummary(chunk.text, chunkName);
-                text_for_embedding = "[SUMMARY]: " + summary + "\n[CODE]:\n" + chunk.text;
+                if (!summary.empty()) {
+                    text_for_embedding = "[SUMMARY]: " + summary + "\n[CODE]:\n" + chunk.text;
+                }
             }
 
             auto emb = embeddingClient.getEmbedding(text_for_embedding, chunkName);
@@ -321,12 +323,6 @@ void FileIndexer::reindexFile(const std::string& path)
     // Обновляем индекс (в блокировке)
     updateIndexWithNewChunks(path, chunks_to_add);
 
-    // SPDLOG_INFO("Переиндексирован файл: {}", path);
-
-    // Сохраняем изменения на диск немедленно после переиндексации одного файла
-    SPDLOG_DEBUG("Сохранение индекса после переиндексации файла: {}", path);
-    indexManager.save();
-    save();
 }
 
 void FileIndexer::removeFileFromIndex(const std::string& path)
@@ -340,10 +336,5 @@ void FileIndexer::removeFileFromIndex(const std::string& path)
             indexManager.removePoint(chunk_info.id);
         }
         fileIndex.erase(it);
-
-        // Сохраняем изменения на диск немедленно после удаления файла
-        SPDLOG_DEBUG("Сохранение индекса после удаления файла: {}", path);
-        indexManager.save();
-        save();
     }
 }

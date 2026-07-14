@@ -20,6 +20,7 @@ void Config::create_default(const std::string& filepath) const {
     j["embedding"]["timeout_sec"] = embedding_timeout_sec;
 
     j["assistant"]["chat_completion_timeout_sec"] = chat_completion_timeout_sec;
+    j["assistant"]["summary_generation_timeout_sec"] = summary_generation_timeout_sec;
     j["assistant"]["max_tool_calls"] = max_tool_calls;
     j["assistant"]["model_name"] = chat_model_name;
 
@@ -87,6 +88,7 @@ bool Config::load(const std::string& filepath) {
         embedding_timeout_sec = j.value("/embedding/timeout_sec"_json_pointer, embedding_timeout_sec);
 
         chat_completion_timeout_sec = j.value("/assistant/chat_completion_timeout_sec"_json_pointer, chat_completion_timeout_sec);
+        summary_generation_timeout_sec = j.value("/assistant/summary_generation_timeout_sec"_json_pointer, summary_generation_timeout_sec);
         max_tool_calls = j.value("/assistant/max_tool_calls"_json_pointer, max_tool_calls);
         chat_model_name = j.value("/assistant/model_name"_json_pointer, chat_model_name);
 

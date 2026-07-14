@@ -1,6 +1,7 @@
 /**
- * Agent Controller
- * Основной контроллер AI-агента
+ * Smart Hammer Agent
+ * Главный класс, связывающий все модули вместе
+ * Vanilla JS + CommonJS
  */
 
 class Agent {
@@ -12,389 +13,522 @@ class Agent {
         this.inputHandler = inputHandler;
         this.storage = storage;
         
-        this.isRunning = false;
         this.currentSession = null;
-        this.pendingConfirmation = null;
-        this.pendingError = null;
-        
-        // Инициализация событий WebSocket
-        this.initWebSocketEvents();
-        
-        // Инициализация событий виджетов
-        this.initWidgetEvents();
+        this.isRunning = false;
+        this.thoughtText = '';
+        this.thoughtSection = null;
+        this.thoughtTimer = null;
     }
 
     /**
-     * Инициализация событий WebSocket
+     * Начало работы агента
      */
-    initWebSocketEvents() {
-        // Событие подключения
+    start() {
+        console.log('🚀 Smart Hammer Agent starting...');
+
+        // Загрузка сессий
+        this.loadSessions();
+
+        // Создание новой сессии
+        this.currentSession = this.sessionManager.createSession('Новый чат');
+
+        // Инициализация input handler
+        this.initInputHandler();
+
+        // Подписка на события WebSocket
+        this.subscribeToWebSocketEvents();
+
+        // Обновление статуса подключения
+        this.updateConnectionStatus();
+
+        // Обработка событий виджетов
+        this.setupWidgetEventHandlers();
+
+        // Обработка кликов по кнопкам
+        this.setupButtonHandlers();
+
+        // Обработка загрузки сессий из localStorage
+        this.setupSessionHandlers();
+
+        console.log('✅ Smart Hammer Agent started successfully');
+    }
+
+    /**
+     * Инициализация input handler
+     */
+    initInputHandler() {
+        const inputElement = document.getElementById('message-input');
+        const fileInput = document.getElementById('file-input');
+        const imageInput = document.createElement('input');
+        imageInput.type = 'file';
+        imageInput.accept = 'image/*';
+        imageInput.multiple = true;
+        imageInput.id = 'image-input';
+        document.querySelector('.toolbar').appendChild(imageInput);
+
+        this.inputHandler.init(inputElement, fileInput, imageInput);
+    }
+
+    /**
+     * Подписка на события WebSocket
+     */
+    subscribeToWebSocketEvents() {
         this.wsManager.on('connected', () => {
-            console.log('Agent: WebSocket подключен');
-            this.isRunning = true;
+            console.log('✅ WebSocket connected');
+            this.updateConnectionStatus(true);
+            this.showAgentMessage('🎉 Подключено к серверу! Готов к работе.', 'text');
         });
 
-        // Событие отключения
         this.wsManager.on('disconnected', () => {
-            console.log('Agent: WebSocket отключен');
-            this.isRunning = false;
+            console.log('⚠️ WebSocket disconnected');
+            this.updateConnectionStatus(false);
+            this.showAgentMessage('⚠️ Потеряно соединение. Попробуйте перезагрузить страницу.', 'error');
         });
 
-        // Событие ошибки
         this.wsManager.on('error', (error) => {
-            console.error('Agent: WebSocket ошибка:', error);
-            this.showErrorToUser('Ошибка подключения: ' + error.message);
+            console.error('❌ WebSocket error:', error);
+            this.updateConnectionStatus(false);
+            this.showAgentMessage('❌ Ошибка соединения: ' + error.message, 'error');
         });
 
-        // Событие получения сообщения
         this.wsManager.on('message', (data) => {
-            this.handleWebSocketMessage(data);
+            console.log('📨 Получено сообщение от сервера:', data);
+            this.handleServerMessage(data);
         });
     }
 
     /**
-     * Инициализация событий виджетов
+     * Обновление статуса подключения
      */
-    initWidgetEvents() {
-        // Подтверждение действия
-        this.widgetRenderer.on('confirmation', (data) => {
-            this.handleConfirmation(data);
-        });
+    updateConnectionStatus(isConnected) {
+        const dot = document.getElementById('connection-status-dot');
+        const text = document.getElementById('connection-status-text');
 
-        // Восстановление после ошибки
-        this.widgetRenderer.on('error_recovery', (data) => {
-            this.handleRecovery(data);
-        });
-
-        // Утверждение плана
-        this.widgetRenderer.on('plan_approved', (data) => {
-            this.handlePlanApproved(data);
-        });
-
-        // Редактирование плана
-        this.widgetRenderer.on('plan_edit', (data) => {
-            this.handlePlanEdit(data);
-        });
+        if (isConnected) {
+            dot.className = 'status-dot status-connected';
+            text.textContent = 'Подключено';
+        } else {
+            dot.className = 'status-dot status-disconnected';
+            text.textContent = 'Подключение...';
+        }
     }
 
     /**
-     * Обработка сообщения от WebSocket
+     * Обработка сообщений от сервера
      */
-    handleWebSocketMessage(data) {
+    handleServerMessage(data) {
         switch (data.type) {
-            case 'session_state':
-                this.handleSessionState(data.data);
-                break;
-            case 'agent_thought':
-                this.handleAgentThought(data.data);
-                break;
-            case 'llm_token':
-                this.handleLlmToken(data.data);
-                break;
-            case 'stream_end':
-                this.handleStreamEnd();
-                break;
-            case 'action_required':
-                this.handleActionRequired(data.data);
-                break;
-            case 'step_error':
-                this.handleStepError(data.data);
-                break;
             case 'query_response':
-                this.handleQueryResponse(data.data);
+                this.showAgentMessage(data.content, data.type || 'text');
                 break;
+
+            case 'confirmation':
+                this.handleConfirmation(data);
+                break;
+
+            case 'error_recovery':
+                this.handleErrorRecovery(data);
+                break;
+
+            case 'plan_approved':
+                this.executePlan(data.plan);
+                break;
+
+            case 'plan_edit':
+                this.editPlan(data.plan);
+                break;
+
             case 'error':
-                this.handleError(data.data);
+                this.showError(data);
                 break;
+
+            case 'progress':
+                this.showProgress(data.steps);
+                break;
+
+            case 'stream_end':
+                this.showStreamEnd();
+                break;
+
             default:
-                console.warn('Неизвестный тип сообщения:', data.type);
+                console.log('Unknown message type:', data.type);
         }
     }
 
     /**
-     * Обработка состояния сессии
+     * Обработка подтверждения действия
      */
-    handleSessionState(data) {
-        if (data.history) {
-            this.messageRenderer.clear();
-            this.messageRenderer.renderHistory([data]);
-        }
-        
-        if (data.greeting) {
-            this.showWelcomeMessage(data.greeting);
+    handleConfirmation(data) {
+        if (data.confirmed) {
+            console.log('✅ Действие подтверждено:', data.data);
+            this.wsManager.send('confirm_action', data.data);
+        } else {
+            console.log('❌ Действие отклонено:', data.data);
         }
     }
 
     /**
-     * Обработка мыслей агента
+     * Обработка восстановления после ошибки
      */
-    handleAgentThought(data) {
-        const thoughtSection = document.getElementById('agent-thought-section');
-        const thoughtText = document.getElementById('agent-thought-text');
-        
-        if (thoughtSection && thoughtText) {
-            thoughtText.textContent = data.message;
-            thoughtSection.classList.remove('hidden');
+    handleErrorRecovery(data) {
+        if (data.recovered) {
+            console.log('✅ Ошибка восстановлена:', data.data);
+            this.wsManager.send('recover_error', data.data);
         }
     }
 
     /**
-     * Обработка токенов LLM
+     * Выполнение плана
      */
-    handleLlmToken(data) {
-        const lastMessage = this.messageRenderer.getLastMessage();
-        if (lastMessage) {
-            const messageElement = document.querySelector(`[data-message-id="${lastMessage}"]`);
-            if (messageElement) {
-                const contentDiv = messageElement.querySelector('.message-content');
-                if (contentDiv) {
-                    const token = data.token;
-                    // Добавление токена (можно реализовать стриминг)
-                    contentDiv.textContent += token;
-                    // Авто-скролл
-                    this.autoScroll();
-                }
-            }
-        }
+    executePlan(plan) {
+        console.log('🚀 Выполнение плана:', plan);
+        this.isRunning = true;
+        this.showAgentMessage('🚀 Запуск плана...', 'text');
+        this.startThought('Выполнение плана...');
+
+        this.wsManager.send('execute_plan', plan);
     }
 
     /**
-     * Обработка конца потока
+     * Редактирование плана
      */
-    handleStreamEnd() {
-        const thoughtSection = document.getElementById('agent-thought-section');
-        if (thoughtSection) {
-            thoughtSection.classList.add('hidden');
-        }
-        
-        // Показать сообщение о завершении
-        this.messageRenderer.renderAgentMessage('Ответ сгенерирован', 'stream_end');
+    editPlan(plan) {
+        console.log('✏️ Редактирование плана:', plan);
+        this.showAgentMessage('✏️ План отредактирован. Отправлен на сервер.', 'text');
+        this.wsManager.send('edit_plan', plan);
     }
 
     /**
-     * Обработка требования подтверждения
+     * Показ сообщения агента
      */
-    handleActionRequired(data) {
-        this.pendingConfirmation = data;
-        this.widgetRenderer.showConfirmation(data);
+    showAgentMessage(content, type = 'text') {
+        this.messageRenderer.renderAgentMessage(content, type);
+        this.messageRenderer.scrollToBottom();
     }
 
     /**
-     * Обработка ошибки шага
+     * Показ ошибки
      */
-    handleStepError(data) {
-        this.pendingError = data;
+    showError(data) {
         this.widgetRenderer.showError(data);
     }
 
     /**
-     * Обработка ответа на запрос
+     * Показ прогресса
      */
-    handleQueryResponse(data) {
-        this.messageRenderer.renderAgentMessage(data.answer, 'text');
+    showProgress(steps) {
+        this.widgetRenderer.showProgress(steps);
     }
 
     /**
-     * Обработка ошибки
+     * Показ конца потока
      */
-    handleError(data) {
-        this.showErrorToUser(data.message);
-    }
-
-    /**
-     * Обработка подтверждения
-     */
-    handleConfirmation(data) {
-        if (data.confirmed) {
-            // Пользователь подтвердил
-            this.wsManager.send('confirm_action', {
-                session_id: this.currentSession.id,
-                data: { confirmed: true }
-            });
-        } else {
-            // Пользователь отклонил
-            this.wsManager.send('confirm_action', {
-                session_id: this.currentSession.id,
-                data: { confirmed: false }
-            });
+    showStreamEnd() {
+        const template = document.getElementById('stream-end-widget-template');
+        if (template) {
+            const widget = template.content.cloneNode(true);
+            this.messagesContainer.appendChild(widget);
+            this.messageRenderer.scrollToBottom();
         }
     }
 
     /**
-     * Обработка восстановления
+     * Показ мыслей агента
      */
-    handleRecovery(data) {
-        if (data.option === 'retry') {
-            this.wsManager.send('confirm_error_recovery', {
-                session_id: this.currentSession.id,
-                data: { option: 'retry' }
-            });
-        } else if (data.option === 'skip') {
-            this.wsManager.send('confirm_error_recovery', {
-                session_id: this.currentSession.id,
-                data: { option: 'skip' }
-            });
+    startThought(text) {
+        this.thoughtText = text;
+        if (this.thoughtSection) {
+            document.getElementById('agent-thought-text').textContent = text;
         } else {
-            this.wsManager.send('confirm_error_recovery', {
-                session_id: this.currentSession.id,
-                data: { option: 'abort' }
-            });
+            this.thoughtSection = document.getElementById('agent-thought-section');
+            this.thoughtSection.classList.remove('hidden');
         }
+
+        // Обновление текста мыслей
+        this.thoughtTimer = setInterval(() => {
+            if (this.thoughtText) {
+                document.getElementById('agent-thought-text').textContent = this.thoughtText;
+            }
+        }, 1000);
     }
 
     /**
-     * Обработка утверждения плана
+     * Прерывание мыслей агента
      */
-    handlePlanApproved(data) {
-        this.wsManager.send('execute_plan', {
-            session_id: this.currentSession.id,
-            data: { plan: data.plan }
+    interruptThought() {
+        if (this.thoughtTimer) {
+            clearInterval(this.thoughtTimer);
+            this.thoughtTimer = null;
+        }
+        this.startThought('⏸️ Агент прерван пользователем');
+    }
+
+    /**
+     * Инициализация обработчиков кнопок
+     */
+    setupButtonHandlers() {
+        // Кнопка отправки
+        document.getElementById('send-btn').addEventListener('click', () => {
+            this.handleSendClick();
         });
-    }
 
-    /**
-     * Обработка редактирования плана
-     */
-    handlePlanEdit(data) {
-        // Открыть редактор плана
-        console.log('Редактирование плана:', data.plan);
-    }
+        // Кнопка очистки ввода
+        document.getElementById('clear-input-btn').addEventListener('click', () => {
+            this.inputHandler.handleClearClick();
+        });
 
-    /**
-     * Обработка подключения WebSocket
-     */
-    connect() {
-        this.wsManager.connect();
-    }
+        // Кнопка прикрепления файла
+        document.getElementById('attach-file-btn').addEventListener('click', () => {
+            document.getElementById('file-input').click();
+        });
 
-    /**
-     * Отправка запроса
-     */
-    sendQuery(text, images = []) {
-        if (!this.currentSession) {
-            this.createSession();
-        }
+        // Кнопка нового чата
+        document.getElementById('new-chat-btn').addEventListener('click', () => {
+            this.createNewChat();
+        });
 
-        // Отправка через WebSocket
-        this.wsManager.send('query', {
-            session_id: this.currentSession.id,
-            data: {
-                text: text,
-                images: images
+        // Кнопка очистки истории
+        document.getElementById('clear-history-btn').addEventListener('click', () => {
+            this.clearHistory();
+        });
+
+        // Кнопка очистки сессии
+        document.getElementById('clear-session-btn').addEventListener('click', () => {
+            this.clearSession();
+        });
+
+        // Кнопка прерывания
+        document.getElementById('interrupt-btn').addEventListener('click', () => {
+            this.interruptThought();
+        });
+
+        // Обработчик кликов по виджетам
+        document.addEventListener('click', (event) => {
+            this.inputHandler.handleWidgetClick(event);
+        });
+
+        // Обработчик Enter
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' && event.target === document.getElementById('message-input')) {
+                event.preventDefault();
+                this.handleSendClick();
             }
         });
-
-        // Добавление сообщения в историю
-        this.messageRenderer.renderUserMessage(text, images);
     }
 
     /**
-     * Создание новой сессии
+     * Обработка клика по кнопке отправки
      */
-    createSession(title = 'Новый чат') {
-        this.currentSession = this.sessionManager.createSession(title);
-        this.storage.saveCurrentSession(this.currentSession);
-        
-        // Очистка сообщений
-        this.messageRenderer.clear();
-        
-        // Приветственное сообщение
-        this.showWelcomeMessage('Привет! Я готов помочь. Чем могу быть полезен?');
+    handleSendClick() {
+        const inputElement = document.getElementById('message-input');
+        const text = inputElement.value.trim();
+
+        if (!text) return;
+
+        // Получение изображений
+        const images = this.inputHandler.getImageFiles();
+
+        // Создание сообщения
+        const message = {
+            role: 'user',
+            content: text,
+            images: images
+        };
+
+        // Отправка сообщения
+        this.wsManager.send('query', message);
+
+        // Очистка ввода
+        inputElement.value = '';
+        inputElement.style.height = 'auto';
+        document.getElementById('send-btn').disabled = true;
+
+        // Скрытие изображений
+        document.getElementById('image-preview-container').classList.add('hidden');
     }
 
     /**
-     * Переключение на существующую сессию
+     * Создание нового чата
+     */
+    createNewChat() {
+        this.sessionManager.deleteSession(this.currentSession.id);
+        this.currentSession = this.sessionManager.createSession('Новый чат');
+        this.loadSessions();
+        this.showAgentMessage('📝 Новый чат создан', 'text');
+    }
+
+    /**
+     * Очистка истории
+     */
+    clearHistory() {
+        this.sessionManager.clearAllSessions();
+        this.loadSessions();
+        this.showAgentMessage('🗑️ История очищена', 'text');
+    }
+
+    /**
+     * Очистка сессии
+     */
+    clearSession() {
+        if (this.currentSession) {
+            this.sessionManager.clearSession(this.currentSession.id);
+            this.currentSession = null;
+            this.loadSessions();
+            this.showAgentMessage('🗑️ Сессия очищена', 'text');
+        }
+    }
+
+    /**
+     * Загрузка сессий
+     */
+    loadSessions() {
+        const sessions = this.sessionManager.loadSessions();
+        this.renderChatList(sessions);
+    }
+
+    /**
+     * Рендеринг списка чатов
+     */
+    renderChatList(sessions) {
+        const chatList = document.getElementById('chat-list');
+        chatList.innerHTML = '';
+
+        sessions.forEach(session => {
+            const li = document.createElement('li');
+            li.className = 'chat-item group flex items-center justify-between p-2.5 rounded-lg cursor-pointer hover:bg-white/5 transition-all';
+            li.dataset.sessionId = session.id;
+
+            li.innerHTML = `
+                <div class="flex items-center gap-3 flex-grow">
+                    <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center flex-shrink-0">
+                        <i class="fas fa-robot text-white text-sm"></i>
+                    </div>
+                    <span class="chat-title truncate text-sm font-medium">${session.title || 'Без названия'}</span>
+                </div>
+                <button class="delete-chat-btn group-hover:block text-gray-500 hover:text-red-500 text-xs p-1" title="Удалить чат">
+                    <i class="fas fa-trash"></i>
+                </button>
+            `;
+
+            li.addEventListener('click', () => {
+                this.loadSession(session.id);
+            });
+
+            li.querySelector('.delete-chat-btn').addEventListener('click', () => {
+                this.deleteChat(session.id);
+            });
+
+            chatList.appendChild(li);
+        });
+    }
+
+    /**
+     * Загрузка сессии
      */
     loadSession(sessionId) {
         const session = this.sessionManager.getSession(sessionId);
         if (session) {
             this.currentSession = session;
-            this.storage.saveCurrentSession(this.currentSession);
-            
-            // Рендеринг истории
-            this.messageRenderer.clear();
-            this.messageRenderer.renderHistory([session]);
+            this.loadMessages(session);
+            this.updateChatList();
         }
     }
 
     /**
-     * Удаление сессии
+     * Загрузка сообщений сессии
      */
-    deleteSession(sessionId) {
-        if (confirm('Вы уверены, что хотите удалить этот чат?')) {
-            this.sessionManager.deleteSession(sessionId);
-            if (this.currentSession && this.currentSession.id === sessionId) {
-                this.createSession();
+    loadMessages(session) {
+        const messages = this.sessionManager.getHistory(session.id);
+        this.messagesContainer.innerHTML = '';
+
+        messages.forEach(msg => {
+            if (msg.role === 'user') {
+                this.messageRenderer.renderUserMessage(msg.content, msg.images || []);
+            } else if (msg.role === 'agent') {
+                this.messageRenderer.renderAgentMessage(msg.content, msg.type || 'text');
             }
-        }
+        });
+
+        this.messageRenderer.scrollToBottom();
     }
 
     /**
-     * Очистка текущей сессии
+     * Обновление списка чатов
      */
-    clearSession() {
+    updateChatList() {
+        this.loadSessions();
+    }
+
+    /**
+     * Удаление чата
+     */
+    deleteChat(sessionId) {
+        this.sessionManager.deleteSession(sessionId);
+        this.loadSessions();
+        this.showAgentMessage('🗑️ Чат удалён', 'text');
+    }
+
+    /**
+     * Установка текущей сессии
+     */
+    setCurrentSession(sessionId) {
+        this.sessionManager.setCurrentSession(sessionId);
+        this.loadSession(sessionId);
+    }
+
+    /**
+     * Добавление сообщения в сессию
+     */
+    addMessageToSession(role, content, images = []) {
         if (this.currentSession) {
-            this.sessionManager.clearSession(this.currentSession.id);
-            this.messageRenderer.clear();
-            this.showWelcomeMessage('Чат очищен. Чем могу помочь?');
-        }
-    }
-
-    /**
-     * Показ приветственного сообщения
-     */
-    showWelcomeMessage(text) {
-        this.messageRenderer.renderAgentMessage(text, 'text');
-    }
-
-    /**
-     * Отображение ошибки пользователю
-     */
-    showErrorToUser(message) {
-        this.messageRenderer.renderAgentMessage(message, 'error');
-    }
-
-    /**
-     * Авто-скролл к последнему сообщению
-     */
-    autoScroll() {
-        const messagesContainer = document.getElementById('messages-container');
-        if (messagesContainer) {
-            messagesContainer.scrollTop = messagesContainer.scrollHeight;
-        }
-    }
-
-    /**
-     * Прерывание текущего процесса
-     */
-    interrupt() {
-        if (this.currentSession) {
-            this.sessionManager.setInterrupted(this.currentSession.id, true);
-            this.wsManager.send('interrupt_agent', {
-                session_id: this.currentSession.id
+            this.sessionManager.addMessage(this.currentSession.id, {
+                role,
+                content,
+                images
             });
         }
     }
 
     /**
-     * Начало работы
+     * Отправка сообщения на сервер
      */
-    start() {
-        if (!this.isRunning) {
-            this.connect();
-            this.isRunning = true;
-        }
+    sendMessage(message) {
+        this.wsManager.send('query', message);
     }
 
     /**
-     * Остановка
+     * Подтверждение действия
      */
-    stop() {
-        this.isRunning = false;
-        if (this.currentSession) {
-            this.sessionManager.setInterrupted(this.currentSession.id, true);
-        }
-        this.wsManager.disconnect();
+    confirmAction(data) {
+        this.wsManager.send('confirm_action', data);
+    }
+
+    /**
+     * Отклонение действия
+     */
+    rejectAction(data) {
+        this.wsManager.send('reject_action', data);
+    }
+
+    /**
+     * Выполнение плана
+     */
+    executePlan(plan) {
+        this.wsManager.send('execute_plan', plan);
+    }
+
+    /**
+     * Редактирование плана
+     */
+    editPlan(plan) {
+        this.wsManager.send('edit_plan', plan);
+    }
+
+    /**
+     * Восстановление после ошибки
+     */
+    recoverFromError(data) {
+        this.wsManager.send('recover_error', data);
     }
 
     /**
@@ -405,14 +539,22 @@ class Agent {
     }
 
     /**
-     * Проверка: агент запущен
+     * Получение истории сообщений
      */
-    isRunning() {
-        return this.isRunning;
+    getHistory() {
+        if (this.currentSession) {
+            return this.sessionManager.getHistory(this.currentSession.id);
+        }
+        return [];
+    }
+
+    /**
+     * Консольный логгер
+     */
+    log(message) {
+        console.log(`[Smart Hammer Agent] ${message}`);
     }
 }
 
-// Экспорт для использования в других модулях
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = Agent;
-}
+// Экспорт через CommonJS
+module.exports = Agent;
