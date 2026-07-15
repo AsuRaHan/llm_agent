@@ -224,7 +224,7 @@ std::vector<float> OpenAIProvider::createEmbedding(const std::string& text) {
 
 std::string OpenAIProvider::generateChunkSummary(const std::string& code_chunk, const std::string& chunk_name) {
     SPDLOG_DEBUG("Generating summary for chunk '{}'", chunk_name);
-return "";
+// return "";
     json messages = json::array({
         {
             {"role", "system"},
