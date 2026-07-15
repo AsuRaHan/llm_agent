@@ -2,43 +2,42 @@
 
 #include <string>
 #include <vector>
-#include <filesystem>
-#include "Config.h"
+#include <unordered_map>
+#include <memory>
+#include <unordered_set>
+#include "tree_sitter/api.h"
 
-/**
- * Структура для хранения информации о семантическом чанке кода
- */
+// Forward declare Tree-sitter types to avoid including C headers in a C++ header
+struct Config; // Forward declare Config
+
 struct CodeChunk {
-    std::string text;           // Текст чанка
-    size_t start_byte;          // Начальная позиция в файле
-    size_t length;              // Длина чанка
-    std::string language;       // Язык программирования
+    std::string text;
+    std::string language;
+    size_t start_byte;
+    size_t length;
 };
 
-/**
- * CodeParser: Парсит код с использованием tree-sitter для семантического разбиения
- */
 class CodeParser {
 public:
     explicit CodeParser(const Config& config);
     ~CodeParser();
 
-    /**
-     * Парсит код и разбивает на семантические чанки
-     * @param content - содержимое файла
-     * @param extension - расширение файла для определения языка
-     * @return вектор семантических чанков
-     */
-    std::vector<CodeChunk> parse(const std::string& content, const std::string& extension);
+    // Запрещаем копирование и перемещение, т.к. управляем сырым указателем TSParser
+    CodeParser(const CodeParser&) = delete;
+    CodeParser& operator=(const CodeParser&) = delete;
+    CodeParser(CodeParser&&) = delete;
+    CodeParser& operator=(CodeParser&&) = delete;
 
-    /**
-     * Определяет язык программирования по расширению файла
-     */
-    static std::string detectLanguage(const std::string& extension);
+    std::vector<CodeChunk> parse(const std::string& content, const std::string& extension);
+    std::string detectLanguage(const std::string& extension);
 
 private:
     const Config& config;
+    TSParser* parser;
+    std::unordered_map<std::string, TSLanguage*> languages;
 
-    // Tree-sitter парсеры для разных языков
-    // TODO: Добавить инициализацию парсеров
+    void initializeLanguages();
+    void collectChunks(TSNode node, const std::string& content, std::vector<CodeChunk>& chunks, const std::string& language);
+    void addChunk(const std::string& text, size_t start_byte, const std::string& language, std::vector<CodeChunk>& chunks);
+    const std::unordered_set<std::string>& getChunkableNodeTypes(const std::string& language);
 };
