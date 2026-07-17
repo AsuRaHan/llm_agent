@@ -45,8 +45,8 @@ std::string CodeParser::detectLanguage(const std::string& extension)
     if (extension == ".cpp" || extension == ".hpp" || extension == ".cxx" || extension == ".hxx" || extension == ".cc" || extension == ".hh") return "cpp";
     if (extension == ".c" || extension == ".h") return "c";
     if (extension == ".js" || extension == ".jsx" || extension == ".mjs" || extension == ".cjs") return "javascript";
-    if (extension == ".html" || extension == ".htm") return "html";
-    if (extension == ".css") return "css";
+    // if (extension == ".html" || extension == ".htm") return "html"; // Временно отключено для использования fallback-разбиения
+    // if (extension == ".css") return "css"; // Временно отключено для использования fallback-разбиения
     if (extension == ".md" || extension == ".markdown") return "markdown";
     // Add other languages here
     return "text"; // Default fallback

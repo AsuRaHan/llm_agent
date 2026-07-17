@@ -182,59 +182,10 @@ void FileIndexer::scanDiskForChanges(
 
 std::vector<ChunkToAdd> FileIndexer::processFileChunks(const std::string& path)
 {
-    std::vector<ChunkToAdd> chunks_to_add;
-
-    fs::path fs_path(path);
-    std::string content = FileReader::readFile(fs_path);
-    if (content.empty()) {
-        return chunks_to_add;
-    }
-
-    std::vector<CodeChunk> semanticChunks;
-    bool use_semantic = false;
-    if ((config.chunking_strategy == "tree-sitter" || config.chunking_strategy == "tree-sitter-hybrid") 
-        && codeParser) {
-        semanticChunks = codeParser->parse(content, fs_path.extension().string());
-        use_semantic = !semanticChunks.empty();
-    }
-
-    // Разбиваем на чанки и получаем эмбеддинги
-    if (use_semantic) {
-        for (size_t i = 0; i < semanticChunks.size(); ++i) {
-            const auto& chunk = semanticChunks[i];
-            ChunkLocation location = {chunk.start_byte, chunk.length};
-            std::string chunkName = path + " [#chunk " + std::to_string(i) + "]";
-            std::string text_for_embedding = chunk.text;
-
-            if (config.chunking_strategy == "tree-sitter-hybrid" && llmProvider) {
-                std::string summary = llmProvider->generateChunkSummary(chunk.text, chunkName);
-                if (!summary.empty()) {
-                    text_for_embedding = "[SUMMARY]: " + summary + "\n[CODE]:\n" + chunk.text;
-                }
-            }
-
-            auto emb = embeddingClient.getEmbedding(text_for_embedding, chunkName);
-            if (!emb.empty()) {
-                chunks_to_add.push_back({chunk.text, std::move(emb), location});
-            }
-        }
-    } else {
-        // Fallback: разбиение фиксированным размером
-        auto fixedChunks = ChunkerStrategy::splitFixedSize(
-            content, config.embedding_max_text_length, config.embedding_chunk_overlap
-        );
-        for (size_t i = 0; i < fixedChunks.size(); ++i) {
-            const auto& location = fixedChunks[i];
-            std::string chunk_text = content.substr(location.start_byte, location.length);
-            std::string chunkName = path + " [#chunk " + std::to_string(i) + "]";
-            auto emb = embeddingClient.getEmbedding(chunk_text, chunkName);
-            if (!emb.empty()) {
-                chunks_to_add.push_back({chunk_text, std::move(emb), location});
-            }
-        }
-    }
-
-    return chunks_to_add;
+    // Эта функция больше не используется напрямую. Логика перенесена в reindexFile.
+    // Оставляем ее пустой, чтобы избежать ошибок компиляции в других местах, если они есть.
+    SPDLOG_WARN("Вызвана устаревшая функция processFileChunks. Логика должна быть в reindexFile.");
+    return {};
 }
 
 void FileIndexer::updateIndexWithNewChunks(
@@ -242,32 +193,9 @@ void FileIndexer::updateIndexWithNewChunks(
     const std::vector<ChunkToAdd>& chunks)
 {
     std::lock_guard lock(mtx);
-    fs::path fs_path(path);
-
-    // Удаляем старые чанки этого файла из индекса
-    auto it = fileIndex.find(path);
-    if (it != fileIndex.end()) {
-        for (const auto& chunk_info : it->second.chunks) {
-            indexManager.removePoint(chunk_info.id);
-        }
-    }
-
-    // Обновляем запись о файле
-    fileIndex[path].last_write_time = fs::last_write_time(fs_path);
-    fileIndex[path].chunks.clear();
-
-    // Добавляем новые чанки
-    for (const auto& chunk : chunks) {
-        size_t id = indexManager.addPoint(path, chunk.embedding, chunk.location);
-        if (id != (size_t)-1) {
-            fileIndex[path].chunks.push_back({id, chunk.location});
-        }
-    }
-
-    // Удаляем пустую запись
-    if (fileIndex.count(path) && fileIndex.at(path).chunks.empty()) {
-        fileIndex.erase(path);
-    }
+    // Эта функция больше не используется напрямую. Логика перенесена в reindexFile.
+    // Оставляем ее пустой, чтобы избежать ошибок компиляции.
+    SPDLOG_WARN("Вызвана устаревшая функция updateIndexWithNewChunks. Логика должна быть в reindexFile.");
 }
 
 
@@ -292,14 +220,6 @@ void FileIndexer::indexDirectory(const fs::path& directoryPath)
         removeFileFromIndex(path);
     }
 
-    // Фаза 3: Сохранение индекса на диск, если были изменения
-    if (newFiles > 0 || updatedFiles > 0 || removedFiles > 0) {
-        SPDLOG_INFO("Обнаружены изменения в файлах, сохранение индекса на диск...");
-        // Сохраняем обе части индекса
-        indexManager.save(); 
-        save();              
-    }
-
     SPDLOG_INFO("Завершено индексирование. Новых файлов: {}, Измененных: {}, Удалено: {}", 
                 newFiles, updatedFiles, removedFiles);
 }
@@ -317,12 +237,82 @@ void FileIndexer::reindexFile(const std::string& path)
         return;
     }
 
-    // Обрабатываем файл (вне блокировки)
-    auto chunks_to_add = processFileChunks(path);
+    // --- Начало новой логики с сохранением после каждого чанка ---
 
-    // Обновляем индекс (в блокировке)
-    updateIndexWithNewChunks(path, chunks_to_add);
+    // 1. Сначала удаляем все старые чанки, связанные с этим файлом.
+    // Это делает операцию реиндексации атомарной на уровне файла.
+    // Если процесс упадет, при следующем запуске файл будет снова помечен для реиндексации.
+    {
+        std::lock_guard lock(mtx);
+        auto it = fileIndex.find(path);
+        if (it != fileIndex.end()) {
+            SPDLOG_INFO("Удаление {} старых чанков для файла: {}", it->second.chunks.size(), path);
+            for (const auto& chunk_info : it->second.chunks) {
+                indexManager.removePoint(chunk_info.id);
+            }
+            // Очищаем запись, но не удаляем ее полностью, чтобы сохранить last_write_time
+            it->second.chunks.clear();
+        }
+    }
 
+    // 2. Получаем контент и разбиваем его на "сырые" чанки (только текст и позиция)
+    std::string content = FileReader::readFile(fs_path);
+    if (content.empty()) {
+        removeFileFromIndex(path); // Если файл пуст, просто удаляем его из индекса
+        return;
+    }
+
+    std::vector<CodeChunk> code_chunks;
+    bool use_semantic = false;
+    if ((config.chunking_strategy == "tree-sitter" || config.chunking_strategy == "tree-sitter-hybrid") && codeParser) {
+        code_chunks = codeParser->parse(content, fs_path.extension().string());
+        use_semantic = !code_chunks.empty();
+    }
+
+    if (!use_semantic) {
+        auto fixedChunks = ChunkerStrategy::splitFixedSize(content, config.embedding_max_text_length, config.embedding_chunk_overlap);
+        for (const auto& location : fixedChunks) {
+            code_chunks.push_back({content.substr(location.start_byte, location.length), "text", location.start_byte, location.length});
+        }
+    }
+
+    // 3. Последовательно обрабатываем каждый чанк и сохраняем прогресс
+    for (size_t i = 0; i < code_chunks.size(); ++i) {
+        const auto& chunk = code_chunks[i];
+        std::string chunkName = path + " [#chunk " + std::to_string(i) + "]";
+        std::string text_for_embedding = chunk.text;
+
+        // Генерация саммари (долгая операция)
+        if (use_semantic && config.chunking_strategy == "tree-sitter-hybrid" && llmProvider) {
+            std::string summary = llmProvider->generateChunkSummary(chunk.text, chunkName);
+            if (!summary.empty()) {
+                text_for_embedding = "[SUMMARY]: " + summary + "\n[CODE]:\n" + chunk.text;
+            }
+        }
+
+        // Генерация эмбеддинга
+        auto emb = embeddingClient.getEmbedding(text_for_embedding, chunkName);
+
+        // Добавление в индекс и сохранение
+        if (!emb.empty()) {
+            std::lock_guard lock(mtx);
+            size_t id = indexManager.addPoint(path, emb, {chunk.start_byte, chunk.length});
+            if (id != (size_t)-1) {
+                fileIndex[path].chunks.push_back({id, {chunk.start_byte, chunk.length}});
+                SPDLOG_INFO("Проиндексирован чанк {}/{} для файла '{}'. Сохранение прогресса...", i + 1, code_chunks.size(), path);
+                indexManager.save();
+                save();
+            }
+        }
+    }
+
+    // 4. После обработки всех чанков, обновляем время модификации файла в нашем индексе.
+    // Это "зафиксирует" успешную индексацию файла.
+    {
+        std::lock_guard lock(mtx);
+        fileIndex[path].last_write_time = fs::last_write_time(fs_path);
+        save(); // Сохраняем финальное время
+    }
 }
 
 void FileIndexer::removeFileFromIndex(const std::string& path)
@@ -336,5 +326,7 @@ void FileIndexer::removeFileFromIndex(const std::string& path)
             indexManager.removePoint(chunk_info.id);
         }
         fileIndex.erase(it);
+        indexManager.save();
+        save();
     }
 }

@@ -223,12 +223,13 @@ std::vector<float> OpenAIProvider::createEmbedding(const std::string& text) {
 }
 
 std::string OpenAIProvider::generateChunkSummary(const std::string& code_chunk, const std::string& chunk_name) {
+    auto start_time = std::chrono::steady_clock::now();
     SPDLOG_DEBUG("Generating summary for chunk '{}'", chunk_name);
 // return "";
     json messages = json::array({
         {
             {"role", "system"},
-            {"content", "Ты — эксперт по программированию. Твоя задача — создать очень краткое, однострочное описание (summary) для предоставленного фрагмента кода на русском языке. Описание должно отражать основное назначение этого кода."}
+            {"content", "Твоя задача — немедленно, без размышлений, сгенерировать ОДНОСТРОЧНОЕ описание (summary) для предоставленного фрагмента кода на русском языке. Выведи ТОЛЬКО текст описания и ничего больше. Не добавляй никаких объяснений или рассуждений."}
         },
         {
             {"role", "user"},
@@ -240,27 +241,76 @@ std::string OpenAIProvider::generateChunkSummary(const std::string& code_chunk, 
         {"messages", messages},
         {"model", config.chat_model_name},
         {"temperature", 0.0},
-        {"stream", false}
+        {"stream", true} // Используем стриминг, чтобы избежать таймаутов на медленных моделях
     };
 
     httplib::Headers headers;
     if (!config.api_key.empty()) {
         headers.emplace("Authorization", "Bearer " + config.api_key);
     }
-    std::string body_str = body.dump();
+
+    auto dump_start = std::chrono::steady_clock::now();
+    std::string body_str = body.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
+    auto dump_end = std::chrono::steady_clock::now();
+    SPDLOG_TRACE("[Perf] Summary for '{}': JSON dump took {} ms.", chunk_name, std::chrono::duration_cast<std::chrono::milliseconds>(dump_end - dump_start).count());
 
     httplib::Client summary_cli(config.server_host, config.server_port);
     summary_cli.set_connection_timeout(5, 0);
-    summary_cli.set_read_timeout(config.summary_generation_timeout_sec, 0); 
+
+    if (config.summary_generation_timeout_sec > 0) {
+        summary_cli.set_read_timeout(config.summary_generation_timeout_sec, 0);
+    } else {
+        SPDLOG_INFO("Summary generation timeout is disabled. Waiting indefinitely for server response for chunk '{}'.", chunk_name);
+        // Setting timeout to 0, 0 means infinite for httplib
+        summary_cli.set_read_timeout(0, 0);
+    }
 
     httplib::Result res;
+    auto request_start = std::chrono::steady_clock::now();
+
+    std::string full_content;
+    std::string sse_buffer;
+
+    auto content_receiver = [&](const char *data, size_t data_length) {
+        sse_buffer.append(data, data_length);
+        size_t pos;
+        while ((pos = sse_buffer.find("\n\n")) != std::string::npos) { 
+            std::string event_chunk = sse_buffer.substr(0, pos);
+            sse_buffer.erase(0, pos + 2);
+
+            std::istringstream stream(event_chunk);
+            std::string line;
+            while (std::getline(stream, line)) {
+                if (line.rfind("data: ", 0) == 0) {
+                    std::string data_str = line.substr(6);
+                    if (data_str.empty() || data_str == "[DONE]") {
+                        continue;
+                    }
+                    try {
+                        json delta_json = json::parse(data_str);
+                        if (delta_json.contains("choices") && !delta_json["choices"].empty()) {
+                            const auto& delta = delta_json["choices"][0]["delta"];
+                            if (delta.contains("content") && delta["content"].is_string()) {
+                                full_content += delta["content"].get<std::string>();
+                            }
+                        }
+                    } catch (const json::exception& e) {
+                        SPDLOG_WARN("Failed to parse stream chunk for summary of '{}': {}. Chunk: {}", chunk_name, e.what(), data_str);
+                    }
+                }
+            }
+        }
+        return true;
+    };
+
     for (int attempt = 1; attempt <= config.retry_count; ++attempt) {
-        res = summary_cli.Post("/v1/chat/completions", headers, body_str, "application/json");
+        res = summary_cli.Post("/v1/chat/completions", headers, body_str, "application/json", content_receiver);
         if (res) break;
         SPDLOG_WARN("Summary generation attempt {}/{} failed. Connection error: {}. Retrying in {} ms...",
                     attempt, config.retry_count, httplib::to_string(res.error()), config.retry_delay_ms);
         std::this_thread::sleep_for(std::chrono::milliseconds(config.retry_delay_ms));
     }
+    auto request_end = std::chrono::steady_clock::now();
 
     if (!res || res->status != 200) {
         if (res) {
@@ -268,25 +318,23 @@ std::string OpenAIProvider::generateChunkSummary(const std::string& code_chunk, 
         } else {
             SPDLOG_ERROR("Connection failed during summary generation for '{}'. Details: {}", chunk_name, httplib::to_string(res.error()));
         }
+        auto end_time = std::chrono::steady_clock::now();
+        SPDLOG_ERROR("[Perf] Summary for '{}' failed. Total time: {} ms. Network request took {} ms.", chunk_name, 
+            std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count(),
+            std::chrono::duration_cast<std::chrono::milliseconds>(request_end - request_start).count());
         return "";
     }
 
-    try {
-        auto json_body = json::parse(res->body);
-        if (json_body.contains("choices") && !json_body["choices"].empty()) {
-            const auto& first_choice = json_body["choices"][0];
-            if (first_choice.contains("message") && first_choice["message"].contains("content")) {
-                std::string summary = first_choice["message"]["content"].get<std::string>();
-                SPDLOG_DEBUG("Generated summary for '{}': {}", chunk_name, summary);
-                return summary;
-            }
-        }
-        SPDLOG_ERROR("Unexpected JSON structure in summary response for '{}'. Body: {}", chunk_name, res->body);
-    } catch (const json::exception& e) {
-        SPDLOG_ERROR("Failed to parse JSON response for summary of '{}'. Details: {}. Body: {}", chunk_name, e.what(), res->body);
+    // Если стриминг завершился успешно, но контент пуст
+    if (full_content.empty()) {
+        SPDLOG_WARN("Summary generation for '{}' resulted in an empty string.", chunk_name);
     }
-
-    return "";
+    
+    auto end_time = std::chrono::steady_clock::now();
+    SPDLOG_INFO("[Perf] Summary for '{}' generated successfully. Total time: {} ms. Network request took {} ms.", chunk_name, 
+        std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count(),
+        std::chrono::duration_cast<std::chrono::milliseconds>(request_end - request_start).count());
+    return full_content;
 }
 
 std::optional<LLMProvider::ServerProperties> OpenAIProvider::fetchServerProperties() const {
