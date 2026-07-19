@@ -84,7 +84,7 @@ void SessionManager::saveSessionHistoryAsMarkdown_nolock(const UserSession& sess
                 content_str = message["content"].get<std::string>();
             } else if (message.contains("content")) {
                 // Красиво форматируем JSON для сложных типов контента
-                content_str = "```json\n" + message["content"].dump(2) + "\n```";
+                content_str = "```json\n" + message["content"].dump(2, ' ', false, nlohmann::json::error_handler_t::replace) + "\n```";
             } else {
                 content_str = "*(Нет содержимого)*";
             }
@@ -111,7 +111,7 @@ void SessionManager::saveSession_nolock(const UserSession& session) {
 
     try {
         std::ofstream f(json_path);
-        f << data.dump(4);
+        f << data.dump(4, ' ', false, nlohmann::json::error_handler_t::replace);
         SPDLOG_DEBUG("Сессия {} сохранена в '{}'.", session.id, json_path.string());
         // Также дублируем историю в Markdown
         saveSessionHistoryAsMarkdown_nolock(session);
