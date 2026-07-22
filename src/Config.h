@@ -52,6 +52,9 @@ struct Config {
     bool enable_web_ui = true; // This is not used anywhere, but kept for consistency
     std::string web_server_root_dir = "frontend";
 
+    // Project settings
+    std::string project_dir = "."; // Директория проекта для индексации
+
     // Indexing settings
     // size_t chunk_size = 10000; // Устарело, используется embedding_max_text_length
     // size_t chunk_overlap = 2000; // Устарело, используется embedding_chunk_overlap

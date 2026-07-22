@@ -22,6 +22,7 @@ public:
     bool isPathIgnored(const std::filesystem::path& path) const;
     void reindexFile(const std::string& path);
     void removeFileFromIndex(const std::string& path);
+    void reindexProject();
 
     void saveIndex();
     void loadIndex();

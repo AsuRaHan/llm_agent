@@ -90,6 +90,23 @@ void ContextIndexer::removeFileFromIndex(const std::string& path) {
     fileIndexer.removeFileFromIndex(path);
 }
 
+void ContextIndexer::reindexProject() {
+    SPDLOG_INFO("Начата полная реиндексация проекта...");
+    
+    // Сначала очищаем старый индекс
+    // indexManager.clear();
+    // fileIndexer.clear();
+    
+    // Пересобираем индекс
+    fileIndexer.indexDirectory(std::filesystem::path(config.project_dir));
+    
+    // Сохраняем новый индекс
+    saveIndex();
+    
+    SPDLOG_INFO("Реиндексация проекта завершена. Эмбеддингов: {}, Файлов: {}", 
+                getEmbeddingsCount(), getFileCount());
+}
+
 int ContextIndexer::getEmbeddingsCount() const {
     return indexManager.getEmbeddingCount();
 }

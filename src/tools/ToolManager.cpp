@@ -10,7 +10,7 @@
 #include "FileGlobSearchTool.h" // Include the new glob tool
 #include "WriteFileTool.h"      // Include the new write tool
 #include "EditFileTool.h"       // Include the new edit tool
-#include "ApplyDiffTool.h"      // Include the new diff tool
+// #include "ApplyDiffTool.h"      // Include the new diff tool
 #include "ExecuteShellCommandTool.h" // Include the shell tool
 #include "GetDateTimeTool.h"    // Include the datetime tool
 #include "GetSystemInfoTool.h"  // Include the system info tool
@@ -48,7 +48,7 @@ ToolManager::ToolManager(const Config& config, const std::string& projectDir)
         SPDLOG_WARN("Включены ОПАСНЫЕ инструменты (например, запись файлов).");
         registerTool(std::make_unique<WriteFileTool>());
         registerTool(std::make_unique<EditFileTool>());
-        registerTool(std::make_unique<ApplyDiffTool>());
+        // registerTool(std::make_unique<ApplyDiffTool>());
         registerTool(std::make_unique<ExecuteShellCommandTool>());
     }
 }
