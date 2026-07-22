@@ -7,16 +7,15 @@
 using json = nlohmann::json;
 
 // Каждая сессия будет храниться в отдельном файле в этой директории.
-const std::string sessions_dir = ".shdata/sessions";
 
-SessionManager::SessionManager() {
+SessionManager::SessionManager(const std::string& sessions_path) : sessions_dir_(sessions_path) {
     SPDLOG_INFO("SessionManager initialized.");
     // Убедимся, что директория для хранения сессий существует.
     try {
-        std::filesystem::create_directories(sessions_dir);
-        SPDLOG_INFO("Директория сессий '{}' готова.", sessions_dir);
+        std::filesystem::create_directories(sessions_dir_);
+        SPDLOG_INFO("Директория сессий '{}' готова.", sessions_dir_);
     } catch (const std::filesystem::filesystem_error& e) {
-        SPDLOG_ERROR("Не удалось создать директорию сессий '{}': {}", sessions_dir, e.what());
+        SPDLOG_ERROR("Не удалось создать директорию сессий '{}': {}", sessions_dir_, e.what());
     }
     loadSessions();
 }
@@ -70,7 +69,7 @@ void SessionManager::clearSession(const std::string& sessionId) {
 // Приватный метод для сохранения истории сессии в читаемом Markdown формате.
 // Вызывается из saveSession_nolock.
 void SessionManager::saveSessionHistoryAsMarkdown_nolock(const UserSession& session) {
-    std::filesystem::path md_path = std::filesystem::path(sessions_dir) / (session.id + ".md");
+    std::filesystem::path md_path = std::filesystem::path(sessions_dir_) / (session.id + ".md");
     std::stringstream md_content;
     md_content << "# История чата для сессии: " << session.id << "\n\n";
 
@@ -106,7 +105,7 @@ void SessionManager::saveSessionHistoryAsMarkdown_nolock(const UserSession& sess
 // Приватный метод для сохранения одной сессии в JSON-файл.
 // Вызывается из публичных методов, которые уже захватили блокировку.
 void SessionManager::saveSession_nolock(const UserSession& session) {
-    std::filesystem::path json_path = std::filesystem::path(sessions_dir) / (session.id + ".json");
+    std::filesystem::path json_path = std::filesystem::path(sessions_dir_) / (session.id + ".json");
     json data = session;
 
     try {
@@ -128,7 +127,7 @@ void SessionManager::saveSessions_nolock() {
         return;
     }
     
-    SPDLOG_INFO("Сохранение {} сессий в директорию '{}'...", sessions_.size(), sessions_dir);
+    SPDLOG_INFO("Сохранение {} сессий в директорию '{}'...", sessions_.size(), sessions_dir_);
     for (const auto& [id, session_ptr] : sessions_) {
         saveSession_nolock(*session_ptr);
     }
@@ -143,16 +142,16 @@ void SessionManager::saveSessions() {
 void SessionManager::loadSessions() {
     std::lock_guard<std::mutex> lock(mutex_);
     
-    SPDLOG_INFO("Загрузка сессий из директории '{}'...", sessions_dir);
+    SPDLOG_INFO("Загрузка сессий из директории '{}'...", sessions_dir_);
     int loaded_count = 0;
 
     try {
-        if (!std::filesystem::exists(sessions_dir) || !std::filesystem::is_directory(sessions_dir)) {
-            SPDLOG_INFO("Директория сессий '{}' не найдена или не является директорией. Загрузка пропущена.", sessions_dir);
+        if (!std::filesystem::exists(sessions_dir_) || !std::filesystem::is_directory(sessions_dir_)) {
+            SPDLOG_INFO("Директория сессий '{}' не найдена или не является директорией. Загрузка пропущена.", sessions_dir_);
             return;
         }
 
-        for (const auto& entry : std::filesystem::directory_iterator(sessions_dir)) {
+        for (const auto& entry : std::filesystem::directory_iterator(sessions_dir_)) {
             if (entry.is_regular_file() && entry.path().extension() == ".json") {
                 const auto& path = entry.path();
                 std::string sessionId = path.stem().string();
@@ -194,12 +193,12 @@ void SessionManager::loadSessions() {
         }
 
         if (loaded_count > 0) {
-            SPDLOG_INFO("Загружено {} сессий из '{}'.", loaded_count, sessions_dir);
+            SPDLOG_INFO("Загружено {} сессий из '{}'.", loaded_count, sessions_dir_);
         } else {
-            SPDLOG_INFO("В директории '{}' не найдено сессий для загрузки.", sessions_dir);
+            SPDLOG_INFO("В директории '{}' не найдено сессий для загрузки.", sessions_dir_);
         }
 
     } catch (const std::filesystem::filesystem_error& e) {
-        SPDLOG_ERROR("Ошибка при доступе к директории сессий '{}': {}", sessions_dir, e.what());
+        SPDLOG_ERROR("Ошибка при доступе к директории сессий '{}': {}", sessions_dir_, e.what());
     }
 }

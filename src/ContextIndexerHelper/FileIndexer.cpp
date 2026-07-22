@@ -15,11 +15,12 @@ using json = nlohmann::json;
 FileIndexer::FileIndexer(
     const Config& config,
     IndexManager& indexManager,
-    EmbeddingClient& embeddingClient,
-    std::shared_ptr<LLMProvider> provider)
+    EmbeddingClient& embeddingClient, 
+    std::shared_ptr<LLMProvider> provider,
+    const std::string& metadata_path)
     : config(config), indexManager(indexManager), embeddingClient(embeddingClient),
       llmProvider(provider),
-      fileIndexerMetadataPath(".shdata/file_indexer_meta.json") // Инициализация пути
+      fileIndexerMetadataPath(metadata_path) // Инициализация пути
 {
     ignoredDirectories.insert(config.ignored_directories.begin(), config.ignored_directories.end());
     // ignoredDirectories.insert(".shdata");

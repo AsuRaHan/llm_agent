@@ -1,11 +1,15 @@
 #include "ContextIndexer.h"
 #include "Logger.h"
 
-ContextIndexer::ContextIndexer(std::shared_ptr<LLMProvider> provider, const Config& config)
+ContextIndexer::ContextIndexer(std::shared_ptr<LLMProvider> provider, 
+                               const Config& config,
+                               const std::string& index_meta_path,
+                               const std::string& index_bin_path,
+                               const std::string& file_indexer_meta_path)
     : config(config), // Initialize config first
       embeddingClient(provider),
-      indexManager(".shdata/index_meta.json", ".shdata/index.bin"),
-      fileIndexer(config, indexManager, embeddingClient, provider),
+      indexManager(index_meta_path, index_bin_path),
+      fileIndexer(config, indexManager, embeddingClient, provider, file_indexer_meta_path),
       searcher(indexManager, embeddingClient) // searcher also needs config indirectly via fileIndexer
 {
     SPDLOG_INFO("ContextIndexer инициализирован.");

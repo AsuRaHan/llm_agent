@@ -49,9 +49,9 @@ public:
     explicit FileIndexer(
         const Config& config,
         IndexManager& indexManager,
-        EmbeddingClient& embeddingClient,
-        std::shared_ptr<LLMProvider> provider
-    );
+        EmbeddingClient& embeddingClient, 
+        std::shared_ptr<LLMProvider> provider,
+        const std::string& metadata_path);
     ~FileIndexer();
 
     /**

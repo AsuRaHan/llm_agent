@@ -16,7 +16,9 @@
 
 class AssistantRole {
 public:
-    explicit AssistantRole(std::shared_ptr<LLMProvider> llmProvider, const Config& config);
+    explicit AssistantRole(std::shared_ptr<LLMProvider> llmProvider, 
+                           const Config& config,
+                           const std::string& projectDir);
     ~AssistantRole();
 
     AssistantResponse processQuery(

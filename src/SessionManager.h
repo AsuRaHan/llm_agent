@@ -8,7 +8,7 @@
 
 class SessionManager {
 public:
-    SessionManager();
+    explicit SessionManager(const std::string& sessions_path);
     ~SessionManager();
     std::shared_ptr<UserSession> getSession(const std::string& sessionId);
     void interruptSession(const std::string& sessionId);
@@ -21,6 +21,7 @@ private:
     void saveSessionHistoryAsMarkdown_nolock(const UserSession& session);
     void saveSessions_nolock();
 
+    std::string sessions_dir_;
     std::mutex mutex_;
     std::unordered_map<std::string, std::shared_ptr<UserSession>> sessions_;
 };

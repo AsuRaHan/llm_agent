@@ -7,10 +7,10 @@
 
 using json = nlohmann::json;
 
-AssistantRole::AssistantRole(std::shared_ptr<LLMProvider> llmProvider, const Config& config) 
+AssistantRole::AssistantRole(std::shared_ptr<LLMProvider> llmProvider, const Config& config, const std::string& projectDir) 
     : llmProvider(llmProvider),
       config(config),
-      toolManager(std::make_unique<ToolManager>(config))
+      toolManager(std::make_unique<ToolManager>(config, projectDir))
 {
 }
 

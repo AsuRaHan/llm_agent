@@ -206,7 +206,6 @@ add_executable(Agent
       src/WebSocketServer.cpp
       src/ThreadPool.cpp
       src/tools/ReadFileTool.cpp
-      src/SessionManager.cpp
       src/tools/ListDirectoryTool.cpp
       src/tools/ToolManager.cpp
       src/tools/CodeSearchTool.cpp

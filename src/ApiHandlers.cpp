@@ -3,11 +3,15 @@
 #include <fstream>
 #include <sstream>
 
-ApiHandlers::ApiHandlers(std::shared_ptr<LLMProvider> provider, const Config& config, ContextIndexer& indexer)
+ApiHandlers::ApiHandlers(std::shared_ptr<LLMProvider> provider,
+                         const Config& config, 
+                         ContextIndexer& indexer,
+                         const std::string& projectDir,
+                         const std::filesystem::path& app_root_dir)
     : config(config),
-      assistant(std::make_shared<AssistantRole>(provider, config)),
+      assistant(std::make_shared<AssistantRole>(provider, config, projectDir)),
       indexer(indexer),
-      sessionManager(),
+      sessionManager((app_root_dir / ".shdata" / "sessions").string()),
       webSocketServer(config, *assistant, indexer, sessionManager),
       fileWatcher(indexer)
 {

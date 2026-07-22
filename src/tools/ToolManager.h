@@ -1,5 +1,6 @@
 #pragma once
 
+#include <filesystem>
 #include "ITool.h"
 #include <string>
 #include <vector>
@@ -12,7 +13,7 @@ class ContextIndexer; // Forward declaration
 
 class ToolManager {
 public:
-    explicit ToolManager(const Config& config);
+    explicit ToolManager(const Config& config, const std::string& projectDir);
 
     void registerTool(std::unique_ptr<ITool> tool);
     nlohmann::json getToolsSpecification() const;
@@ -20,4 +21,5 @@ public:
 
 private:
     std::map<std::string, std::unique_ptr<ITool>> tools;
+    std::string m_projectDir;
 };

@@ -12,7 +12,11 @@
 
 class ApiHandlers {
 public:
-    ApiHandlers(std::shared_ptr<LLMProvider> provider, const Config& config, ContextIndexer& indexer);
+    ApiHandlers(std::shared_ptr<LLMProvider> provider,
+                const Config& config, 
+                ContextIndexer& indexer,
+                const std::string& projectDir,
+                const std::filesystem::path& app_root_dir);
     void start(const std::string& projectDir);
     void stop();
     ~ApiHandlers();
