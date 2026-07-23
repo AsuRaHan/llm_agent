@@ -1,0 +1,1481 @@
+{
+    "embedding_dim": 4096,
+    "id_to_chunk_map": {
+        "0": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 0
+        },
+        "1": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 9
+        },
+        "10": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 86
+        },
+        "100": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 1197
+        },
+        "101": {
+            "length": 1435,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 1200
+        },
+        "102": {
+            "length": 263,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 2637
+        },
+        "103": {
+            "length": 511,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 2902
+        },
+        "104": {
+            "length": 1437,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 3415
+        },
+        "105": {
+            "length": 1272,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 4652
+        },
+        "106": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/tools/WebSearchTool.cpp",
+            "start_byte": 0
+        },
+        "107": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/WebSearchTool.cpp",
+            "start_byte": 9
+        },
+        "108": {
+            "length": 15,
+            "path": "E:/my_proj/llm_agent/src/tools/WebSearchTool.cpp",
+            "start_byte": 10
+        },
+        "109": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/WebSearchTool.cpp",
+            "start_byte": 25
+        },
+        "11": {
+            "length": 19,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 87
+        },
+        "110": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/tools/WebSearchTool.cpp",
+            "start_byte": 28
+        },
+        "111": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/WebSearchTool.cpp",
+            "start_byte": 37
+        },
+        "112": {
+            "length": 11,
+            "path": "E:/my_proj/llm_agent/src/tools/WebSearchTool.cpp",
+            "start_byte": 38
+        },
+        "113": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/WebSearchTool.cpp",
+            "start_byte": 49
+        },
+        "114": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/tools/WebSearchTool.cpp",
+            "start_byte": 52
+        },
+        "115": {
+            "length": 11,
+            "path": "E:/my_proj/llm_agent/src/tools/WebSearchTool.cpp",
+            "start_byte": 61
+        },
+        "116": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/tools/WebSearchTool.cpp",
+            "start_byte": 74
+        },
+        "117": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/tools/WebSearchTool.cpp",
+            "start_byte": 83
+        },
+        "118": {
+            "length": 70,
+            "path": "E:/my_proj/llm_agent/src/tools/WebSearchTool.cpp",
+            "start_byte": 96
+        },
+        "119": {
+            "length": 73,
+            "path": "E:/my_proj/llm_agent/src/tools/WebSearchTool.cpp",
+            "start_byte": 170
+        },
+        "12": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 106
+        },
+        "120": {
+            "length": 418,
+            "path": "E:/my_proj/llm_agent/src/tools/WebSearchTool.cpp",
+            "start_byte": 247
+        },
+        "121": {
+            "length": 392,
+            "path": "E:/my_proj/llm_agent/src/tools/WebSearchTool.cpp",
+            "start_byte": 669
+        },
+        "122": {
+            "length": 1478,
+            "path": "E:/my_proj/llm_agent/src/tools/WebSearchTool.cpp",
+            "start_byte": 1065
+        },
+        "123": {
+            "length": 1488,
+            "path": "E:/my_proj/llm_agent/src/tools/WebSearchTool.cpp",
+            "start_byte": 2343
+        },
+        "124": {
+            "length": 708,
+            "path": "E:/my_proj/llm_agent/src/tools/WebSearchTool.cpp",
+            "start_byte": 3631
+        },
+        "125": {
+            "length": 7,
+            "path": "E:/my_proj/llm_agent/src/tools/WebSearchTool.h",
+            "start_byte": 0
+        },
+        "126": {
+            "length": 5,
+            "path": "E:/my_proj/llm_agent/src/tools/WebSearchTool.h",
+            "start_byte": 8
+        },
+        "127": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/tools/WebSearchTool.h",
+            "start_byte": 16
+        },
+        "128": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/WebSearchTool.h",
+            "start_byte": 25
+        },
+        "129": {
+            "length": 7,
+            "path": "E:/my_proj/llm_agent/src/tools/WebSearchTool.h",
+            "start_byte": 26
+        },
+        "13": {
+            "length": 44,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 108
+        },
+        "130": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/WebSearchTool.h",
+            "start_byte": 33
+        },
+        "131": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/tools/WebSearchTool.h",
+            "start_byte": 36
+        },
+        "132": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/WebSearchTool.h",
+            "start_byte": 45
+        },
+        "133": {
+            "length": 11,
+            "path": "E:/my_proj/llm_agent/src/tools/WebSearchTool.h",
+            "start_byte": 46
+        },
+        "134": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/WebSearchTool.h",
+            "start_byte": 57
+        },
+        "135": {
+            "length": 31,
+            "path": "E:/my_proj/llm_agent/src/tools/WebSearchTool.h",
+            "start_byte": 59
+        },
+        "136": {
+            "length": 373,
+            "path": "E:/my_proj/llm_agent/src/tools/WebSearchTool.h",
+            "start_byte": 93
+        },
+        "137": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/WebSearchTool.h",
+            "start_byte": 466
+        },
+        "138": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/tools/WriteFileTool.cpp",
+            "start_byte": 0
+        },
+        "139": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/WriteFileTool.cpp",
+            "start_byte": 9
+        },
+        "14": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 153
+        },
+        "140": {
+            "length": 15,
+            "path": "E:/my_proj/llm_agent/src/tools/WriteFileTool.cpp",
+            "start_byte": 10
+        },
+        "141": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/WriteFileTool.cpp",
+            "start_byte": 25
+        },
+        "142": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/tools/WriteFileTool.cpp",
+            "start_byte": 28
+        },
+        "143": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/WriteFileTool.cpp",
+            "start_byte": 37
+        },
+        "144": {
+            "length": 11,
+            "path": "E:/my_proj/llm_agent/src/tools/WriteFileTool.cpp",
+            "start_byte": 38
+        },
+        "145": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/WriteFileTool.cpp",
+            "start_byte": 49
+        },
+        "146": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/tools/WriteFileTool.cpp",
+            "start_byte": 52
+        },
+        "147": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/tools/WriteFileTool.cpp",
+            "start_byte": 61
+        },
+        "148": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/tools/WriteFileTool.cpp",
+            "start_byte": 72
+        },
+        "149": {
+            "length": 12,
+            "path": "E:/my_proj/llm_agent/src/tools/WriteFileTool.cpp",
+            "start_byte": 81
+        },
+        "15": {
+            "length": 12,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 162
+        },
+        "150": {
+            "length": 10,
+            "path": "E:/my_proj/llm_agent/src/tools/WriteFileTool.cpp",
+            "start_byte": 97
+        },
+        "151": {
+            "length": 2,
+            "path": "E:/my_proj/llm_agent/src/tools/WriteFileTool.cpp",
+            "start_byte": 107
+        },
+        "152": {
+            "length": 3,
+            "path": "E:/my_proj/llm_agent/src/tools/WriteFileTool.cpp",
+            "start_byte": 109
+        },
+        "153": {
+            "length": 3,
+            "path": "E:/my_proj/llm_agent/src/tools/WriteFileTool.cpp",
+            "start_byte": 112
+        },
+        "154": {
+            "length": 2,
+            "path": "E:/my_proj/llm_agent/src/tools/WriteFileTool.cpp",
+            "start_byte": 115
+        },
+        "155": {
+            "length": 10,
+            "path": "E:/my_proj/llm_agent/src/tools/WriteFileTool.cpp",
+            "start_byte": 117
+        },
+        "156": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/WriteFileTool.cpp",
+            "start_byte": 127
+        },
+        "157": {
+            "length": 73,
+            "path": "E:/my_proj/llm_agent/src/tools/WriteFileTool.cpp",
+            "start_byte": 132
+        },
+        "158": {
+            "length": 347,
+            "path": "E:/my_proj/llm_agent/src/tools/WriteFileTool.cpp",
+            "start_byte": 209
+        },
+        "159": {
+            "length": 939,
+            "path": "E:/my_proj/llm_agent/src/tools/WriteFileTool.cpp",
+            "start_byte": 560
+        },
+        "16": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 175
+        },
+        "160": {
+            "length": 1405,
+            "path": "E:/my_proj/llm_agent/src/tools/WriteFileTool.cpp",
+            "start_byte": 1503
+        },
+        "161": {
+            "length": 1230,
+            "path": "E:/my_proj/llm_agent/src/tools/WriteFileTool.cpp",
+            "start_byte": 2708
+        },
+        "162": {
+            "length": 7,
+            "path": "E:/my_proj/llm_agent/src/tools/WriteFileTool.h",
+            "start_byte": 0
+        },
+        "163": {
+            "length": 5,
+            "path": "E:/my_proj/llm_agent/src/tools/WriteFileTool.h",
+            "start_byte": 8
+        },
+        "164": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/tools/WriteFileTool.h",
+            "start_byte": 16
+        },
+        "165": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/WriteFileTool.h",
+            "start_byte": 25
+        },
+        "166": {
+            "length": 7,
+            "path": "E:/my_proj/llm_agent/src/tools/WriteFileTool.h",
+            "start_byte": 26
+        },
+        "167": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/WriteFileTool.h",
+            "start_byte": 33
+        },
+        "168": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/tools/WriteFileTool.h",
+            "start_byte": 36
+        },
+        "169": {
+            "length": 8,
+            "path": "E:/my_proj/llm_agent/src/tools/WriteFileTool.h",
+            "start_byte": 45
+        },
+        "17": {
+            "length": 7,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 184
+        },
+        "170": {
+            "length": 281,
+            "path": "E:/my_proj/llm_agent/src/tools/WriteFileTool.h",
+            "start_byte": 57
+        },
+        "171": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/WriteFileTool.h",
+            "start_byte": 338
+        },
+        "172": {
+            "length": 7,
+            "path": "E:/my_proj/llm_agent/src/UserSession.h",
+            "start_byte": 0
+        },
+        "173": {
+            "length": 4,
+            "path": "E:/my_proj/llm_agent/src/UserSession.h",
+            "start_byte": 8
+        },
+        "174": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/UserSession.h",
+            "start_byte": 14
+        },
+        "175": {
+            "length": 8,
+            "path": "E:/my_proj/llm_agent/src/UserSession.h",
+            "start_byte": 23
+        },
+        "176": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/UserSession.h",
+            "start_byte": 32
+        },
+        "177": {
+            "length": 8,
+            "path": "E:/my_proj/llm_agent/src/UserSession.h",
+            "start_byte": 41
+        },
+        "178": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/UserSession.h",
+            "start_byte": 50
+        },
+        "179": {
+            "length": 19,
+            "path": "E:/my_proj/llm_agent/src/UserSession.h",
+            "start_byte": 59
+        },
+        "18": {
+            "length": 25,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 192
+        },
+        "180": {
+            "length": 245,
+            "path": "E:/my_proj/llm_agent/src/UserSession.h",
+            "start_byte": 80
+        },
+        "181": {
+            "length": 3,
+            "path": "E:/my_proj/llm_agent/src/UserSession.h",
+            "start_byte": 325
+        },
+        "182": {
+            "length": 61,
+            "path": "E:/my_proj/llm_agent/src/UserSession.h",
+            "start_byte": 328
+        },
+        "183": {
+            "length": 401,
+            "path": "E:/my_proj/llm_agent/src/UserSession.h",
+            "start_byte": 390
+        },
+        "184": {
+            "length": 35,
+            "path": "E:/my_proj/llm_agent/src/UserSession.h",
+            "start_byte": 793
+        },
+        "185": {
+            "length": 364,
+            "path": "E:/my_proj/llm_agent/src/UserSession.h",
+            "start_byte": 829
+        },
+        "186": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/UserSession.h",
+            "start_byte": 1193
+        },
+        "187": {
+            "length": 845,
+            "path": "E:/my_proj/llm_agent/src/UserSession.h",
+            "start_byte": 1196
+        },
+        "188": {
+            "length": 3,
+            "path": "E:/my_proj/llm_agent/src/UserSession.h",
+            "start_byte": 2041
+        },
+        "189": {
+            "length": 29,
+            "path": "E:/my_proj/llm_agent/src/UserSession.h",
+            "start_byte": 2044
+        },
+        "19": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 218
+        },
+        "190": {
+            "length": 264,
+            "path": "E:/my_proj/llm_agent/src/UserSession.h",
+            "start_byte": 2075
+        },
+        "191": {
+            "length": 298,
+            "path": "E:/my_proj/llm_agent/src/UserSession.h",
+            "start_byte": 2341
+        },
+        "192": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 0
+        },
+        "193": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 9
+        },
+        "194": {
+            "length": 17,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 10
+        },
+        "195": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 27
+        },
+        "196": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 29
+        },
+        "197": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 38
+        },
+        "198": {
+            "length": 8,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 39
+        },
+        "199": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 47
+        },
+        "2": {
+            "length": 13,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 10
+        },
+        "20": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 227
+        },
+        "200": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 49
+        },
+        "201": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 58
+        },
+        "202": {
+            "length": 15,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 59
+        },
+        "203": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 74
+        },
+        "204": {
+            "length": 27,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 76
+        },
+        "205": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 104
+        },
+        "206": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 113
+        },
+        "207": {
+            "length": 13,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 114
+        },
+        "208": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 127
+        },
+        "209": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 129
+        },
+        "21": {
+            "length": 19,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 228
+        },
+        "210": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 138
+        },
+        "211": {
+            "length": 8,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 139
+        },
+        "212": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 147
+        },
+        "213": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 149
+        },
+        "214": {
+            "length": 12,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 158
+        },
+        "215": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 171
+        },
+        "216": {
+            "length": 15,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 180
+        },
+        "217": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 196
+        },
+        "218": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 205
+        },
+        "219": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 215
+        },
+        "22": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 247
+        },
+        "220": {
+            "length": 11,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 224
+        },
+        "221": {
+            "length": 80,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 237
+        },
+        "222": {
+            "length": 71,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 318
+        },
+        "223": {
+            "length": 10,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 390
+        },
+        "224": {
+            "length": 6,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 400
+        },
+        "225": {
+            "length": 6,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 407
+        },
+        "226": {
+            "length": 157,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 413
+        },
+        "227": {
+            "length": 2,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 570
+        },
+        "228": {
+            "length": 19,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 573
+        },
+        "229": {
+            "length": 352,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 594
+        },
+        "23": {
+            "length": 23,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 249
+        },
+        "230": {
+            "length": 1473,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 948
+        },
+        "231": {
+            "length": 1470,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 2423
+        },
+        "232": {
+            "length": 648,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 3693
+        },
+        "233": {
+            "length": 1438,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 4343
+        },
+        "234": {
+            "length": 768,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 5783
+        },
+        "235": {
+            "length": 1495,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 6553
+        },
+        "236": {
+            "length": 1377,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 7848
+        },
+        "237": {
+            "length": 364,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 9025
+        },
+        "238": {
+            "length": 1486,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 9391
+        },
+        "239": {
+            "length": 1442,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 10677
+        },
+        "24": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 273
+        },
+        "240": {
+            "length": 330,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 11919
+        },
+        "241": {
+            "length": 1447,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 12251
+        },
+        "242": {
+            "length": 608,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 13498
+        },
+        "243": {
+            "length": 1413,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 14108
+        },
+        "244": {
+            "length": 777,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 15321
+        },
+        "245": {
+            "length": 406,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 16100
+        },
+        "246": {
+            "length": 150,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 16508
+        },
+        "247": {
+            "length": 513,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 16660
+        },
+        "248": {
+            "length": 760,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 17175
+        },
+        "249": {
+            "length": 314,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.cpp",
+            "start_byte": 17937
+        },
+        "25": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 282
+        },
+        "250": {
+            "length": 7,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 0
+        },
+        "251": {
+            "length": 4,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 8
+        },
+        "252": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 14
+        },
+        "253": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 23
+        },
+        "254": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 24
+        },
+        "255": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 33
+        },
+        "256": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 35
+        },
+        "257": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 44
+        },
+        "258": {
+            "length": 17,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 45
+        },
+        "259": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 62
+        },
+        "26": {
+            "length": 16,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 283
+        },
+        "260": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 64
+        },
+        "261": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 73
+        },
+        "262": {
+            "length": 15,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 74
+        },
+        "263": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 89
+        },
+        "264": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 91
+        },
+        "265": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 100
+        },
+        "266": {
+            "length": 16,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 101
+        },
+        "267": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 117
+        },
+        "268": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 119
+        },
+        "269": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 128
+        },
+        "27": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 299
+        },
+        "270": {
+            "length": 16,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 129
+        },
+        "271": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 145
+        },
+        "272": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 147
+        },
+        "273": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 156
+        },
+        "274": {
+            "length": 12,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 157
+        },
+        "275": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 169
+        },
+        "276": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 171
+        },
+        "277": {
+            "length": 8,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 180
+        },
+        "278": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 189
+        },
+        "279": {
+            "length": 15,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 198
+        },
+        "28": {
+            "length": 31,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 301
+        },
+        "280": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 214
+        },
+        "281": {
+            "length": 7,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 223
+        },
+        "282": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 231
+        },
+        "283": {
+            "length": 8,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 240
+        },
+        "284": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 249
+        },
+        "285": {
+            "length": 7,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 258
+        },
+        "286": {
+            "length": 13,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 267
+        },
+        "287": {
+            "length": 2,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 280
+        },
+        "288": {
+            "length": 22,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 282
+        },
+        "289": {
+            "length": 130,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 306
+        },
+        "29": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 333
+        },
+        "290": {
+            "length": 85,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 437
+        },
+        "291": {
+            "length": 3,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 522
+        },
+        "292": {
+            "length": 1486,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 525
+        },
+        "293": {
+            "length": 394,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 1811
+        },
+        "294": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/WebSocketServer.h",
+            "start_byte": 2205
+        },
+        "3": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 23
+        },
+        "30": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 342
+        },
+        "31": {
+            "length": 8,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 343
+        },
+        "32": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 351
+        },
+        "33": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 353
+        },
+        "34": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 362
+        },
+        "35": {
+            "length": 16,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 363
+        },
+        "36": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 379
+        },
+        "37": {
+            "length": 24,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 381
+        },
+        "38": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 406
+        },
+        "39": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 415
+        },
+        "4": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 25
+        },
+        "40": {
+            "length": 20,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 416
+        },
+        "41": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 436
+        },
+        "42": {
+            "length": 28,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 438
+        },
+        "43": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 467
+        },
+        "44": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 476
+        },
+        "45": {
+            "length": 15,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 477
+        },
+        "46": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 492
+        },
+        "47": {
+            "length": 29,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 499
+        },
+        "48": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 529
+        },
+        "49": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 538
+        },
+        "5": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 34
+        },
+        "50": {
+            "length": 14,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 539
+        },
+        "51": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 553
+        },
+        "52": {
+            "length": 28,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 561
+        },
+        "53": {
+            "length": 63,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 590
+        },
+        "54": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 654
+        },
+        "55": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 663
+        },
+        "56": {
+            "length": 25,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 664
+        },
+        "57": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 689
+        },
+        "58": {
+            "length": 25,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 691
+        },
+        "59": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 717
+        },
+        "6": {
+            "length": 14,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 35
+        },
+        "60": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 726
+        },
+        "61": {
+            "length": 17,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 727
+        },
+        "62": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 744
+        },
+        "63": {
+            "length": 28,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 749
+        },
+        "64": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 778
+        },
+        "65": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 787
+        },
+        "66": {
+            "length": 19,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 788
+        },
+        "67": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 807
+        },
+        "68": {
+            "length": 31,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 810
+        },
+        "69": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 842
+        },
+        "7": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 49
+        },
+        "70": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 851
+        },
+        "71": {
+            "length": 15,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 852
+        },
+        "72": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 867
+        },
+        "73": {
+            "length": 34,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 874
+        },
+        "74": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 909
+        },
+        "75": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 918
+        },
+        "76": {
+            "length": 13,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 919
+        },
+        "77": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 932
+        },
+        "78": {
+            "length": 34,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 941
+        },
+        "79": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 976
+        },
+        "8": {
+            "length": 25,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 51
+        },
+        "80": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 985
+        },
+        "81": {
+            "length": 13,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 986
+        },
+        "82": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 999
+        },
+        "83": {
+            "length": 34,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 1008
+        },
+        "84": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 1043
+        },
+        "85": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 1052
+        },
+        "86": {
+            "length": 18,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 1053
+        },
+        "87": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 1071
+        },
+        "88": {
+            "length": 37,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 1075
+        },
+        "89": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 1113
+        },
+        "9": {
+            "length": 9,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 77
+        },
+        "90": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 1122
+        },
+        "91": {
+            "length": 11,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 1123
+        },
+        "92": {
+            "length": 1,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 1134
+        },
+        "93": {
+            "length": 29,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 1136
+        },
+        "94": {
+            "length": 10,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 1167
+        },
+        "95": {
+            "length": 2,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 1177
+        },
+        "96": {
+            "length": 3,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 1179
+        },
+        "97": {
+            "length": 3,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 1182
+        },
+        "98": {
+            "length": 2,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 1185
+        },
+        "99": {
+            "length": 10,
+            "path": "E:/my_proj/llm_agent/src/tools/ToolManager.cpp",
+            "start_byte": 1187
+        }
+    },
+    "max_elements": 295
+}
