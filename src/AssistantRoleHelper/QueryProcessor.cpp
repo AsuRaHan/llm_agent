@@ -31,15 +31,12 @@ AssistantResponse QueryProcessor::processAdvanced( // Renamed from process to pr
     MessageBuilder messageBuilder(continuation_history, m_config);
     bool is_continuation = !continuation_history.empty() && userQuery.empty();
 
+    // CRITICAL FIX: Initialize the message builder only ONCE before the loop.
+    // This prevents the agent's memory (tool results) from being wiped on each iteration.
+    messageBuilder.initialize(initialContext);
+
     // Main agent loop
     for (int i = 0; i < m_config.max_tool_calls; ++i) {
-        // if (i == 0 && !is_continuation) {
-            messageBuilder.initialize(initialContext);
-        // } else if (i > 0 && is_continuation && messageBuilder.getMessages().empty()) {
-        //     // This case should not happen if history is properly managed.
-        //     // If it's a continuation, history should already be populated.
-        // }
-        
         auto iteration_response = runReActIteration(messageBuilder, i, is_continuation && i == 0);
 
         // If the iteration produced a final response (e.g., direct answer, error, confirmation needed), return it.
