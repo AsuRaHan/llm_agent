@@ -184,6 +184,14 @@ void WebSocketServer::processAgentLogic(std::shared_ptr<UserSession> session, co
         }
 
         AssistantResponse response = assistant.processQuery(queryText, context, indexer, session->history, send_thought, send_stream_chunk, session->is_interrupted);
+        
+        // If the final response came from a tool (like final_answer), its text is in `response.text`.
+        // We need to send it to the user now. The direct LLM stream would have already been sent via the callback.
+        if (response.is_final && !response.text.empty()) {
+            send_stream_chunk(response.text);
+        }
+
+        // Now that all possible text has been sent, we can end the stream.
         sendMessage(ws_handle, {{"type", "stream_end"}});
 
         session->history = response.conversation_history;
