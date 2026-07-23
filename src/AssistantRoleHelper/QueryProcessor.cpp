@@ -72,8 +72,8 @@ AssistantResponse QueryProcessor::runReActIteration(MessageBuilder& messageBuild
     }
 
     SPDLOG_INFO("Итерация {}/{} цикла обработки запроса...", iteration + 1, m_config.max_tool_calls);
-    
-    AssistantResponse llm_response = m_llmProvider->processChat(messageBuilder.getMessages(), m_toolManager.getToolsSpecification(), m_send_thought, m_send_stream_chunk);
+
+    AssistantResponse llm_response = m_llmProvider->processChat(messageBuilder.getMessages(), m_toolManager.getToolsSpecification(), m_send_thought, m_send_stream_chunk, m_is_interrupted);
 
     // Check for interruption after the potentially long LLM call
     if (m_is_interrupted.load()) {
@@ -175,7 +175,7 @@ AssistantResponse QueryProcessor::processAdvanced(
         }
 
         // Call LLM for the next step
-        AssistantResponse llm_response = m_llmProvider->processChat(messageBuilder.getMessages(), m_toolManager.getToolsSpecification(), m_send_thought, m_send_stream_chunk);
+        AssistantResponse llm_response = m_llmProvider->processChat(messageBuilder.getMessages(), m_toolManager.getToolsSpecification(), m_send_thought, m_send_stream_chunk, m_is_interrupted);
 
         if (m_is_interrupted.load()) {
             SPDLOG_INFO("Agent interruption detected after LLM call. Stopping.");
@@ -306,7 +306,7 @@ AssistantResponse QueryProcessor::forceFinalAnswer(MessageBuilder& messageBuilde
     
     messageBuilder.addForcedFinalAnswerMessage();
 
-    auto final_llm_response = m_llmProvider->processChat(messageBuilder.getMessages(), json::array(), m_send_thought, m_send_stream_chunk);
+    auto final_llm_response = m_llmProvider->processChat(messageBuilder.getMessages(), json::array(), m_send_thought, m_send_stream_chunk, m_is_interrupted);
 
     if (!final_llm_response.step_failed && final_llm_response.llm_response.contains("choices") && !final_llm_response.llm_response["choices"].empty()) {
         std::string final_text = final_llm_response.llm_response["choices"][0]["message"]["content"];
@@ -330,7 +330,7 @@ AssistantResponse QueryProcessor::getSummaryAnswer(MessageBuilder& messageBuilde
         {"content", "Подведи итог и дай финальный ответ пользователю на основе всей предыдущей переписки."}
     });
 
-    auto final_llm_response = m_llmProvider->processChat(messages, json::array(), m_send_thought, m_send_stream_chunk);
+    auto final_llm_response = m_llmProvider->processChat(messages, json::array(), m_send_thought, m_send_stream_chunk, m_is_interrupted);
 
     if (!final_llm_response.step_failed && final_llm_response.llm_response.contains("choices") && !final_llm_response.llm_response["choices"].empty()) {
         std::string final_text = final_llm_response.llm_response["choices"][0]["message"]["content"];

@@ -8,6 +8,8 @@
 #include <vector>
 #include <unordered_set>
 
+GrepSearchTool::GrepSearchTool(const std::string& projectDir) : m_projectDir(projectDir) {}
+
 namespace fs = std::filesystem;
 
 // Helper to convert glob-style wildcards to a regex string.
@@ -93,7 +95,7 @@ std::string GrepSearchTool::execute(const nlohmann::json& args, ContextIndexer* 
     const std::unordered_set<std::string> ignored_dirs = {".git", "build", ".shdata", "CMakeFiles"};
 
     try {
-        auto it = fs::recursive_directory_iterator(".", fs::directory_options::skip_permission_denied);
+        auto it = fs::recursive_directory_iterator(m_projectDir, fs::directory_options::skip_permission_denied);
         for (const auto& entry : it) {
             if (entry.is_directory() && ignored_dirs.count(entry.path().filename().string())) {
                 it.disable_recursion_pending();
@@ -101,7 +103,7 @@ std::string GrepSearchTool::execute(const nlohmann::json& args, ContextIndexer* 
             }
 
             if (entry.is_regular_file()) {
-                std::string file_path_str = fs::relative(entry.path()).string();
+                std::string file_path_str = fs::relative(entry.path(), m_projectDir).string();
                 std::replace(file_path_str.begin(), file_path_str.end(), '\\', '/');
 
                 if (std::regex_match(file_path_str, path_regex)) {

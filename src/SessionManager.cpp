@@ -176,12 +176,6 @@ void SessionManager::loadSessions() {
                         session->id = sessionId;
                     }
 
-                    // Важно: после перезапуска ни один агент не может находиться в "занятом" состоянии.
-                    // Сбрасываем статус в IDLE, чтобы избежать зависания.
-                    session->status = AgentStatus::IDLE;
-                    session->pending_tool_call = nullptr;
-                    session->is_interrupted = false; // Также сбрасываем флаг прерывания
-
                     sessions_[sessionId] = session;
                     loaded_count++;
                     SPDLOG_DEBUG("Сессия '{}' успешно загружена.", sessionId);

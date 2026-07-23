@@ -21,7 +21,8 @@ public:
         const nlohmann::json& messages,
         const nlohmann::json& tools,
         const std::function<void(const std::string&)>& send_thought,
-        const std::function<void(const std::string&)>& send_stream_chunk
+        const std::function<void(const std::string&)>& send_stream_chunk,
+        std::atomic<bool>& is_interrupted
     ) = 0;
 
     virtual std::vector<float> createEmbedding(const std::string& text) = 0;

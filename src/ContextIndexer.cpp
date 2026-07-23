@@ -17,8 +17,7 @@ ContextIndexer::ContextIndexer(std::shared_ptr<LLMProvider> provider,
 }
 
 ContextIndexer::~ContextIndexer() {
-    SPDLOG_INFO("ContextIndexer уничтожен. Сохраняю индекс...");
-    saveIndex(); // Убеждаемся, что оба компонента сохранены при уничтожении ContextIndexer
+    SPDLOG_INFO("ContextIndexer уничтожен.");
 }
 
 void ContextIndexer::loadIndex() {
@@ -92,17 +91,10 @@ void ContextIndexer::removeFileFromIndex(const std::string& path) {
 
 void ContextIndexer::reindexProject() {
     SPDLOG_INFO("Начата полная реиндексация проекта...");
-    
-    // Сначала очищаем старый индекс
-    // indexManager.clear();
-    // fileIndexer.clear();
-    
     // Пересобираем индекс
     fileIndexer.indexDirectory(std::filesystem::path(config.project_dir));
-    
     // Сохраняем новый индекс
     saveIndex();
-    
     SPDLOG_INFO("Реиндексация проекта завершена. Эмбеддингов: {}, Файлов: {}", 
                 getEmbeddingsCount(), getFileCount());
 }

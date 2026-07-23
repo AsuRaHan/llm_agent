@@ -36,7 +36,14 @@ FileIndexer::FileIndexer(
 
 FileIndexer::~FileIndexer()
 {
-    SPDLOG_INFO("FileIndexer уничтожен.");
+    SPDLOG_INFO("FileIndexer уничтожен, сохраняем метаданные...");
+    try {
+        save();
+    } catch (const std::exception& e) {
+        SPDLOG_ERROR("Перехвачено исключение во время сохранения метаданных FileIndexer в деструкторе: {}", e.what());
+    } catch (...) {
+        SPDLOG_ERROR("Перехвачено неизвестное исключение во время сохранения метаданных FileIndexer в деструкторе.");
+    }
 }
 
 void FileIndexer::setIgnoredDirectories(const std::vector<std::string>& dirs)

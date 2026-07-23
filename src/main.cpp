@@ -204,9 +204,6 @@ std::unique_ptr<ContextIndexer> indexProject(const std::string& projectDir, cons
         SPDLOG_INFO("Запуск индексирования проекта...");
         indexer->indexDirectory(projectDir);
         
-        SPDLOG_INFO("Индексирование завершено. Сохранение индекса...");
-        indexer->saveIndex();
-        
         return indexer;
     } catch (const std::exception& e) {
         SPDLOG_CRITICAL("Ошибка при индексировании: {}", e.what());
@@ -220,27 +217,62 @@ std::unique_ptr<ContextIndexer> indexProject(const std::string& projectDir, cons
 
 int main(int argc, char* argv[])
 {
+    SPDLOG_INFO("Запуск агента Smart Hammer...");
     // Регистрируем обработчик для сигнала SIGINT (Ctrl+C)
     signal(SIGINT, signalHandler);
 
-    fs::path app_root_dir;
-    if (argc > 0) {
-        app_root_dir = fs::absolute(argv[0]).parent_path();
-    } else {
-        app_root_dir = fs::current_path();
-    }
-
     try {
+        // --- Диагностическое логирование в файл ---
+        // Это самый первый шаг, чтобы поймать ошибки, возникающие до инициализации spdlog.
+        // Лог будет в файле agent_startup_debug.log рядом с exe.
+        fs::path app_root_dir;
+        if (argc > 0 && argv[0] != nullptr) {
+            app_root_dir = fs::absolute(argv[0]).parent_path();
+        } else {
+            app_root_dir = fs::current_path();
+        }
+
+        // try {
+        //     std::ofstream debug_log(app_root_dir / "agent_startup_debug.log", std::ios::app);
+        //     debug_log << "--- Agent starting ---" << std::endl;
+        //     debug_log << "argc: " << argc << std::endl;
+        //     for (int i = 0; i < argc; ++i) {
+        //         debug_log << "argv[" << i << "]: " << (argv[i] ? argv[i] : "nullptr") << std::endl;
+        //     }
+        //     debug_log.flush();
+        // } catch (const std::exception& e) {
+        //     // Не удалось даже создать лог, но выводим в консоль, если получится.
+        //     std::cerr << "Early logging to file failed: " << e.what() << std::endl;
+        // }
+        // --- Конец диагностического логирования ---
+
         // ====== Инициализация ======
         Config config;
-        std::string projectDir = (argc > 1) ? argv[1] : ".";
+        std::string projectDir = (argc > 1 && argv[1] != nullptr) ? argv[1] : ".";
+        if (projectDir.empty()) {
+            projectDir = ".";
+        }
 
         if (!initializeApplication(projectDir, config, app_root_dir)) {
             return 1;
         }
 
+        // Отладочное логирование аргументов запуска
+        SPDLOG_DEBUG("Приложение запущено с {} аргументами:", argc);
+        for (int i = 0; i < argc; ++i) {
+            SPDLOG_DEBUG("  argv[{}]: {}", i, (argv[i] ? argv[i] : "nullptr"));
+        }
+        SPDLOG_DEBUG("Определен корневой каталог приложения: {}", app_root_dir.string());
+        SPDLOG_DEBUG("Определен каталог проекта для индексации: {}", projectDir);
+
         // Создаем уникальную директорию для данных этого проекта
         fs::path project_path_abs = fs::absolute(projectDir);
+        if (!fs::exists(project_path_abs) || !fs::is_directory(project_path_abs)) {
+            SPDLOG_CRITICAL("Указанный каталог проекта не существует или не является директорией: {}", project_path_abs.string());
+            std::cerr << "CRITICAL: Project directory does not exist or is not a directory: " << project_path_abs.string() << std::endl;
+            return 1;
+        }
+
         std::string project_safe_name = sanitize_path_for_dirname(project_path_abs);
         fs::path project_data_dir = app_root_dir / ".shdata" / project_safe_name;
 
@@ -276,8 +308,8 @@ int main(int argc, char* argv[])
 
         if (indexer->getEmbeddingsCount() == 0) {
             SPDLOG_WARN("Индексирование завершено, но эмбеддинги не получены. Возможно, все файлы были игнорированы.");
-            std::cout << "\nВнимание: эмбеддинги не получены. Проверьте конфиг и сервер LLM.\n";
-            return 1;
+            std::cout << "\nВнимание: Индекс пуст. Новые или измененные файлы будут проиндексированы автоматически.\n";
+            // Не выходим, позволяем агенту работать с пустым проектом.
         }
 
         SPDLOG_INFO("Запуск Agent...");
@@ -324,10 +356,30 @@ int main(int argc, char* argv[])
         std::cout << "\nСервер остановлен.\n";
 
     } catch (const std::exception& e) {
-        SPDLOG_CRITICAL("Перехвачено необработанное исключение: {}", e.what());
+        // Если spdlog инициализирован, используем его.
+        if (spdlog::default_logger()) {
+            SPDLOG_CRITICAL("Перехвачено необработанное исключение в main: {}", e.what());
+        } else {
+            // Иначе, выводим в cerr и пытаемся записать в файл.
+            std::cerr << "CRITICAL EXCEPTION (logger not initialized): " << e.what() << std::endl;
+            try {
+                fs::path crash_log_path = (argc > 0 && argv[0] != nullptr) ? fs::absolute(argv[0]).parent_path() : fs::current_path();
+                std::ofstream crash_log(crash_log_path / "agent_CRASH.log");
+                crash_log << "Exception: " << e.what() << std::endl;
+            } catch(...) { /* Не удалось записать лог сбоя */ }
+        }
         return 1;
     } catch (...) {
-        SPDLOG_CRITICAL("Перехвачено неизвестное необработанное исключение!");
+        if (spdlog::default_logger()) {
+            SPDLOG_CRITICAL("Перехвачено неизвестное необработанное исключение в main!");
+        } else {
+            std::cerr << "UNKNOWN CRITICAL EXCEPTION (logger not initialized)" << std::endl;
+            try {
+                fs::path crash_log_path = (argc > 0 && argv[0] != nullptr) ? fs::absolute(argv[0]).parent_path() : fs::current_path();
+                std::ofstream crash_log(crash_log_path / "agent_CRASH.log");
+                crash_log << "Unknown exception caught in main." << std::endl;
+            } catch(...) { /* Не удалось записать лог сбоя */ }
+        }
         return 1;
     }
 

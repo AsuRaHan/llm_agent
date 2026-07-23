@@ -1,0 +1,12 @@
+[submodule "glm"]
+	path = glm
+	url = https://github.com/g-truc/glm.git
+[submodule "dukglue"]
+	path = dukglue
+	url = https://github.com/Aloshi/dukglue.git
+[submodule "assimp"]
+	path = assimp
+	url = https://github.com/assimp/assimp.git
+[submodule "openmesh"]
+	path = openmesh
+	url = https://www.graphics.rwth-aachen.de:9000/OpenMesh/OpenMesh.git

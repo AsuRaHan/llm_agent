@@ -27,27 +27,27 @@ ToolManager::ToolManager(const Config& config, const std::string& projectDir)
 {
     SPDLOG_INFO("Включение инструментов...");
     // Register safe, read-only tools
-    registerTool(std::make_unique<ReadFileTool>());
-    registerTool(std::make_unique<ListDirectoryTool>());
+    registerTool(std::make_unique<ReadFileTool>()); // Не требует projectDir
+    registerTool(std::make_unique<ListDirectoryTool>(m_projectDir));
     registerTool(std::make_unique<CodeSearchTool>());
-    registerTool(std::make_unique<GrepSearchTool>());
-    registerTool(std::make_unique<FileGlobSearchTool>(config));
-    registerTool(std::make_unique<GetDateTimeTool>());
-    registerTool(std::make_unique<GetSystemInfoTool>());
-    registerTool(std::make_unique<ReadUrlTool>());
-    registerTool(std::make_unique<OpenUrlTool>());
-    registerTool(std::make_unique<GitHubSearchTool>());
+    registerTool(std::make_unique<GrepSearchTool>(m_projectDir));
+    registerTool(std::make_unique<FileGlobSearchTool>(config, m_projectDir));
+    registerTool(std::make_unique<GetDateTimeTool>()); // Не требует projectDir
+    registerTool(std::make_unique<GetSystemInfoTool>()); // Не требует projectDir
+    registerTool(std::make_unique<ReadUrlTool>()); // Не требует projectDir
+    registerTool(std::make_unique<OpenUrlTool>()); // Не требует projectDir
+    registerTool(std::make_unique<GitHubSearchTool>()); // Не требует projectDir
 
     // Register web search tool only if an API key is provided
     if (!config.web_search_api_key.empty()) {
-        registerTool(std::make_unique<WebSearchTool>(config));
+        registerTool(std::make_unique<WebSearchTool>(config)); // Не требует projectDir
     }
 
     // Register dangerous, write-access tools only if explicitly enabled
     if (config.enable_dangerous_tools) {
         SPDLOG_WARN("Включены ОПАСНЫЕ инструменты (например, запись файлов).");
-        registerTool(std::make_unique<WriteFileTool>());
-        registerTool(std::make_unique<EditFileTool>());
+        registerTool(std::make_unique<WriteFileTool>(m_projectDir));
+        registerTool(std::make_unique<EditFileTool>(m_projectDir));
         // registerTool(std::make_unique<ApplyDiffTool>());
         registerTool(std::make_unique<ExecuteShellCommandTool>());
     }

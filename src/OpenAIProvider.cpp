@@ -16,8 +16,10 @@ AssistantResponse OpenAIProvider::processChat(
     const nlohmann::json& messages,
     const nlohmann::json& tools,
     const std::function<void(const std::string&)>& send_thought,
-    const std::function<void(const std::string&)>& send_stream_chunk
-) {
+    const std::function<void(const std::string&)>& send_stream_chunk,
+    std::atomic<bool>& is_interrupted
+)
+{
     json body = {
         {"messages", messages},
         {"model", config.chat_model_name},
@@ -47,6 +49,11 @@ AssistantResponse OpenAIProvider::processChat(
     std::string sse_buffer;
 
     auto content_receiver = [&](const char *data, size_t data_length) {
+        if (is_interrupted.load()) {
+            SPDLOG_DEBUG("Прерывание обнаружено в content_receiver. Остановка обработки потока.");
+            return false; // Signal to httplib to stop receiving data
+        }
+
         sse_buffer.append(data, data_length);
 
         size_t pos;
@@ -123,19 +130,28 @@ AssistantResponse OpenAIProvider::processChat(
 
     httplib::Result res;
     for (int attempt = 1; attempt <= config.retry_count; ++attempt) {
+        if (is_interrupted.load()) {
+            SPDLOG_INFO("Chat completion cancelled before attempt {}.", attempt);
+            return { .step_failed = true, .error_message = "Операция прервана пользователем." };
+        }
         res = cli.Post("/v1/chat/completions", headers, body_str, "application/json", content_receiver);
         if (res) break;
         SPDLOG_ERROR("Attempt {} of {} for chat completion failed. Connection error: {}. Retrying...",
-                     attempt, config.retry_count, httplib::to_string(res.error()));
+                     attempt, config.retry_count, httplib::to_string(res.error()).c_str());
         std::this_thread::sleep_for(std::chrono::milliseconds(config.retry_delay_ms));
+    }
+
+    if (is_interrupted.load()) {
+        SPDLOG_INFO("Chat completion was interrupted during execution.");
+        return { .step_failed = true, .error_message = "Операция прервана пользователем." };
     }
 
     if (!res || res->status != 200) {
         if (res) {
             // Log the full error body from the LLM for better diagnostics.
-            SPDLOG_ERROR("Error from LLM. Status: {}. Body: {}", res->status, res->body);
+            SPDLOG_ERROR("Error from LLM. Status: {}. Body: {}", res->status, res->body.c_str());
         } else {
-            SPDLOG_ERROR("Connection error to LLM: {}", httplib::to_string(res.error()));
+            SPDLOG_ERROR("Connection error to LLM: {}", httplib::to_string(res.error()).c_str());
         }
         // Provide a more specific error message to the user.
         return { .step_failed = true, .error_message = "Ошибка при обращении к языковой модели (HTTP " + std::to_string(res ? res->status : 0) + "). Проверьте лог-файл для деталей." };
@@ -194,7 +210,7 @@ std::vector<float> OpenAIProvider::createEmbedding(const std::string& text) {
         res = embedding_cli.Post("/v1/embeddings", headers, body_str, "application/json");
         if (res) break;
         SPDLOG_WARN("Embedding attempt {}/{} failed. Connection error: {}. Retrying in {} ms...",
-                    attempt, config.retry_count, httplib::to_string(res.error()), config.retry_delay_ms);
+                    attempt, config.retry_count, httplib::to_string(res.error()).c_str(), config.retry_delay_ms);
         std::this_thread::sleep_for(std::chrono::milliseconds(config.retry_delay_ms));
     }
 
@@ -207,15 +223,15 @@ std::vector<float> OpenAIProvider::createEmbedding(const std::string& text) {
                     return first_item["embedding"].get<std::vector<float>>();
                 }
             }
-            SPDLOG_ERROR("Unexpected JSON structure in embedding response. Body: {}", res->body);
+            SPDLOG_ERROR("Unexpected JSON structure in embedding response. Body: {}", res->body.c_str());
         } catch (const json::exception& e) {
             SPDLOG_ERROR("Failed to parse JSON response for embedding. Details: {}", e.what());
         }
     } else {
         if (res) {
-            SPDLOG_ERROR("Failed to get embedding. Status: {}. Body: {}", res->status, res->body);
+            SPDLOG_ERROR("Failed to get embedding. Status: {}. Body: {}", res->status, res->body.c_str());
         } else {
-            SPDLOG_ERROR("Connection failed for embedding. Details: {}", httplib::to_string(res.error()));
+            SPDLOG_ERROR("Connection failed for embedding. Details: {}", httplib::to_string(res.error()).c_str());
         }
     }
 
@@ -224,7 +240,7 @@ std::vector<float> OpenAIProvider::createEmbedding(const std::string& text) {
 
 std::string OpenAIProvider::generateChunkSummary(const std::string& code_chunk, const std::string& chunk_name) {
     auto start_time = std::chrono::steady_clock::now();
-    SPDLOG_DEBUG("Generating summary for chunk '{}'", chunk_name);
+    SPDLOG_DEBUG("Generating summary for chunk '{}'", chunk_name.c_str());
 // return "";
     json messages = json::array({
         {
@@ -252,7 +268,7 @@ std::string OpenAIProvider::generateChunkSummary(const std::string& code_chunk, 
     auto dump_start = std::chrono::steady_clock::now();
     std::string body_str = body.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
     auto dump_end = std::chrono::steady_clock::now();
-    SPDLOG_TRACE("[Perf] Summary for '{}': JSON dump took {} ms.", chunk_name, std::chrono::duration_cast<std::chrono::milliseconds>(dump_end - dump_start).count());
+    SPDLOG_TRACE("[Perf] Summary for '{}': JSON dump took {} ms.", chunk_name.c_str(), std::chrono::duration_cast<std::chrono::milliseconds>(dump_end - dump_start).count());
 
     httplib::Client summary_cli(config.server_host, config.server_port);
     summary_cli.set_connection_timeout(5, 0);
@@ -260,7 +276,7 @@ std::string OpenAIProvider::generateChunkSummary(const std::string& code_chunk, 
     if (config.summary_generation_timeout_sec > 0) {
         summary_cli.set_read_timeout(config.summary_generation_timeout_sec, 0);
     } else {
-        SPDLOG_INFO("Summary generation timeout is disabled. Waiting indefinitely for server response for chunk '{}'.", chunk_name);
+        SPDLOG_INFO("Summary generation timeout is disabled. Waiting indefinitely for server response for chunk '{}'.", chunk_name.c_str());
         // Setting timeout to 0, 0 means infinite for httplib
         summary_cli.set_read_timeout(0, 0);
     }
@@ -295,7 +311,7 @@ std::string OpenAIProvider::generateChunkSummary(const std::string& code_chunk, 
                             }
                         }
                     } catch (const json::exception& e) {
-                        SPDLOG_WARN("Failed to parse stream chunk for summary of '{}': {}. Chunk: {}", chunk_name, e.what(), data_str);
+                        SPDLOG_WARN("Failed to parse stream chunk for summary of '{}': {}. Chunk: {}", chunk_name.c_str(), e.what(), data_str.c_str());
                     }
                 }
             }
@@ -306,20 +322,20 @@ std::string OpenAIProvider::generateChunkSummary(const std::string& code_chunk, 
     for (int attempt = 1; attempt <= config.retry_count; ++attempt) {
         res = summary_cli.Post("/v1/chat/completions", headers, body_str, "application/json", content_receiver);
         if (res) break;
-        SPDLOG_WARN("Summary generation attempt {}/{} failed. Connection error: {}. Retrying in {} ms...",
-                    attempt, config.retry_count, httplib::to_string(res.error()), config.retry_delay_ms);
+        SPDLOG_WARN("Summary generation attempt {}/{} failed. Connection error: {}. Retrying in {} ms...", 
+                    attempt, config.retry_count, httplib::to_string(res.error()).c_str(), config.retry_delay_ms);
         std::this_thread::sleep_for(std::chrono::milliseconds(config.retry_delay_ms));
     }
     auto request_end = std::chrono::steady_clock::now();
 
     if (!res || res->status != 200) {
         if (res) {
-            SPDLOG_ERROR("Failed to generate chunk summary for '{}'. Status: {}. Body: {}", chunk_name, res->status, res->body);
+            SPDLOG_ERROR("Failed to generate chunk summary for '{}'. Status: {}. Body: {}", chunk_name.c_str(), res->status, res->body.c_str());
         } else {
-            SPDLOG_ERROR("Connection failed during summary generation for '{}'. Details: {}", chunk_name, httplib::to_string(res.error()));
+            SPDLOG_ERROR("Connection failed during summary generation for '{}'. Details: {}", chunk_name.c_str(), httplib::to_string(res.error()).c_str());
         }
         auto end_time = std::chrono::steady_clock::now();
-        SPDLOG_ERROR("[Perf] Summary for '{}' failed. Total time: {} ms. Network request took {} ms.", chunk_name, 
+        SPDLOG_ERROR("[Perf] Summary for '{}' failed. Total time: {} ms. Network request took {} ms.", chunk_name.c_str(), 
             std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count(),
             std::chrono::duration_cast<std::chrono::milliseconds>(request_end - request_start).count());
         return "";
@@ -327,11 +343,11 @@ std::string OpenAIProvider::generateChunkSummary(const std::string& code_chunk, 
 
     // Если стриминг завершился успешно, но контент пуст
     if (full_content.empty()) {
-        SPDLOG_WARN("Summary generation for '{}' resulted in an empty string.", chunk_name);
+        SPDLOG_WARN("Summary generation for '{}' resulted in an empty string.", chunk_name.c_str());
     }
     
     auto end_time = std::chrono::steady_clock::now();
-    SPDLOG_INFO("[Perf] Summary for '{}' generated successfully. Total time: {} ms. Network request took {} ms.", chunk_name, 
+    SPDLOG_INFO("[Perf] Summary for '{}' generated successfully. Total time: {} ms. Network request took {} ms.", chunk_name.c_str(), 
         std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count(),
         std::chrono::duration_cast<std::chrono::milliseconds>(request_end - request_start).count());
     return full_content;
@@ -353,9 +369,9 @@ std::optional<LLMProvider::ServerProperties> OpenAIProvider::fetchServerProperti
 
     if (!res || res->status != 200) {
         if (res) {
-            SPDLOG_ERROR("Failed to fetch server properties. Status: {}. Body: {}", res->status, res->body);
+            SPDLOG_ERROR("Failed to fetch server properties. Status: {}. Body: {}", res->status, res->body.c_str());
         } else {
-            SPDLOG_ERROR("Connection failed while fetching server properties. Details: {}", httplib::to_string(res.error()));
+            SPDLOG_ERROR("Connection failed while fetching server properties. Details: {}", httplib::to_string(res.error()).c_str());
         }
         return std::nullopt;
     }
@@ -372,9 +388,9 @@ std::optional<LLMProvider::ServerProperties> OpenAIProvider::fetchServerProperti
             SPDLOG_INFO("Successfully fetched {} models from the server.", props.models.size());
             return props;
         }
-        SPDLOG_ERROR("Unexpected JSON structure in /v1/models response. Body: {}", res->body);
+        SPDLOG_ERROR("Unexpected JSON structure in /v1/models response. Body: {}", res->body.c_str());
     } catch (const json::exception& e) {
-        SPDLOG_ERROR("Failed to parse JSON response from /v1/models. Details: {}. Body: {}", e.what(), res->body);
+        SPDLOG_ERROR("Failed to parse JSON response from /v1/models. Details: {}. Body: {}", e.what(), res->body.c_str());
     }
 
     return std::nullopt;

@@ -232,8 +232,8 @@ void IndexManager::save()
     std::lock_guard lock(mtx);
     if (!index || getEmbeddingCount() == 0) {
         SPDLOG_INFO("IndexManager: Индекс пуст или не инициализирован, сохранение не требуется. Удаляю старые файлы.");
-        fs::remove(hnswIndexPath);
-        fs::remove(metadataDbPath);
+        // fs::remove(hnswIndexPath);
+        // fs::remove(metadataDbPath);
         return;
     }
 

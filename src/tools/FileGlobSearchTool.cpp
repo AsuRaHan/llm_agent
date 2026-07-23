@@ -8,7 +8,7 @@
 
 namespace fs = std::filesystem;
 
-FileGlobSearchTool::FileGlobSearchTool(const Config& config) : config(config) {}
+FileGlobSearchTool::FileGlobSearchTool(const Config& config, const std::string& projectDir) : config(config), m_projectDir(projectDir) {}
 
 std::string FileGlobSearchTool::getName() const {
     return "file_glob_search";
@@ -71,7 +71,7 @@ std::string FileGlobSearchTool::execute(const nlohmann::json& args, ContextIndex
     std::unordered_set<std::string> ignored_dirs(config.ignored_directories.begin(), config.ignored_directories.end());
 
     try {
-        auto it = fs::recursive_directory_iterator(".");
+        auto it = fs::recursive_directory_iterator(m_projectDir);
         for (const auto& entry : it) {
             if (entry.is_directory() && ignored_dirs.count(entry.path().filename().string())) {
                 it.disable_recursion_pending(); // Не заходим в игнорируемые директории

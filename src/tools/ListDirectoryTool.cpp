@@ -5,6 +5,8 @@
 
 namespace fs = std::filesystem;
 
+ListDirectoryTool::ListDirectoryTool(const std::string& projectDir) : m_projectDir(projectDir) {}
+
 std::string ListDirectoryTool::getName() const {
     return "list_directory";
 }
@@ -28,7 +30,7 @@ nlohmann::json ListDirectoryTool::getParameters() const {
 
 std::string ListDirectoryTool::execute(const nlohmann::json& args, ContextIndexer* indexer) {
     (void)indexer; // This tool doesn't use the indexer, so mark it as unused.
-    std::string path_str = "."; // Default to current directory
+    std::string path_str = m_projectDir; // Default to project directory
     if (args.contains("path") && args["path"].is_string()) {
         path_str = args["path"].get<std::string>();
     }

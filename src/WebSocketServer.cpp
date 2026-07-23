@@ -191,6 +191,7 @@ void WebSocketServer::processAgentLogic(std::shared_ptr<UserSession> session, co
 
         if (response.step_failed) {
             SPDLOG_ERROR("Шаг для сессии {} завершился с ошибкой: {}", sessionId, response.error_message);
+            session->last_error_message = response.error_message; // Сохраняем ошибку в сессии
             session->status = AgentStatus::AWAITING_ERROR_RECOVERY_DECISION;
 
             sendMessage(ws_handle, {
@@ -324,11 +325,19 @@ void WebSocketServer::handleErrorRecoveryConfirmation(const nlohmann::json& msg,
 
     if (option == "retry") {
         SPDLOG_INFO("Пользователь выбрал 'retry' для сессии {}. Возобновление выполнения.", sessionId);
+        
+        // Формируем "умное" сообщение для LLM
+        std::string user_guidance = "The previous attempt failed with the error: '" + session->last_error_message + "'. Please analyze this error and decide on the next step. You can retry with corrected parameters, use a different tool, or ask for clarification. Do not simply repeat the same failed action.";
+        session->history.push_back({
+            {"role", "user"},
+            {"content", user_guidance}
+        });
+        session->last_error_message.clear(); // Очищаем ошибку после использования
+
         session->status = AgentStatus::THINKING;
         threadPool.enqueue([this, session, ws_handle] {
-            // Pass an empty query to signal a continuation of the previous failed step. processAgentLogic(session, "RETRY_STEP", ws_handle);
-            // The agent logic will pick up the existing history and re-try the last LLM call.
-            processAgentLogic(session, "", ws_handle);
+            // Пустой запрос сигнализирует о продолжении цикла с обновленной историей
+            processAgentLogic(session, "", ws_handle); 
         });
     } else if (option == "skip") {
         SPDLOG_INFO("Пользователь выбрал 'skip' для сессии {}. Отмена текущей задачи.", sessionId);

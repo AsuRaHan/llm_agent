@@ -5,6 +5,8 @@
 
 namespace fs = std::filesystem;
 
+WriteFileTool::WriteFileTool(const std::string& projectDir) : m_projectDir(projectDir) {}
+
 std::string WriteFileTool::getName() const {
     return "write_file";
 }
@@ -51,9 +53,10 @@ std::string WriteFileTool::execute(const nlohmann::json& args, ContextIndexer* i
     fs::path canonical_path;
     try {
         canonical_path = fs::weakly_canonical(file_path);
-        if (canonical_path.string().find(fs::current_path().string()) != 0) {
+        fs::path project_abs_path = fs::absolute(m_projectDir);
+        if (canonical_path.string().find(project_abs_path.string()) != 0) {
             SPDLOG_WARN("Попытка записи файла вне текущей директории проекта: {}", path_str);
-            return "{\"error\": \"Запись файлов разрешена только в пределах текущей директории проекта.\"}";
+            return "{\"error\": \"Запись файлов разрешена только в пределах директории проекта '" + m_projectDir + "'.\"}";
         }
     } catch (const fs::filesystem_error& e) {
         std::string error_msg = "Ошибка при обработке пути к файлу: " + std::string(e.what());

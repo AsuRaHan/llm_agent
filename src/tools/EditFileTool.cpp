@@ -18,6 +18,8 @@ static std::string trim(const std::string& s) {
     return s.substr(first, (last - first + 1));
 }
 
+EditFileTool::EditFileTool(const std::string& projectDir) : m_projectDir(projectDir) {}
+
 std::string EditFileTool::getName() const {
     return "edit_file";
 }
@@ -69,9 +71,10 @@ std::string EditFileTool::execute(const nlohmann::json& args, ContextIndexer* in
     // Security check
     try {
         fs::path canonical_path = fs::weakly_canonical(file_path);
-        if (canonical_path.string().find(fs::current_path().string()) != 0) {
+        fs::path project_abs_path = fs::absolute(m_projectDir);
+        if (canonical_path.string().find(project_abs_path.string()) != 0) {
             SPDLOG_WARN("Попытка редактирования файла вне текущей директории проекта: {}", path_str);
-            return "{\"error\": \"Редактирование файлов разрешено только в пределах текущей директории проекта.\"}";
+            return "{\"error\": \"Редактирование файлов разрешено только в пределах директории проекта '" + m_projectDir + "'.\"}";
         }
     } catch (const fs::filesystem_error& e) {
         std::string error_msg = "Ошибка при обработке пути к файлу: " + std::string(e.what());
