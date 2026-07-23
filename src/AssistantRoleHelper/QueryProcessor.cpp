@@ -23,35 +23,24 @@ QueryProcessor::QueryProcessor(
     m_is_interrupted(is_interrupted)
 {}
 
-AssistantResponse QueryProcessor::process(
+AssistantResponse QueryProcessor::processAdvanced( // Renamed from process to processAdvanced
     const std::string& userQuery,
     const std::vector<SearchResult>& initialContext,
-    const nlohmann::json& continuation_history
+    const nlohmann::json& continuation_history // This history already contains the user's query
 ) {
     MessageBuilder messageBuilder(continuation_history, m_config);
     bool is_continuation = !continuation_history.empty() && userQuery.empty();
 
-    if (is_continuation) {
-        messageBuilder.initialize(initialContext);
-        auto response = handleContinuationAfterConfirmation(messageBuilder);
-        // If the tool execution failed, return immediately.
-        if (response.step_failed) {
-            response.conversation_history = messageBuilder.getMessages();
-            return response;
-        }
-    }
-
-    // ReAct Loop
+    // Main agent loop
     for (int i = 0; i < m_config.max_tool_calls; ++i) {
-        if (i == 0 && !is_continuation) {
+        // if (i == 0 && !is_continuation) {
             messageBuilder.initialize(initialContext);
-        }
+        // } else if (i > 0 && is_continuation && messageBuilder.getMessages().empty()) {
+        //     // This case should not happen if history is properly managed.
+        //     // If it's a continuation, history should already be populated.
+        // }
         
-        auto iteration_response = runReActIteration(messageBuilder, i);
-
-        if (iteration_response.should_break) {
-            break;
-        }
+        auto iteration_response = runReActIteration(messageBuilder, i, is_continuation && i == 0);
 
         // If the iteration produced a final response (e.g., direct answer, error, confirmation needed), return it.
         if (iteration_response.is_final || iteration_response.requires_confirmation || iteration_response.step_failed) {
@@ -64,7 +53,7 @@ AssistantResponse QueryProcessor::process(
     return forceFinalAnswer(messageBuilder);
 }
 
-AssistantResponse QueryProcessor::runReActIteration(MessageBuilder& messageBuilder, int iteration) {
+AssistantResponse QueryProcessor::runReActIteration(MessageBuilder& messageBuilder, int iteration, bool is_first_iteration_after_confirmation) {
     // Check for interruption at the beginning of each iteration
     if (m_is_interrupted.load()) {
         SPDLOG_INFO("Agent interruption detected. Stopping processing.");
@@ -72,6 +61,21 @@ AssistantResponse QueryProcessor::runReActIteration(MessageBuilder& messageBuild
     }
 
     SPDLOG_INFO("Итерация {}/{} цикла обработки запроса...", iteration + 1, m_config.max_tool_calls);
+
+    // If it's the first iteration after user confirmation, execute the pending tool call first.
+    if (is_first_iteration_after_confirmation) {
+        const auto& last_message = messageBuilder.getMessages().back();
+        if (last_message.value("role", "") == "assistant" && last_message.contains("tool_calls")) {
+            SPDLOG_INFO("Продолжение после подтверждения. Выполнение отложенного инструмента...");
+            // User has already confirmed, so skip danger check.
+            AssistantResponse tool_execution_response = handleToolCalls(last_message, messageBuilder, true);
+            if (tool_execution_response.requires_confirmation || tool_execution_response.step_failed || tool_execution_response.final_answer_tool_called) {
+                return tool_execution_response;
+            }
+            // After handling, we continue to the next LLM call within this loop.
+            // The history is updated, so the next LLM call will see the tool results.
+        }
+    }
 
     AssistantResponse llm_response = m_llmProvider->processChat(messageBuilder.getMessages(), m_toolManager.getToolsSpecification(), m_send_thought, m_send_stream_chunk, m_is_interrupted);
 
@@ -98,10 +102,13 @@ AssistantResponse QueryProcessor::runReActIteration(MessageBuilder& messageBuild
         SPDLOG_INFO("LLM запросил вызов инструментов.");
         messageBuilder.addToolCallMessage(message); // Add assistant's turn with tool_calls to history
         
-        auto tool_response = handleToolCalls(message, messageBuilder);
+        AssistantResponse tool_execution_response = handleToolCalls(message, messageBuilder);
         // If a tool requires confirmation or failed, stop and return that response.
-        if (tool_response.requires_confirmation || tool_response.step_failed) {
-            return tool_response;
+        if (tool_execution_response.requires_confirmation || tool_execution_response.step_failed) {
+            return tool_execution_response;
+        }
+        if (tool_execution_response.final_answer_tool_called) {
+            return { .text = tool_execution_response.text, .is_final = true, .conversation_history = messageBuilder.getMessages() };
         }
         // All tools executed, continue the loop.
         int remaining_iterations = m_config.max_tool_calls - (iteration + 1);
@@ -110,123 +117,21 @@ AssistantResponse QueryProcessor::runReActIteration(MessageBuilder& messageBuild
     }
     // Case 1: Direct answer
     else if (message.contains("content") && message["content"].is_string()) {
-        SPDLOG_INFO("LLM предоставил прямой ответ (потоково). Завершение цикла.");
-        messageBuilder.addAssistantMessage(message["content"]);
-        return {.text = "", .is_final = true, .conversation_history = messageBuilder.getMessages()};
+        messageBuilder.addAssistantMessage(message["content"]); // Always add content to history
+
+        if (m_config.enable_agent_mode_auto_continue) {
+            SPDLOG_INFO("LLM предоставил промежуточный ответ (content). Продолжаем цикл в режиме агента.");
+            return {.is_final = false}; // Continue the loop
+        } else {
+            SPDLOG_INFO("LLM предоставил финальный ответ (content). Завершение цикла в режиме чата.");
+            return {.text = "", .is_final = true, .conversation_history = messageBuilder.getMessages()};
+        }
     }
     // Fallback: Empty response, break loop to force final answer.
     else {
         SPDLOG_INFO("LLM вернул пустой ответ, завершаем цикл и переходим к подведению итогов.");
-        return {.is_final = false, .should_break = true}; // Signal to break
+        return getSummaryAnswer(messageBuilder); // Directly return summary answer
     }
-}
-
-AssistantResponse QueryProcessor::handleContinuationAfterConfirmation(MessageBuilder& messageBuilder) {
-    const auto& last_message = messageBuilder.getMessages().back();
-
-    if (last_message.value("role", "") == "assistant" && last_message.contains("tool_calls")) {
-        SPDLOG_INFO("Продолжение после подтверждения. Выполнение отложенного инструмента...");
-        // Pass skip_danger_check = true because the user has already confirmed the action.
-        return handleToolCalls(last_message, messageBuilder, true);
-    }
-    // Should not happen, but as a fallback, indicate success to continue to ReAct loop
-    return {.is_final = false};
-}
-
-AssistantResponse QueryProcessor::processAdvanced(
-    const std::string& userQuery,
-    const std::vector<SearchResult>& initialContext,
-    const nlohmann::json& continuation_history
-) {
-    SPDLOG_DEBUG("processAdvanced: начало обработки. userQuery: '{}'", userQuery);
-    MessageBuilder messageBuilder(continuation_history, m_config);
-    bool is_continuation = !continuation_history.empty() && userQuery.empty();
-
-    if (!is_continuation) {
-        // This is a new query from the user.
-        messageBuilder.initialize(initialContext);
-    } else {
-        // This is a continuation. The history is already prepared by the caller.
-        // We just need to load it into the builder.
-        messageBuilder.initialize({}); 
-    }
-
-    // Main agent loop
-    for (int i = 0; i < m_config.max_tool_calls; ++i) {
-        SPDLOG_INFO("Итерация {}/{} цикла обработки запроса...", i + 1, m_config.max_tool_calls);
-
-        if (m_is_interrupted.load()) {
-            SPDLOG_INFO("Agent interruption detected. Stopping processing.");
-            return { .text = "Задача прервана пользователем.", .is_final = true, .conversation_history = messageBuilder.getMessages() };
-        }
-
-        // If this is a continuation from a user confirmation, execute the pending tool call directly.
-        if (i == 0 && is_continuation) {
-            const auto& last_message = messageBuilder.getMessages().back();
-            if (last_message.value("role", "") == "assistant" && last_message.contains("tool_calls")) {
-                SPDLOG_INFO("Продолжение после подтверждения. Выполнение отложенного инструмента...");
-                // User has already confirmed, so skip danger check.
-                auto tool_response = handleToolCalls(last_message, messageBuilder, true);
-                if (tool_response.requires_confirmation || tool_response.step_failed) {
-                    return tool_response;
-                }
-                // After handling, we continue to the next LLM call within this loop.
-            }
-        }
-
-        // Call LLM for the next step
-        AssistantResponse llm_response = m_llmProvider->processChat(messageBuilder.getMessages(), m_toolManager.getToolsSpecification(), m_send_thought, m_send_stream_chunk, m_is_interrupted);
-
-        if (m_is_interrupted.load()) {
-            SPDLOG_INFO("Agent interruption detected after LLM call. Stopping.");
-            return { .text = "Задача прервана пользователем.", .is_final = true, .conversation_history = messageBuilder.getMessages() };
-        }
-
-        if (llm_response.step_failed) {
-            llm_response.conversation_history = messageBuilder.getMessages();
-            llm_response.recovery_options = {"retry"};
-            return llm_response;
-        }
-
-        json response_json = llm_response.llm_response;
-        if (!response_json.contains("choices") || response_json["choices"].empty()) {
-            SPDLOG_ERROR("Ответ LLM не содержит 'choices'. Тело: {}", response_json.dump(2));
-            return { .text = "", .is_final = true, .conversation_history = messageBuilder.getMessages(), .step_failed = true, .error_message = "Получен некорректный ответ от модели (отсутствует поле 'choices').", .recovery_options = {"retry"} };
-        }
-
-        const auto& message = response_json["choices"][0]["message"];
-
-        // Case 2: Tool calls requested
-        if (message.contains("tool_calls") && message["tool_calls"].is_array() && !message["tool_calls"].empty()) {
-            SPDLOG_INFO("LLM запросил вызов инструментов.");
-            messageBuilder.addToolCallMessage(message);
-            
-            auto tool_response = handleToolCalls(message, messageBuilder, false); // Not a continuation, so do danger check
-            
-            if (tool_response.requires_confirmation || tool_response.step_failed) {
-                return tool_response;
-            }
-
-            int remaining_iterations = m_config.max_tool_calls - (i + 1);
-            messageBuilder.setRemainingIterationsSystemNote(remaining_iterations);
-            continue; // Continue to the next iteration of the loop
-        }
-        // Case 1: Final answer (content without tool calls)
-        else if (message.contains("content") && message["content"].is_string()) {
-            SPDLOG_INFO("LLM предоставил финальный ответ. Завершение цикла.");
-            // The content was already streamed by processChat. We just need to update history and return.
-            messageBuilder.addAssistantMessage(message["content"]);
-            return {.text = "", .is_final = true, .conversation_history = messageBuilder.getMessages()};
-        }
-        // Case 3: Empty or unexpected response - THIS IS THE FIX FOR THE BUG
-        else {
-            SPDLOG_INFO("LLM вернул пустой ответ. Запрашиваем итоговый ответ.");
-            return getSummaryAnswer(messageBuilder);
-        }
-    }
-
-    // Loop finished, max_tool_calls reached
-    return forceFinalAnswer(messageBuilder);
 }
 
 AssistantResponse QueryProcessor::handleToolCalls(const nlohmann::json& message, MessageBuilder& messageBuilder, bool skip_danger_check) {
@@ -236,6 +141,9 @@ AssistantResponse QueryProcessor::handleToolCalls(const nlohmann::json& message,
         // If any tool call requires confirmation or fails, we stop immediately and return that response.
         if (tool_response.requires_confirmation || tool_response.step_failed) {
             return tool_response;
+        }
+        if (tool_response.final_answer_tool_called) {
+            return tool_response; // Propagate the final answer signal
         }
     }
     // All tools executed successfully, continue the loop
@@ -282,6 +190,10 @@ AssistantResponse QueryProcessor::executeToolCall(const nlohmann::json& call, Me
     std::string result = m_toolManager.executeTool(tool_name, tool_args, &m_indexer);
     
     try {
+         if (tool_name == "final_answer") {
+             // If it's the final_answer tool, the result is the actual final answer text.
+             return { .text = result, .is_final = true, .final_answer_tool_called = true };
+         }
          json result_json = json::parse(result);
          if (result_json.contains("error")) {
              std::string error_msg = result_json["error"].get<std::string>();

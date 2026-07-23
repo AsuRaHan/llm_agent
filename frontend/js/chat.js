@@ -185,9 +185,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     messageList.scrollTop = messageList.scrollHeight;
                     break;
                 case 'stream_end':
-                    // Поток завершен. Сбрасываем состояние и разблокируем ввод.
+                    // Поток для текущего сообщения завершен. Сбрасываем состояние рендеринга.
+                    // Не разблокируем ввод, ждем сигнала 'task_finished'.
                     streamingMessageElement = null;
                     accumulatedStreamText = '';
+                    break;
+                case 'task_finished':
+                    // Вся задача агента завершена. Теперь можно разблокировать ввод.
                     hideAgentThought();
                     break;
                 case 'agent_thought':

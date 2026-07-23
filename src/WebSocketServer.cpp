@@ -207,10 +207,14 @@ void WebSocketServer::processAgentLogic(std::shared_ptr<UserSession> session, co
             session->status = AgentStatus::AWAITING_CONFIRMATION;
             session->pending_tool_call = response.pending_tool_call;
             sendMessage(ws_handle, {{"type", "action_required"}, {"data", {{"message", response.text}, {"tool_call", response.pending_tool_call}}}});
-        } else {
+        } else if (response.is_final) {
+            // Если is_final, значит, агент завершил свою работу.
             setSessionIdle(session);
             sessionManager.saveSessions();
+            sendMessage(ws_handle, {{"type", "task_finished"}});
         }
+        // Если !is_final, !step_failed и !requires_confirmation, значит, агент продолжает работу,
+        // и мы ничего не делаем, оставляя его в состоянии THINKING.
     } catch (const std::exception& e) {
         SPDLOG_ERROR("Ошибка при обработке логики агента для сессии {}: {}", sessionId, e.what());
         setSessionIdle(session);
@@ -290,15 +294,26 @@ void WebSocketServer::handleConfirmation(const nlohmann::json& msg, std::shared_
     auto pending_call = session->pending_tool_call;
     session->pending_tool_call = nullptr;
 
+    // CRITICAL FIX: Add a null check for the pending call.
+    // This prevents a crash if the state is inconsistent.
+    if (pending_call.is_null()) {
+        SPDLOG_ERROR("Confirmation handled, but pending_tool_call was null for session {}. Aborting.", sessionId);
+        setSessionIdle(session);
+        sendMessage(ws_handle, {{"type", "error"}, {"data", {{"message", "Внутренняя ошибка: не найдено отложенное действие для подтверждения."}}}});
+        return;
+    }
+
     // Сценарий 1: Человек ОТКЛОНИЛ вызов опасного инструмента
     if (!confirmed) {
         SPDLOG_INFO("Пользователь отклонил действие для сессии {}", sessionId);
         session->history.push_back({{"role", "tool"}, {"tool_call_id", pending_call["id"]}, {"content", "{\"result\": \"Error: User explicitly denied execution of this tool.\"}"}});
         // The agent needs to know the user denied it, so we continue the logic loop.
+    } else {
+        // Сценарий 2: Человек ОДОБРИЛ вызов опасного инструмента
+        SPDLOG_INFO("Пользователь подтвердил действие для сессии {}", sessionId);
+        // We don't add anything to history here. The QueryProcessor will execute the tool
+        // and add the result itself.
     }
-
-    // Сценарий 2: Человек ОДОБРИЛ вызов опасного инструмента
-    SPDLOG_INFO("Пользователь подтвердил действие для сессии {}", sessionId);
     
     // We continue the agent logic. The query text is empty, which signals a continuation.
     std::string pipeline_signal = ""; 

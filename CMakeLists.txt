@@ -220,6 +220,7 @@ add_executable(Agent
       src/tools/GitHubSearchTool.cpp
       src/tools/ExecuteShellCommandTool.cpp
       src/tools/GetDateTimeTool.cpp
+      src/tools/FinalAnswerTool.cpp # NEW
       src/tools/GetSystemInfoTool.cpp
       src/FileWatcher.cpp
       # Добавляем исходники грамматик напрямую в исполняемый файл

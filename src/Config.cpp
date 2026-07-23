@@ -26,6 +26,7 @@ void Config::create_default(const std::string& filepath) const {
 
     j["tools"]["enable_dangerous_tools"] = enable_dangerous_tools;
     j["tools"]["dangerous_tools"] = {"write_file", "edit_file", "apply_diff", "execute_shell_command"};
+    j["tools"]["enable_agent_mode_auto_continue"] = enable_agent_mode_auto_continue;
 
     j["web_search"]["api_key"] = web_search_api_key;
 
@@ -101,6 +102,7 @@ bool Config::load(const std::string& filepath) {
             SPDLOG_WARN("'tools.dangerous_tools' не найден в config.json. Используются значения по умолчанию.");
             dangerous_tools = {"write_file", "edit_file", "apply_diff", "execute_shell_command"};
         }
+        enable_agent_mode_auto_continue = j.value("/tools/enable_agent_mode_auto_continue"_json_pointer, enable_agent_mode_auto_continue);
 
         web_search_api_key = j.value("/web_search/api_key"_json_pointer, web_search_api_key);
 

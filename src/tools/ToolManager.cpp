@@ -18,6 +18,7 @@
 #include "ReadUrlTool.h"        // Include the new URL reader tool
 #include "OpenUrlTool.h"        // Include the new URL opener tool
 #include "GitHubSearchTool.h"   // Include the new GitHub search tool
+#include "FinalAnswerTool.h"   // Include the new FinalAnswer tool
 #include "../Config.h" // Needed for the constructor
 
 namespace fs = std::filesystem;
@@ -37,7 +38,7 @@ ToolManager::ToolManager(const Config& config, const std::string& projectDir)
     registerTool(std::make_unique<ReadUrlTool>()); // Не требует projectDir
     registerTool(std::make_unique<OpenUrlTool>()); // Не требует projectDir
     registerTool(std::make_unique<GitHubSearchTool>()); // Не требует projectDir
-
+    registerTool(std::make_unique<FinalAnswerTool>()); // Не требует projectDir
     // Register web search tool only if an API key is provided
     if (!config.web_search_api_key.empty()) {
         registerTool(std::make_unique<WebSearchTool>(config)); // Не требует projectDir

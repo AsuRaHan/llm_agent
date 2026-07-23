@@ -1,14 +1,15 @@
 #pragma once
 
-#include "AssistantRole.h" // For AssistantResponse
+#include "AssistantResponse.h"
 #include "ToolManager.h"
 #include "LLMProvider.h" 
 #include "Config.h"
 #include "ContextIndexer.h"
-#include "Searcher.h"
 #include <nlohmann/json.hpp>
 #include <atomic>
 #include <functional>
+
+class MessageBuilder;
 
 class QueryProcessor {
 public:
@@ -22,27 +23,18 @@ public:
         std::atomic<bool>& is_interrupted
     );
 
-    AssistantResponse process(
-        const std::string& userQuery,
-        const std::vector<SearchResult>& initialContext,
-        const nlohmann::json& continuation_history
-    );
-    // === НОВЫЙ ПРОДВИНУТЫЙ МЕТОД ===
     AssistantResponse processAdvanced(
         const std::string& userQuery,
         const std::vector<SearchResult>& initialContext,
         const nlohmann::json& continuation_history
     );
 private:
-    // Main loop and handlers for legacy `process` method
-    AssistantResponse runReActIteration(class MessageBuilder& messageBuilder, int iteration);
-    AssistantResponse handleContinuationAfterConfirmation(class MessageBuilder& messageBuilder);
-    // Common handlers
-    AssistantResponse handleToolCalls(const nlohmann::json& message, class MessageBuilder& messageBuilder, bool skip_danger_check = false);
-    AssistantResponse executeToolCall(const nlohmann::json& call, class MessageBuilder& messageBuilder, bool skip_danger_check = false);
-    AssistantResponse forceFinalAnswer(class MessageBuilder& messageBuilder);
+    AssistantResponse runReActIteration(MessageBuilder& messageBuilder, int iteration, bool is_first_iteration_after_confirmation);
+    AssistantResponse handleToolCalls(const nlohmann::json& message, MessageBuilder& messageBuilder, bool skip_danger_check = false);
+    AssistantResponse executeToolCall(const nlohmann::json& call, MessageBuilder& messageBuilder, bool skip_danger_check = false);
+    AssistantResponse forceFinalAnswer(MessageBuilder& messageBuilder);
     AssistantResponse getSummaryAnswer(MessageBuilder& messageBuilder);
-    // Member variables
+
     std::shared_ptr<LLMProvider> m_llmProvider;
     ToolManager& m_toolManager;
     const Config& m_config;
