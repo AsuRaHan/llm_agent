@@ -13,6 +13,7 @@ extern "C" {
     TSLanguage* tree_sitter_html();
     TSLanguage* tree_sitter_css();
     TSLanguage* tree_sitter_markdown();
+    // TSLanguage* tree_sitter_php();
 }
 
 CodeParser::CodeParser(const Config& config)
@@ -33,6 +34,7 @@ void CodeParser::initializeLanguages() {
     languages["html"] = tree_sitter_html();
     languages["css"] = tree_sitter_css();
     languages["markdown"] = tree_sitter_markdown();
+    // languages["php"] = tree_sitter_php();
     // 'c' может использовать парсер 'cpp'
     languages["c"] = tree_sitter_cpp();
     
@@ -48,6 +50,7 @@ std::string CodeParser::detectLanguage(const std::string& extension)
     // if (extension == ".html" || extension == ".htm") return "html"; // Временно отключено для использования fallback-разбиения
     // if (extension == ".css") return "css"; // Временно отключено для использования fallback-разбиения
     if (extension == ".md" || extension == ".markdown") return "markdown";
+    // if (extension == ".php") return "php";
     // Add other languages here
     return "text"; // Default fallback
 }
@@ -112,6 +115,7 @@ const std::unordered_set<std::string>& CodeParser::getChunkableNodeTypes(const s
     static const std::unordered_set<std::string> html_nodes = { "script_element", "style_element" };
     static const std::unordered_set<std::string> css_nodes = { "rule_set", "at_rule" };
     static const std::unordered_set<std::string> md_nodes = { "section", "fenced_code_block" };
+    static const std::unordered_set<std::string> php_nodes = { "function_declaration", "class_declaration", "property_declaration", "variable_declaration", "use_declaration", "namespace_declaration" };
     static const std::unordered_set<std::string> empty_set;
 
     if (language == "cpp" || language == "c") return cpp_nodes;
@@ -119,6 +123,7 @@ const std::unordered_set<std::string>& CodeParser::getChunkableNodeTypes(const s
     if (language == "html") return html_nodes;
     if (language == "css") return css_nodes;
     if (language == "markdown") return md_nodes;
+    if (language == "php") return php_nodes;
     
     return empty_set;
 }

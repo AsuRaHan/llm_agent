@@ -28,26 +28,50 @@ AssistantResponse QueryProcessor::processAdvanced( // Renamed from process to pr
     const std::vector<SearchResult>& initialContext,
     const nlohmann::json& continuation_history // This history already contains the user's query
 ) {
-    MessageBuilder messageBuilder(continuation_history, m_config);
+    // Get the working history, which might be a compressed version of the full history.
+    auto working_history = getWorkingHistory(continuation_history);
+
+    MessageBuilder messageBuilder(working_history, m_config);
     bool is_continuation = !continuation_history.empty() && userQuery.empty();
 
-    // CRITICAL FIX: Initialize the message builder only ONCE before the loop.
-    // This prevents the agent's memory (tool results) from being wiped on each iteration.
     messageBuilder.initialize(initialContext);
+
+    // This is the state of the conversation *before* the new LLM call.
+    const size_t history_size_before_llm_call = messageBuilder.getMessages().size();
+
+    // This lambda will be used to reconstruct the full, uncompressed history before returning.
+    auto construct_full_history = [&](const json& final_messages_from_builder) -> json {
+        json new_messages_this_turn = json::array();
+        // The new messages are those that were added *during* the agent's execution this turn.
+        if (final_messages_from_builder.size() > history_size_before_llm_call) {
+            for (size_t i = history_size_before_llm_call; i < final_messages_from_builder.size(); ++i) {
+                new_messages_this_turn.push_back(final_messages_from_builder[i]);
+            }
+        }
+        json new_full_history = continuation_history;
+        if (!new_messages_this_turn.empty()) {
+            // Append only the messages generated in this turn to the original full history
+            new_full_history.insert(new_full_history.end(), new_messages_this_turn.begin(), new_messages_this_turn.end());
+        }
+        return new_full_history;
+    };
 
     // Main agent loop
     for (int i = 0; i < m_config.max_tool_calls; ++i) {
         auto iteration_response = runReActIteration(messageBuilder, i, is_continuation && i == 0);
 
-        // If the iteration produced a final response (e.g., direct answer, error, confirmation needed), return it.
+        // If the iteration produced a final response, reconstruct full history and return.
         if (iteration_response.is_final || iteration_response.requires_confirmation || iteration_response.step_failed) {
+            iteration_response.conversation_history = construct_full_history(iteration_response.conversation_history);
             return iteration_response;
         }
 
         // Otherwise, continue the loop.
     }
 
-    return forceFinalAnswer(messageBuilder);
+    auto final_answer = forceFinalAnswer(messageBuilder);
+    final_answer.conversation_history = construct_full_history(final_answer.conversation_history);
+    return final_answer;
 }
 
 AssistantResponse QueryProcessor::runReActIteration(MessageBuilder& messageBuilder, int iteration, bool is_first_iteration_after_confirmation) {
@@ -253,4 +277,92 @@ AssistantResponse QueryProcessor::getSummaryAnswer(MessageBuilder& messageBuilde
         .error_message = "Не удалось получить итоговый ответ от модели.",
         .recovery_options = {"retry"}
     };
+}
+
+nlohmann::json QueryProcessor::getWorkingHistory(const nlohmann::json& full_history) {
+    if (!m_config.enable_history_compression) {
+        return full_history;
+    }
+
+    long long total_chars = 0;
+    for (const auto& msg : full_history) {
+        if (msg.contains("content") && msg["content"].is_string()) {
+            total_chars += msg["content"].get<std::string>().length();
+        }
+    }
+
+    if (total_chars < m_config.history_compression_threshold) {
+        return full_history;
+    }
+
+    SPDLOG_INFO("History size ({0} chars) exceeds threshold ({1} chars). Compressing...", total_chars, m_config.history_compression_threshold);
+
+    if (full_history.size() <= (size_t)m_config.history_messages_to_keep + 1) { // +1 for system prompt
+        SPDLOG_WARN("History is large but has too few messages ({}) to compress. Skipping.", full_history.size());
+        return full_history;
+    }
+
+    json system_prompt;
+    json to_summarize = json::array();
+    json to_keep = json::array();
+
+    // Find system prompt
+    if (!full_history.empty() && full_history[0].value("role", "") == "system") {
+        system_prompt = full_history[0];
+    } else {
+        SPDLOG_INFO("Cannot compress history: system prompt not found at the beginning. This is expected for the first turn of a conversation. Skipping compression.");
+        return full_history; // Fallback, which is the correct behavior here.
+    }
+
+    size_t messages_to_keep_count = std::min((size_t)m_config.history_messages_to_keep, full_history.size() - 1);
+    size_t summary_end_index = full_history.size() - messages_to_keep_count;
+
+    for (size_t i = 1; i < full_history.size(); ++i) {
+        if (i < summary_end_index) {
+            to_summarize.push_back(full_history[i]);
+        } else {
+            to_keep.push_back(full_history[i]);
+        }
+    }
+
+    if (to_summarize.empty()) {
+        SPDLOG_INFO("No messages to summarize, skipping compression.");
+        return full_history;
+    }
+
+    // Build summarization request
+    std::stringstream summary_prompt_stream;
+    summary_prompt_stream << "You are a summarization expert. Below is a JSON array representing a conversation between a 'user' and an 'assistant'. Your task is to create a concise, neutral, third-person summary of this conversation. The summary should capture the key questions, actions taken by the assistant (including tool usage), and final outcomes or conclusions. Focus on facts, not conversational fluff.\n\n";
+    summary_prompt_stream << "CONVERSATION TO SUMMARIZE:\n";
+    summary_prompt_stream << to_summarize.dump(2);
+
+    json summary_request_messages = {
+        {{"role", "system"}, {"content", "You are a conversation summarization assistant."}},
+        {{"role", "user"}, {"content", summary_prompt_stream.str()}}
+    };
+
+    SPDLOG_INFO("Requesting summary for {} messages...", to_summarize.size());
+    // Use a temporary null callback for thoughts/streaming during summarization
+    auto null_fn = [](const std::string&){};
+    std::atomic<bool> dummy_interrupted_flag{false};
+    auto summary_response = m_llmProvider->processChat(summary_request_messages, json::array(), null_fn, null_fn, dummy_interrupted_flag);
+
+    if (summary_response.step_failed || !summary_response.llm_response.contains("choices") || summary_response.llm_response["choices"].empty()) {
+        SPDLOG_ERROR("Failed to generate history summary. Using full history as fallback.");
+        return full_history;
+    }
+
+    std::string summary_text = summary_response.llm_response["choices"][0]["message"]["content"];
+    SPDLOG_INFO("History summary generated successfully.");
+
+    // Construct the new compressed history
+    json compressed_history = json::array();
+    compressed_history.push_back(system_prompt);
+    compressed_history.push_back({
+        {"role", "system"},
+        {"content", "## Summary of Prior Conversation\n\nThe previous part of the conversation was summarized to save space. Key points:\n\n" + summary_text}
+    });
+    compressed_history.insert(compressed_history.end(), to_keep.begin(), to_keep.end());
+
+    return compressed_history;
 }

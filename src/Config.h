@@ -27,6 +27,11 @@ struct Config {
     int chat_completion_timeout_sec = 300;
     int summary_generation_timeout_sec = 1600;
     int max_tool_calls = 150;    
+    // NEW: History compression settings
+    bool enable_history_compression = true;
+    int history_compression_threshold = 66000; // In characters
+    int history_messages_to_keep = 10; // Number of recent messages to keep after compression
+
     std::string embedding_model_name = "any";
     std::string chat_model_name = "any";
     int embedding_max_text_length = 1500;

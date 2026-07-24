@@ -34,6 +34,7 @@ private:
     AssistantResponse executeToolCall(const nlohmann::json& call, MessageBuilder& messageBuilder, bool skip_danger_check = false);
     AssistantResponse forceFinalAnswer(MessageBuilder& messageBuilder);
     AssistantResponse getSummaryAnswer(MessageBuilder& messageBuilder);
+    nlohmann::json getWorkingHistory(const nlohmann::json& full_history);
 
     std::shared_ptr<LLMProvider> m_llmProvider;
     ToolManager& m_toolManager;

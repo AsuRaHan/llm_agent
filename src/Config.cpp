@@ -22,6 +22,9 @@ void Config::create_default(const std::string& filepath) const {
     j["assistant"]["chat_completion_timeout_sec"] = chat_completion_timeout_sec;
     j["assistant"]["summary_generation_timeout_sec"] = summary_generation_timeout_sec;
     j["assistant"]["max_tool_calls"] = max_tool_calls;
+    j["assistant"]["enable_history_compression"] = enable_history_compression;
+    j["assistant"]["history_compression_threshold"] = history_compression_threshold;
+    j["assistant"]["history_messages_to_keep"] = history_messages_to_keep;
     j["assistant"]["model_name"] = chat_model_name;
 
     j["tools"]["enable_dangerous_tools"] = enable_dangerous_tools;
@@ -91,6 +94,9 @@ bool Config::load(const std::string& filepath) {
         chat_completion_timeout_sec = j.value("/assistant/chat_completion_timeout_sec"_json_pointer, chat_completion_timeout_sec);
         summary_generation_timeout_sec = j.value("/assistant/summary_generation_timeout_sec"_json_pointer, summary_generation_timeout_sec);
         max_tool_calls = j.value("/assistant/max_tool_calls"_json_pointer, max_tool_calls);
+        enable_history_compression = j.value("/assistant/enable_history_compression"_json_pointer, enable_history_compression);
+        history_compression_threshold = j.value("/assistant/history_compression_threshold"_json_pointer, history_compression_threshold);
+        history_messages_to_keep = j.value("/assistant/history_messages_to_keep"_json_pointer, history_messages_to_keep);
         chat_model_name = j.value("/assistant/model_name"_json_pointer, chat_model_name);
 
         enable_dangerous_tools = j.value("/tools/enable_dangerous_tools"_json_pointer, enable_dangerous_tools);
