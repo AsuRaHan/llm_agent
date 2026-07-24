@@ -29,6 +29,7 @@ struct UserSession {
     nlohmann::json pending_tool_call = nullptr;
     std::atomic<bool> is_interrupted{false};
     std::string last_error_message; // NEW: To store the error for the retry logic
+    std::vector<std::string> last_recovery_options; // To store recovery options for session restore
 
     // Default constructor
     UserSession() = default;
@@ -40,7 +41,8 @@ struct UserSession {
           status(other.status),
           pending_tool_call(other.pending_tool_call),
           is_interrupted(other.is_interrupted.load()),
-          last_error_message(other.last_error_message)
+          last_error_message(other.last_error_message),
+          last_recovery_options(other.last_recovery_options)
     {}
 
     // Custom copy assignment operator
@@ -52,6 +54,7 @@ struct UserSession {
             pending_tool_call = other.pending_tool_call;
             is_interrupted.store(other.is_interrupted.load());
             last_error_message = other.last_error_message;
+            last_recovery_options = other.last_recovery_options;
         }
         return *this;
     }
@@ -74,4 +77,5 @@ inline void from_json(const nlohmann::json& j, UserSession& s) {
     s.pending_tool_call = nullptr;
     s.is_interrupted = false;
     s.last_error_message = "";
+    s.last_recovery_options.clear();
 }

@@ -134,6 +134,12 @@ void WebSocketServer::handleSyncSession(const nlohmann::json& msg, std::shared_p
             response_data["confirmation_data"]["message"] = "Я собираюсь использовать инструмент '" + session->pending_tool_call["function"]["name"].get<std::string>() + "'. Разрешить выполнение?";
             response_data["confirmation_data"]["tool_call"] = session->pending_tool_call;
         }
+    } else if (session->status == AgentStatus::AWAITING_ERROR_RECOVERY_DECISION) {
+        if (!session->last_error_message.empty()) {
+            response_data["error_recovery_data"]["title"] = "❗️ Ошибка обработки запроса:";
+            response_data["error_recovery_data"]["error_message"] = session->last_error_message;
+            response_data["error_recovery_data"]["recovery_options"] = session->last_recovery_options;
+        }
     }
 
     if (session->history.empty()) {
@@ -159,6 +165,8 @@ void WebSocketServer::setSessionIdle(std::shared_ptr<UserSession> session) {
     SPDLOG_INFO("Сессия {} переходит в состояние IDLE. Снятие блокировок.", session->id);
     session->status = AgentStatus::IDLE;
     session->pending_tool_call = nullptr;
+    session->last_error_message.clear();
+    session->last_recovery_options.clear();
 
     if (file_watcher_control_callback) {
         file_watcher_control_callback("unfreeze");
@@ -200,6 +208,7 @@ void WebSocketServer::processAgentLogic(std::shared_ptr<UserSession> session, co
         if (response.step_failed) {
             SPDLOG_ERROR("Шаг для сессии {} завершился с ошибкой: {}", sessionId, response.error_message);
             session->last_error_message = response.error_message; // Сохраняем ошибку в сессии
+            session->last_recovery_options = response.recovery_options; // Сохраняем опции восстановления
             session->status = AgentStatus::AWAITING_ERROR_RECOVERY_DECISION;
 
             sendMessage(ws_handle, {
@@ -356,6 +365,7 @@ void WebSocketServer::handleErrorRecoveryConfirmation(const nlohmann::json& msg,
             {"content", user_guidance}
         });
         session->last_error_message.clear(); // Очищаем ошибку после использования
+        session->last_recovery_options.clear(); // Очищаем опции после использования
 
         session->status = AgentStatus::THINKING;
         threadPool.enqueue([this, session, ws_handle] {

@@ -139,6 +139,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (data.status === 'AWAITING_CONFIRMATION') {
             addConfirmationWidget(data.confirmation_data.message, data.confirmation_data.tool_call);
+    } else if (data.status === 'AWAITING_ERROR_RECOVERY_DECISION' && data.error_recovery_data) {
+        addErrorRecoveryWidget(
+            data.error_recovery_data.title, 
+            data.error_recovery_data.error_message, 
+            data.error_recovery_data.recovery_options
+        );
         } else {
             hideAgentThought();
         }
